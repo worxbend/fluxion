@@ -13,6 +13,6 @@ public class MainApplicationComponentImpl implements ApplicationComponent {
 
   @Override
   public void start() {
-    log.info("{} {}", "Hello", "world" );
+    log.info("Start '{}'", this.getClass().getSimpleName());
   }
 }
