@@ -9,6 +9,6 @@ class InitializingModule {
   @Provides
   @Singleton
   Initializer provideHeater() {
-    return new ElectricInitializer();
+    return new RootInitializer();
   }
 }

@@ -1,6 +1,6 @@
 package io.kzonix;
 
-public class ElectricInitializer implements Initializer {
+public class RootInitializer implements Initializer {
 
   @Override
   public void applyConfiguration() {
