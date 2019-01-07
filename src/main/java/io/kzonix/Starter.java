@@ -1,8 +1,10 @@
 package io.kzonix;
 
-public class Starter {
+import dagger.Component;
+import javax.inject.Singleton;
 
-  public void start() {
-
-  }
+@Singleton
+@Component(modules = { InitializingModule.class })
+public interface Starter {
+  ApplicationStarterEntrypoint entrypoint();
 }

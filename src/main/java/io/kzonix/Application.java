@@ -7,6 +7,7 @@ public class Application {
   private static final Logger log = Logger.getAnonymousLogger();
 
   public static void main(String... args) {
-    // Wrap Starter as guice-entrypoint
+    Starter starter = DaggerStarter.builder().build();
+    starter.entrypoint().start();
   }
 }
