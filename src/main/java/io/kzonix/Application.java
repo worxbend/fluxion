@@ -8,6 +8,6 @@ public class Application {
 
   public static void main(String... args) {
     Starter starter = DaggerStarter.builder().build();
-    starter.entrypoint().start();
+    starter.entryPoint().start();
   }
 }

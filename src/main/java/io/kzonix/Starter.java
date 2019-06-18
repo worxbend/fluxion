@@ -6,5 +6,5 @@ import javax.inject.Singleton;
 @Singleton
 @Component(modules = { InitializingModule.class })
 public interface Starter {
-  ApplicationStarterEntrypoint entrypoint();
+  ApplicationStarterEntryPoint entryPoint();
 }

@@ -6,14 +6,20 @@ import dagger.multibindings.IntoSet;
 import javax.inject.Singleton;
 
 @Module
-abstract class AppComponentModule {
+public abstract class AppComponentModule {
+
   @Binds
-  @Singleton @IntoSet
-  abstract ApplicationComponent provideMainApplicationComponent(MainApplicationComponentImpl pump);
+  @Singleton
+  @IntoSet
+  public abstract ApplicationComponent provideMainApplicationComponent(MainApplicationComponentImpl pump);
+
   @Binds
-  @Singleton @IntoSet
-  abstract ApplicationComponent provideBackgroundWorkerComponent(BackgroundWorkerComponentImpl pump);
+  @Singleton
+  @IntoSet
+  public abstract ApplicationComponent provideBackgroundWorkerComponent(BackgroundWorkerComponentImpl pump);
+
   @Binds
-  @Singleton @IntoSet
-  abstract ApplicationComponent provideAnonymousStatisticComponent(AnonymousStatisticComponentImpl pump);
+  @Singleton
+  @IntoSet
+  public abstract ApplicationComponent provideAnonymousStatisticComponent(AnonymousStatisticComponentImpl pump);
 }

@@ -1,5 +1,8 @@
 package io.kzonix;
 
-public class RootLoaderModule {
+import dagger.Module;
+
+@Module
+public abstract class RootLoaderModule {
 
 }

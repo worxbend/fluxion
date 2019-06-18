@@ -1,7 +1,9 @@
 package io.kzonix;
 
-public interface CommandLineModule {
+import dagger.Module;
 
-  void init();
+@Module
+public abstract class CommandLineModule {
+
 
 }

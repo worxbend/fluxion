@@ -4,12 +4,12 @@ import dagger.Lazy;
 import java.util.Set;
 import javax.inject.Inject;
 
-public class ApplicationStarterEntrypoint {
-  private final Lazy<Initializer> initializerLazy; // Create a possibly costly heater only when we use it.
+public class ApplicationStarterEntryPoint {
+  private final Lazy<Initializer> initializerLazy; // Create a possibly costly instance only when we use it.
   private final Set<ApplicationComponent> applicationComponents;
 
   @Inject
-  ApplicationStarterEntrypoint(Lazy<Initializer> initializerLazy, Set<ApplicationComponent> applicationComponents) {
+  ApplicationStarterEntryPoint(Lazy<Initializer> initializerLazy, Set<ApplicationComponent> applicationComponents) {
     this.initializerLazy = initializerLazy;
     this.applicationComponents = applicationComponents;
   }
