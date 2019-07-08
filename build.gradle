@@ -31,7 +31,7 @@ applicationDistribution.from(copyLicense) {
 }
 
 dependencies {
-  compile group: 'com.oath.cyclops', name: 'cyclops-futurestream', version: '10.1.1'
+  compile group: 'com.oath.cyclops', name: 'cyclops-futurestream', version: '10.3.2'
   compile group: 'com.oath.cyclops', name: 'cyclops-reactive-collections', version: '10.1.1'
   compile group: 'com.oath.cyclops', name: 'cyclops-anym', version: '10.1.1'
   compile group: 'com.oath.cyclops', name: 'cyclops-pure', version: '10.3.2'
