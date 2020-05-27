@@ -50,7 +50,7 @@ dependencies {
   annotationProcessor 'org.projectlombok:lombok:1.18.8'
 
   // Dagger 2
-  compile group: 'com.google.dagger', name: 'dagger', version: '2.24'
+  compile group: 'com.google.dagger', name: 'dagger', version: '2.28'
   annotationProcessor group: 'com.google.dagger', name: 'dagger-compiler', version: '2.24'
 
   compile group: 'org.apache.logging.log4j', name: 'log4j-core', version: '2.12.0'
