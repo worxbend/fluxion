@@ -46,7 +46,7 @@ dependencies {
   compile group: 'javax.inject', name: 'javax.inject', version: '1'
 
   // Lombok
-  compileOnly 'org.projectlombok:lombok:1.18.14'
+  compileOnly 'org.projectlombok:lombok:1.18.16'
   annotationProcessor 'org.projectlombok:lombok:1.18.14'
 
   // Dagger 2
