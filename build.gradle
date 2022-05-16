@@ -35,7 +35,7 @@ dependencies {
   compile group: 'com.oath.cyclops', name: 'cyclops-futurestream', version: '10.4.0'
   compile group: 'com.oath.cyclops', name: 'cyclops-anym', version: '10.4.0'
   compile group: 'com.oath.cyclops', name: 'cyclops-pure', version: '10.4.0'
-  compile group: 'com.oath.cyclops', name: 'cyclops-jackson-integration', version: '10.4.0'
+  compile group: 'com.oath.cyclops', name: 'cyclops-jackson-integration', version: '10.4.1'
   compile group: 'com.oath.cyclops', name: 'cyclops-rx-integration', version: '10.0.0-M7'
   compile group: 'com.oath.cyclops', name: 'cyclops', version: '10.4.0'
   compile group: 'info.picocli', name: 'picocli', version: '4.6.3'
