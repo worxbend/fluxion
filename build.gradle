@@ -40,7 +40,7 @@ dependencies {
   compile group: 'com.oath.cyclops', name: 'cyclops', version: '10.4.0'
   compile group: 'info.picocli', name: 'picocli', version: '4.7.6'
   compile group: 'com.google.code.gson', name: 'gson', version: '2.10.1'
-  compile group: 'com.google.guava', name: 'guava', version: '31.1-jre'
+  compile group: 'com.google.guava', name: 'guava', version: '33.2.1-jre'
 
 
   compile group: 'javax.inject', name: 'javax.inject', version: '1'
