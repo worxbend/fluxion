@@ -1,322 +1,192 @@
-# sysboot
+# fluxion
 
-A single-binary, config-driven, idempotent system bootstrap tool for Linux development environments. Declare your packages, Flatpaks, scripts, and binaries in a YAML file; `sysboot` installs them with a live TUI and per-item error isolation.
+Linux bootstrapper for people who would rather write one YAML file than babysit a fresh machine for three hours.
 
-Supports **Fedora** (DNF), **Arch** (pacman/paru/yay), **openSUSE** (zypper), and **Debian/Ubuntu** (APT).
+`fluxion` reads a profile, installs your packages, Flatpaks, scripts, dotfiles, shell bits, and prebuilt binaries, then keeps moving when one item acts up. TUI when you want the pretty run screen. `--no-tui` when you just want logs and zero drama.
 
----
+## What It Does
 
-## Prerequisites
+- Boots Fedora, Arch, openSUSE, Debian, and Ubuntu setups from YAML.
+- Talks to `dnf`, `pacman`, `paru`, `yay`, `apt`, `zypper`, and Flatpak.
+- Runs jobs in dependency order with restart checkpoints.
+- Installs packages one by one, so one bad package does not trash the whole run.
+- Tracks state under `~/.local/share/fluxion`.
+- Builds as a fat JAR or a native Linux binary with GraalVM 25.
 
-| Tool | Version |
-|---|---|
-| GraalVM | 25+ (resolved by Mill for `cli.nativeImage`) |
-| Java | 25+ |
-| Mill | Included `./mill` bootstrap script |
+## Grab It
 
-Mill is pinned to 1.1.6 and resolves Eclipse Temurin 25 for normal JVM work. The `cli`
-module uses Mill's `NativeImageModule` with `jvmVersion: graalvm-community:25` for native
-Linux binaries.
+Release assets are named like this:
 
 ```bash
-./mill --version
+fluxion-v0.0.1-all.jar
+fluxion-v0.0.1-linux-amd64.tar.gz
+fluxion-v0.0.1-checksums.sha256
 ```
 
----
-
-## Quick Start
+Or build it yourself:
 
 ```bash
-# 1. Enter the active project root
 cd sysboot
-
-# 2. Validate the codebase
-./mill __.test
-
-# 3. Build the native binary
+./mill cli.assembly
 ./mill cli.nativeImage
-
-# 4. Run your first profile
-./out/cli/nativeImage.dest/native-executable run -c config/example-fedora.yaml
 ```
 
-Run in headless mode (no TUI):
+The native binary lands at:
 
 ```bash
-./sysboot run -c config/example-fedora.yaml --no-tui
+./out/cli/nativeImage.dest/native-executable
 ```
 
----
+## Run It
 
-## CLI Reference
-
+```bash
+fluxion validate -c ~/.config/fluxion/fedora.yaml
+fluxion list -c ~/.config/fluxion/fedora.yaml
+fluxion dry-run -c ~/.config/fluxion/fedora.yaml
+fluxion run -c ~/.config/fluxion/fedora.yaml
 ```
-sysboot [GLOBAL OPTIONS] <COMMAND> [OPTIONS]
 
-Global Options:
-  -c, --config=FILE    Config file [default: ~/.config/sysboot/default.yaml]
-  --no-tui             Disable TUI, use plain stdout
-  -v, --verbose        Verbose logging
-  -h, --help           Show help
-  --version            Show version
+No TUI:
+
+```bash
+fluxion run -c config/example-fedora.yaml --no-tui
+```
+
+From the repo before installing:
+
+```bash
+cd sysboot
+./mill cli.run validate -c config/example-fedora.yaml
+./out/cli/nativeImage.dest/native-executable run -c config/example-fedora.yaml --no-tui
+```
+
+## Commands
+
+```text
+fluxion [GLOBAL OPTIONS] <COMMAND>
+
+Global:
+  -c, --config=FILE    default: ~/.config/fluxion/default.yaml
+  --no-tui             plain stdout mode
+  -v, --verbose        more noise
+  -h, --help           help
+  --version            version
 
 Commands:
-  run          Execute a bootstrap profile
-  dry-run      Show what would be executed without any changes
-  validate     Validate a config file
-  list         List all modules in a config
-  plan         Show the phase execution plan
-  status       Show the last execution status
-  state        Show, reset, or forget persisted state
+  run        execute the profile
+  dry-run    show what would happen
+  validate   check the YAML
+  list       print modules
+  plan       show job order
+  status     show last run status
+  state      show/reset/forget saved state
 ```
 
-### Exit Codes
-
-| Code | Meaning |
-|---:|---|
-| 0 | Success |
-| 1 | Unexpected application failure |
-| 2 | Invalid command-line usage or user input |
-| 3 | Configuration load, parse, or validation error |
-| 4 | Local file-system or stream I/O error |
-| 5 | External command, package manager, or runtime dependency error |
-
-Expected user-facing failures are printed to `stderr` without Java stack traces.
-
-### `run`
+State moves:
 
 ```bash
-sysboot run -c fedora.yaml
-sysboot run -c fedora.yaml --modules core-cli-tools,dev-tools
-sysboot run -c fedora.yaml --dry-run
-sysboot run -c fedora.yaml --no-tui
+fluxion state show default
+fluxion state path default
+fluxion state forget --profile default --item git
+fluxion state reset default --force
 ```
 
-### `dry-run`
+## Config Shape
 
-```bash
-sysboot dry-run -c fedora.yaml
-```
-
-### `validate`
-
-```bash
-sysboot validate -c fedora.yaml
-# ✓ Config is valid: profile 'fedora-workstation' with 7 module(s)
-```
-
-### `list`
-
-```bash
-sysboot list -c fedora.yaml
-```
-
-### `state`
-
-```bash
-sysboot state show default
-sysboot state path default
-sysboot state forget --profile default --item git
-sysboot state reset default --force
-```
-
----
-
-## Config File Format
-
-Place configs in `~/.config/sysboot/` or pass with `-c`.
+Put profiles in `~/.config/fluxion/` or pass `-c`.
 
 ```yaml
-profile: <string>           # unique identifier for this profile
+profile: fedora-workstation
 os:
-  type: fedora | arch | opensuse | debian
-  release: <string>         # e.g. "41" for Fedora, optional for Arch
+  type: fedora
+  release: "44"
 
 jobs:
-  - name: <string>
-    dependsOn: []           # optional
-    continueOnModuleError: true
+  - name: base
     restartPolicy:
-      type: none | prompt-logout | requires-new-shell
+      type: none
     steps:
-      # --- Package module ---
       - type: packages
-        name: <string>
-        packageManager: dnf | pacman | paru | yay | apt | zypper
-        continueOnError: true   # default: true — don't abort on one package failure
+        name: core-cli
+        packageManager: dnf
         packages:
-          - <package-name>
+          - git
+          - curl
+          - neovim
 
-      # --- Flatpak module ---
       - type: flatpak
-        name: <string>
-        remote: flathub         # default: flathub
+        name: apps
+        remote: flathub
         appIds:
-          - <app.id>
+          - com.spotify.Client
 
-      # --- Shell script module ---
-      - type: shell-script
-        name: <string>
-        script: <path>          # relative to config file or absolute
-        args:
-          - <arg>
-        workingDir: <path>      # optional, defaults to config file directory
-        continueOnError: false  # default: false
+      - type: shell-command
+        name: git-defaults
+        commands:
+          - "git config --global init.defaultBranch main"
 
-      # --- Compiled binary module ---
+  - name: dev
+    dependsOn: [base]
+    steps:
       - type: compiled-binary
-        name: <string>
-        binaryName: <string>    # display name
-        url: https://...        # https only
-        checksum:               # optional, logs a warning when omitted
-          algorithm: sha256
-          value: <hex>
-        installPath: <absolute-path>
-        continueOnError: false
+        name: lazygit
+        binaryName: lazygit
+        url: https://github.com/jesseduffield/lazygit/releases/download/v0.61.0/lazygit_0.61.0_Linux_x86_64.tar.gz
+        installPath: /usr/local/bin/lazygit
 ```
 
-Top-level `modules` and `phases` are still accepted for older configs, but `jobs` with `steps` is
-the preferred workflow-style schema. See
-`docs/config-schema.md` for the full annotated schema and restart policy behavior.
+Supported step types:
 
----
+- `packages`
+- `flatpak`
+- `shell-script`
+- `shell-command`
+- `compiled-binary`
+- `dotbot`
+- `oh-my-zsh`
+- `nerd-fonts`
+- `toolchain`
+- `default-shell`
+- `shell-reload`
 
-## Adding a New Profile
+Full schema lives in `docs/config-schema.md`.
 
-1. Create `~/.config/sysboot/my-profile.yaml` following the schema above.
-2. Run `sysboot validate -c my-profile.yaml` to check it.
-3. Run `sysboot list -c my-profile.yaml` to preview modules.
-4. Run `sysboot dry-run -c my-profile.yaml` to preview commands.
-5. Run `sysboot run -c my-profile.yaml` when ready.
-
----
-
-## Adding a New Package Manager
-
-`sysboot` is open to extension via the `PackageManagerExecutor` interface in the `core` module:
-
-```java
-// 1. Add enum value to PackageManagerKind
-public enum PackageManagerKind { DNF, PACMAN, ..., MY_PM }
-
-// 2. Implement PackageManagerExecutor in the executor module
-public final class MyPmInstaller extends AbstractPackageInstaller {
-    @Override public boolean supports(PackageManagerKind kind) { return kind == PackageManagerKind.MY_PM; }
-    @Override protected List<String> buildInstallCommand(PackageName pkg) {
-        return List.of("mypm", "install", pkg.value());
-    }
-}
-
-// 3. Register in ApplicationContext.buildRegistry(...)
-new PackageManagerExecutorRegistry(List.of(..., new MyPmInstaller(runner, sudo)));
-```
-
-No other code changes required.
-
----
-
-## Architecture
-
-```
-┌─────────────────────────────────────────────────────────────┐
-│  cli  (picocli entry-point, Main, SysbootCommand)           │
-├─────────────────────────────────────────────────────────────┤
-│  app  (ApplicationContext — compile-time DI wiring)         │
-├─────────────────────────────────────────────────────────────┤
-│  tui  (TamboUI screens, event listener, sudo provider)      │
-├─────────────────────────────────────────────────────────────┤
-│  executor  (package managers, shell runner, orchestrator)   │
-├─────────────────────────────────────────────────────────────┤
-│  config-parser  (YAML → domain model via Jackson)           │
-├─────────────────────────────────────────────────────────────┤
-│  core  (domain model, value objects, ports — zero deps)     │
-└─────────────────────────────────────────────────────────────┘
-
-Dependency direction:  cli → app → tui → executor → config-parser → core
-```
-
-Each layer depends only on layers below it. The `core` module has zero production dependencies.
-
-More detail is available in `docs/architecture.md`.
-
----
-
-## Build, Test, And Quality
-
-```bash
-# Compile all modules
-./mill __.compile
-
-# Run all tests
-./mill __.test
-
-# Run focused tests
-./mill cli.test
-./mill executor.test.testOnly dev.sysboot.executor.DnfPackageInstallerTest
-
-# Build a runnable fat JAR
-./mill cli.assembly
-
-# Optional formatter/lint recipes from repository root
-just format
-just lint
-just verify
-```
-
-The current lint gate is Java compilation with `-Xlint:all`. Formatting uses the pinned
-`google-java-format` recipe in the repository `justfile`.
-
----
-
-## Native Linux Binary
+## Dev Loop
 
 ```bash
 cd sysboot
+./mill __.test
+./mill cli.test
+./mill executor.test.testOnly dev.sysboot.executor.DnfPackageInstallerTest
+./mill cli.assembly
 ./mill cli.nativeImage
-./out/cli/nativeImage.dest/native-executable --version
 ```
 
-The native build uses Mill's `NativeImageModule` with GraalVM Community 25. It is Linux-first and
-dynamically linked against the host C library by default (typically glibc on mainstream
-distributions). It uses `--no-fallback`, loads Jackson DTO and Picocli reflection metadata from
-`graal/`, and enables HTTP(S) URL protocols for compiled-binary downloads. Mill writes the task
-artifact as `native-executable`; release packaging copies it to `sysboot`. See
-`docs/native-image.md` for the full native-image contract and troubleshooting notes.
+Repo shape:
 
----
+```text
+cli -> app -> tui -> executor -> config-parser -> core
+```
 
-## Logging
+No Spring. No Gradle. No service locator soup. Constructors and Mill.
 
-CLI output is concise by default. Execution progress goes to stdout in `--no-tui` mode, expected
-errors go to stderr, and internal executor logging uses SLF4J/Logback. Passwords and sudo input must
-not be logged.
+## Exit Codes
 
----
+```text
+0  all good
+1  app blew up
+2  bad CLI input
+3  bad config
+4  filesystem/IO problem
+5  package manager or external command failed
+```
 
-## Troubleshooting
+## Notes
 
-| Symptom | Action |
-|---|---|
-| `mill: command not found` | Run commands from `sysboot/` with `./mill`, or set `MILL=/path/to/mill` when using `just`. |
-| `nativeImageTool` cannot be resolved | Run `./mill --version` from `sysboot/` and verify Mill can download `graalvm-community:25`. |
-| Config exits with code 3 | Run `sysboot validate -c <file>` and fix the reported YAML/schema issue. |
-| Package commands fail | Re-run with `--no-tui` to inspect command output and verify the package manager is installed. |
-| Native image misses reflection metadata | Re-run with the native-image agent as described in `CONTRIBUTING.md`, then merge `graal/` updates. |
+- Java 25.
+- Mill 1.1.6 through `./mill`.
+- Native image uses GraalVM Community 25.
+- Passwords and sudo input should never hit logs.
+- If TamboUI snapshots are not available, use `--no-tui`.
 
----
-
-## Release Process
-
-1. Run `just verify` from the repository root.
-2. Build the assembly with `cd sysboot && ./mill cli.assembly`.
-3. Build the native executable with `cd sysboot && ./mill cli.nativeImage`.
-4. Smoke test `./out/cli/nativeImage.dest/native-executable --help` and `validate` against example configs.
-5. Package the binary with README, license metadata, and example configs.
-
-See `docs/release.md` for a fuller release checklist.
-
----
-
-## TUI Note
-
-The TUI requires `dev.tamboui:tamboui-tui:0.3.0-SNAPSHOT` from the Sonatype snapshots repository. If TamboUI is unavailable, build with `--no-tui` and use plain stdout mode. The `--no-tui` flag has no dependency on TamboUI.
+That is the tool. One file says what the machine should become. `fluxion` does the boring part.
