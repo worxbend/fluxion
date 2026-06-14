@@ -12,7 +12,7 @@ Supports **Fedora** (DNF), **Arch** (pacman/paru/yay), **openSUSE** (zypper), an
 |---|---|
 | GraalVM | 25+ (`native-image` on PATH) |
 | Java | 25+ |
-| Mill | 0.12.16+ |
+| Mill | Included `./mill` bootstrap script |
 
 Install GraalVM and `native-image`:
 
@@ -29,10 +29,10 @@ sdk install java 25.0.2-graalce    # via SDKMAN
 cd sysboot
 
 # 2. Validate the codebase
-mill __.test
+./mill __.test
 
 # 3. Build the native binary
-mill cli.nativeImage
+./mill cli.nativeImage
 
 # 4. Run your first profile
 ./out/cli/nativeImage.dest/sysboot run -c config/example-fedora.yaml
@@ -243,17 +243,17 @@ More detail is available in `docs/architecture.md`.
 
 ```bash
 # Compile all modules
-mill __.compile
+./mill __.compile
 
 # Run all tests
-mill __.test
+./mill __.test
 
 # Run focused tests
-mill cli.test
-mill executor.test.testOnly dev.sysboot.executor.DnfPackageInstallerTest
+./mill cli.test
+./mill executor.test.testOnly dev.sysboot.executor.DnfPackageInstallerTest
 
 # Build a runnable fat JAR
-mill cli.assembly
+./mill cli.assembly
 
 # Optional formatter/lint recipes from repository root
 just format
@@ -270,7 +270,7 @@ The current lint gate is Java compilation with `-Xlint:all`. Formatting uses the
 
 ```bash
 cd sysboot
-mill cli.nativeImage
+./mill cli.nativeImage
 ./out/cli/nativeImage.dest/sysboot --version
 ```
 
@@ -293,7 +293,7 @@ not be logged.
 
 | Symptom | Action |
 |---|---|
-| `mill: command not found` | Install Mill 0.12.16 or set `MILL=/path/to/mill` when using `just`. |
+| `mill: command not found` | Run commands from `sysboot/` with `./mill`, or set `MILL=/path/to/mill` when using `just`. |
 | `native-image: command not found` | Install GraalVM 25+ with `native-image`. |
 | Config exits with code 3 | Run `sysboot validate -c <file>` and fix the reported YAML/schema issue. |
 | Package commands fail | Re-run with `--no-tui` to inspect command output and verify the package manager is installed. |
@@ -304,8 +304,8 @@ not be logged.
 ## Release Process
 
 1. Run `just verify` from the repository root.
-2. Build the assembly with `cd sysboot && mill cli.assembly`.
-3. Build the native executable with `cd sysboot && mill cli.nativeImage`.
+2. Build the assembly with `cd sysboot && ./mill cli.assembly`.
+3. Build the native executable with `cd sysboot && ./mill cli.nativeImage`.
 4. Smoke test `./out/cli/nativeImage.dest/sysboot --help` and `validate` against example configs.
 5. Package the binary with README, license metadata, and example configs.
 

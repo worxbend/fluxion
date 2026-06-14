@@ -3,8 +3,8 @@
 Use this checklist for Linux binary releases.
 
 1. Run `just verify` from the repository root.
-2. Run `cd sysboot && mill cli.assembly`.
-3. Run `cd sysboot && mill cli.nativeImage`.
+2. Run `cd sysboot && ./mill cli.assembly`.
+3. Run `cd sysboot && ./mill cli.nativeImage`.
 4. Smoke test the native binary:
 
    ```bash

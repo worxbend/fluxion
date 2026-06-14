@@ -18,9 +18,6 @@ concurrency:
   group: ci-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
-env:
-  MILL_VERSION: "0.12.16"
-
 jobs:
   test:
     name: Test
@@ -35,11 +32,6 @@ jobs:
           distribution: temurin
           java-version: "25"
 
-      - name: Install Mill
-        run: |
-          curl -fsSL -o /usr/local/bin/mill "https://repo1.maven.org/maven2/com/lihaoyi/mill-dist/${MILL_VERSION}/mill-dist-${MILL_VERSION}.exe"
-          chmod +x /usr/local/bin/mill
-
       - name: Cache build dependencies
         uses: actions/cache@v4
         with:
@@ -47,21 +39,21 @@ jobs:
             ~/.cache/coursier
             ~/.ivy2/cache
             sysboot/out
-          key: ${{ runner.os }}-mill-${{ env.MILL_VERSION }}-${{ hashFiles('sysboot/build.sc') }}
+          key: ${{ runner.os }}-mill-${{ hashFiles('sysboot/.mill-version', 'sysboot/build.sc') }}
           restore-keys: |
-            ${{ runner.os }}-mill-${{ env.MILL_VERSION }}-
+            ${{ runner.os }}-mill-
 
       - name: Run tests
         working-directory: sysboot
-        run: mill __.test
+        run: ./mill __.test
 
       - name: Validate example configs
         working-directory: sysboot
         run: |
-          mill cli.run validate -c config/example-fedora.yaml
-          mill cli.run validate -c config/example-arch.yaml
-          mill cli.run validate -c config/example-opensuse.yaml
-          mill cli.run validate -c config/system-bootstrap-fedora.yaml
+          ./mill cli.run validate -c config/example-fedora.yaml
+          ./mill cli.run validate -c config/example-arch.yaml
+          ./mill cli.run validate -c config/example-opensuse.yaml
+          ./mill cli.run validate -c config/system-bootstrap-fedora.yaml
 
   build-jvm:
     name: Build JVM App
@@ -77,14 +69,9 @@ jobs:
           distribution: temurin
           java-version: "25"
 
-      - name: Install Mill
-        run: |
-          curl -fsSL -o /usr/local/bin/mill "https://repo1.maven.org/maven2/com/lihaoyi/mill-dist/${MILL_VERSION}/mill-dist-${MILL_VERSION}.exe"
-          chmod +x /usr/local/bin/mill
-
       - name: Build assembly JAR
         working-directory: sysboot
-        run: mill cli.assembly
+        run: ./mill cli.assembly
 
       - name: Package JVM artifact
         run: |
@@ -118,14 +105,9 @@ jobs:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           native-image-job-reports: true
 
-      - name: Install Mill
-        run: |
-          curl -fsSL -o /usr/local/bin/mill "https://repo1.maven.org/maven2/com/lihaoyi/mill-dist/${MILL_VERSION}/mill-dist-${MILL_VERSION}.exe"
-          chmod +x /usr/local/bin/mill
-
       - name: Build native image
         working-directory: sysboot
-        run: mill cli.nativeImage
+        run: ./mill cli.nativeImage
 
       - name: Smoke test native image
         run: sysboot/out/cli/nativeImage.dest/sysboot --help >/dev/null

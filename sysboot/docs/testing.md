@@ -3,17 +3,17 @@
 Run all tests from `sysboot/`:
 
 ```bash
-mill __.test
+./mill __.test
 ```
 
 Focused commands:
 
 ```bash
-mill core.test
-mill configParser.test
-mill executor.test
-mill cli.test
-mill executor.test.testOnly dev.sysboot.executor.DnfPackageInstallerTest
+./mill core.test
+./mill configParser.test
+./mill executor.test
+./mill cli.test
+./mill executor.test.testOnly dev.sysboot.executor.DnfPackageInstallerTest
 ```
 
 ## Test Scope

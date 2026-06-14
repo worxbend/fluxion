@@ -4,7 +4,7 @@
 
 ```bash
 cd sysboot
-mill cli.nativeImage
+./mill cli.nativeImage
 ```
 
 The output binary is:
@@ -37,7 +37,7 @@ When adding reflective types:
 
 1. Add focused JVM tests for the path.
 2. Update `graal/reflect-config.json` or regenerate with the native-image agent.
-3. Rebuild with `mill cli.nativeImage`.
+3. Rebuild with `./mill cli.nativeImage`.
 4. Smoke test `--help`, `--version`, and `validate`.
 
 ## Smoke Test

@@ -16,22 +16,22 @@ All code must follow the constraints in `SKILL.md`:
 
 ```bash
 # Run all tests
-mill __.test
+./mill __.test
 
 # Run a specific module's tests
-mill core.test
-mill configParser.test
-mill executor.test
+./mill core.test
+./mill configParser.test
+./mill executor.test
 
 # Run a single test class
-mill executor.test.testOnly dev.sysboot.executor.DnfPackageInstallerTest
+./mill executor.test.testOnly dev.sysboot.executor.DnfPackageInstallerTest
 ```
 
 ## Running the TUI Without Native Image
 
 ```bash
 # Build a fat JAR and run
-mill cli.assembly
+./mill cli.assembly
 java -jar out/cli/assembly.dest/out.jar run -c config/example-fedora.yaml
 
 # Plain stdout mode (no TUI dependency required)
@@ -42,7 +42,7 @@ java -jar out/cli/assembly.dest/out.jar run -c config/example-fedora.yaml --no-t
 
 ```bash
 # Requires GraalVM 25+ with native-image on PATH
-mill cli.nativeImage
+./mill cli.nativeImage
 # Output: out/cli/nativeImage.dest/sysboot
 ```
 
@@ -61,8 +61,8 @@ Then merge the generated `graal/` files and rebuild.
 - [ ] Test names follow `<scenario>_<condition>_<expectedResult>` convention.
 - [ ] No class exceeds 300 lines.
 - [ ] No method exceeds 20 lines.
-- [ ] `mill __.test` passes.
-- [ ] `mill configParser.test` covers any new YAML fields.
+- [ ] `./mill __.test` passes.
+- [ ] `./mill configParser.test` covers any new YAML fields.
 - [ ] New reflective types are registered in `graal/reflect-config.json`.
 - [ ] `--no-tui` mode still works (no TamboUI imports in `executor` or `core`).
 - [ ] Passwords never appear in log output.

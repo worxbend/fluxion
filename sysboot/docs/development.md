@@ -11,10 +11,10 @@ Use Java/GraalVM 25. The local native-image smoke path has been validated with G
 Common commands:
 
 ```bash
-mill __.compile
-mill __.test
-mill cli.assembly
-mill cli.nativeImage
+./mill __.compile
+./mill __.test
+./mill cli.assembly
+./mill cli.nativeImage
 ```
 
 From the repository root, the `justfile` provides convenience gates:

@@ -1,6 +1,6 @@
 set shell := ["bash", "-eu", "-o", "pipefail", "-c"]
 
-mill := env_var_or_default("MILL", "mill")
+mill := env_var_or_default("MILL", "./mill")
 gjf_version := "1.35.0"
 gjf_jar := ".cache/google-java-format-1.35.0-all-deps.jar"
 
@@ -9,7 +9,7 @@ default: verify
 # Print the local toolchain versions used by the project.
 doctor:
     java -version
-    {{mill}} --version
+    cd sysboot && {{mill}} --version
     if command -v native-image >/dev/null 2>&1; then native-image --version; else echo "native-image: not installed"; fi
     if command -v just >/dev/null 2>&1; then just --version; else echo "just: not installed"; fi
 

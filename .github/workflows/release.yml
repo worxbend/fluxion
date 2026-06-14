@@ -23,9 +23,6 @@ concurrency:
   group: release-${{ github.event_name == 'workflow_dispatch' && inputs.version || github.ref_name }}
   cancel-in-progress: false
 
-env:
-  MILL_VERSION: "0.12.16"
-
 jobs:
   build:
     name: Build Release Assets
@@ -59,30 +56,25 @@ jobs:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           native-image-job-reports: true
 
-      - name: Install Mill
-        run: |
-          curl -fsSL -o /usr/local/bin/mill "https://repo1.maven.org/maven2/com/lihaoyi/mill-dist/${MILL_VERSION}/mill-dist-${MILL_VERSION}.exe"
-          chmod +x /usr/local/bin/mill
-
       - name: Run tests
         working-directory: sysboot
-        run: mill __.test
+        run: ./mill __.test
 
       - name: Validate example configs
         working-directory: sysboot
         run: |
-          mill cli.run validate -c config/example-fedora.yaml
-          mill cli.run validate -c config/example-arch.yaml
-          mill cli.run validate -c config/example-opensuse.yaml
-          mill cli.run validate -c config/system-bootstrap-fedora.yaml
+          ./mill cli.run validate -c config/example-fedora.yaml
+          ./mill cli.run validate -c config/example-arch.yaml
+          ./mill cli.run validate -c config/example-opensuse.yaml
+          ./mill cli.run validate -c config/system-bootstrap-fedora.yaml
 
       - name: Build JVM assembly
         working-directory: sysboot
-        run: mill cli.assembly
+        run: ./mill cli.assembly
 
       - name: Build native image
         working-directory: sysboot
-        run: mill cli.nativeImage
+        run: ./mill cli.nativeImage
 
       - name: Smoke test native image
         run: sysboot/out/cli/nativeImage.dest/sysboot --help >/dev/null

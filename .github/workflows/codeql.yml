@@ -43,13 +43,8 @@ jobs:
           java-version: "25"
           github-token: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Install Mill
-        run: |
-          curl -fsSL -o /usr/local/bin/mill https://repo1.maven.org/maven2/com/lihaoyi/mill-dist/0.12.16/mill-dist-0.12.16.exe
-          chmod +x /usr/local/bin/mill
-
       - name: Build for CodeQL
-        run: cd sysboot && mill __.compile
+        run: cd sysboot && ./mill __.compile
 
       - name: Perform CodeQL Analysis
         uses: github/codeql-action/analyze@v4
