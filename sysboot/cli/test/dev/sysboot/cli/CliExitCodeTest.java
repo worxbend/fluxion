@@ -14,7 +14,7 @@ class CliExitCodeTest {
     CliResult result = execute("--help");
 
     assertThat(result.exitCode()).isEqualTo(ExitCode.SUCCESS.value());
-    assertThat(result.stdout()).contains("Usage: sysboot");
+    assertThat(result.stdout()).contains("Usage: fluxion");
     assertThat(result.stderr()).isEmpty();
   }
 
@@ -23,7 +23,7 @@ class CliExitCodeTest {
     CliResult result = execute("--version");
 
     assertThat(result.exitCode()).isEqualTo(ExitCode.SUCCESS.value());
-    assertThat(result.stdout()).contains("sysboot");
+    assertThat(result.stdout()).contains("fluxion");
     assertThat(result.stderr()).isEmpty();
   }
 
@@ -33,12 +33,12 @@ class CliExitCodeTest {
 
     assertThat(result.exitCode()).isEqualTo(ExitCode.INVALID_INPUT.value());
     assertThat(result.stderr()).contains("Error:");
-    assertThat(result.stderr()).contains("Usage: sysboot");
+    assertThat(result.stderr()).contains("Usage: fluxion");
   }
 
   @Test
   void missingConfigReturnsConfigurationError() {
-    CliResult result = execute("validate", "--no-tui", "-c", "/tmp/sysboot-does-not-exist.yaml");
+    CliResult result = execute("validate", "--no-tui", "-c", "/tmp/fluxion-does-not-exist.yaml");
 
     assertThat(result.exitCode()).isEqualTo(ExitCode.CONFIGURATION_ERROR.value());
     assertThat(result.stderr()).contains("Error:");

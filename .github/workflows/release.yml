@@ -84,16 +84,16 @@ jobs:
           set -eu
           version="${{ steps.version.outputs.version }}"
           mkdir -p dist/pkg
-          cp sysboot/out/cli/assembly.dest/out.jar "dist/sysboot-${version}-all.jar"
-          cp sysboot/out/cli/nativeImage.dest/native-executable dist/pkg/sysboot
-          chmod +x dist/pkg/sysboot
-          tar -C dist/pkg -czf "dist/sysboot-${version}-linux-amd64.tar.gz" sysboot
-          (cd dist && sha256sum "sysboot-${version}-all.jar" "sysboot-${version}-linux-amd64.tar.gz" > "sysboot-${version}-checksums.sha256")
+          cp sysboot/out/cli/assembly.dest/out.jar "dist/fluxion-${version}-all.jar"
+          cp sysboot/out/cli/nativeImage.dest/native-executable dist/pkg/fluxion
+          chmod +x dist/pkg/fluxion
+          tar -C dist/pkg -czf "dist/fluxion-${version}-linux-amd64.tar.gz" fluxion
+          (cd dist && sha256sum "fluxion-${version}-all.jar" "fluxion-${version}-linux-amd64.tar.gz" > "fluxion-${version}-checksums.sha256")
 
       - name: Upload release assets as workflow artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: sysboot-release-${{ steps.version.outputs.version }}
+          name: fluxion-release-${{ steps.version.outputs.version }}
           path: |
             dist/*.jar
             dist/*.tar.gz
@@ -105,17 +105,34 @@ jobs:
     needs: build
     runs-on: ubuntu-latest
     steps:
+      - name: Checkout release ref
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
       - name: Download release assets
         uses: actions/download-artifact@v4
         with:
-          name: sysboot-release-${{ needs.build.outputs.version }}
+          name: fluxion-release-${{ needs.build.outputs.version }}
           path: dist
+
+      - name: Ensure release tag exists
+        run: |
+          set -eu
+          tag="${{ needs.build.outputs.version }}"
+          git fetch --tags origin
+          if git rev-parse -q --verify "refs/tags/${tag}" >/dev/null; then
+            echo "Tag ${tag} already exists"
+          else
+            git tag "${tag}" "${GITHUB_SHA}"
+            git push origin "refs/tags/${tag}"
+          fi
 
       - name: Publish GitHub release
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ needs.build.outputs.version }}
-          name: sysboot ${{ needs.build.outputs.version }}
+          name: fluxion ${{ needs.build.outputs.version }}
           target_commitish: ${{ github.sha }}
           generate_release_notes: true
           prerelease: ${{ github.event_name == 'workflow_dispatch' && inputs.prerelease || false }}

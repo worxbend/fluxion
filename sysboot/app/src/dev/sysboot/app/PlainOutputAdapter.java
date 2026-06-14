@@ -33,23 +33,23 @@ public final class PlainOutputAdapter implements OutputAdapter {
 
   private void handleEvent(ExecutionEvent event) {
     switch (event.kind()) {
-      case PHASE_STARTED -> System.out.println("\n[sysboot] Phase: " + event.moduleName().value());
+      case PHASE_STARTED -> System.out.println("\n[fluxion] Phase: " + event.moduleName().value());
       case PHASE_COMPLETED ->
-          System.out.println("[sysboot] Phase complete: " + event.moduleName().value());
+          System.out.println("[fluxion] Phase complete: " + event.moduleName().value());
       case PHASE_FAILED ->
-          System.err.println("[sysboot] ⚠ Phase FAILED: " + event.moduleName().value());
+          System.err.println("[fluxion] ⚠ Phase FAILED: " + event.moduleName().value());
       case PHASE_BLOCKED ->
           System.out.println(
-              "[sysboot] ⦸ Blocked: "
+              "[fluxion] ⦸ Blocked: "
                   + event.moduleName().value()
                   + " (depends on failed: "
                   + event.item()
                   + ")");
       case RESTART_REQUIRED -> {
-        System.out.println("[sysboot]");
-        System.out.println("[sysboot] ⚠ Restart required:");
+        System.out.println("[fluxion]");
+        System.out.println("[fluxion] ⚠ Restart required:");
         for (String line : event.item().split("\n")) {
-          System.out.println("[sysboot]   " + line);
+          System.out.println("[fluxion]   " + line);
         }
       }
       case ITEM_COMPLETED ->
@@ -68,9 +68,9 @@ public final class PlainOutputAdapter implements OutputAdapter {
                           case StepResult.Skipped sk -> "○ " + sk.item() + "  already installed";
                           case StepResult.DryRun dr -> "~ " + dr.item() + "  [dry-run]";
                         };
-                    System.out.println("[sysboot]   " + label);
+                    System.out.println("[fluxion]   " + label);
                   });
-      case MODULE_STARTED -> System.out.println("[sysboot]");
+      case MODULE_STARTED -> System.out.println("[fluxion]");
       default -> {
         /* suppress noisy events */
       }

@@ -4,7 +4,7 @@ import java.nio.file.Path;
 import picocli.CommandLine.Option;
 
 /**
- * Options shared by sysboot subcommands.
+ * Options shared by fluxion subcommands.
  *
  * <p>Global options are kept in a Picocli mixin so command classes stay focused on their behavior
  * while preserving consistent option names and help text.
@@ -13,7 +13,7 @@ public final class GlobalOptions {
 
   @Option(
       names = {"-c", "--config"},
-      description = "Config file path [default: ~/.config/sysboot/default.yaml]",
+      description = "Config file path [default: ~/.config/fluxion/default.yaml]",
       paramLabel = "FILE")
   public Path configFile;
 
@@ -36,6 +36,6 @@ public final class GlobalOptions {
     if (configFile != null) {
       return configFile;
     }
-    return Path.of(System.getProperty("user.home"), ".config", "sysboot", "default.yaml");
+    return Path.of(System.getProperty("user.home"), ".config", "fluxion", "default.yaml");
   }
 }

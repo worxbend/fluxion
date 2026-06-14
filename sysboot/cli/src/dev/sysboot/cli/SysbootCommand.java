@@ -10,9 +10,9 @@ import picocli.CommandLine.Mixin;
  * management, and execution.
  */
 @Command(
-    name = "sysboot",
+    name = "fluxion",
     mixinStandardHelpOptions = true,
-    version = "sysboot 1.0.0",
+    version = "fluxion 1.0.0",
     description = "Bootstrap your Linux system from a declarative YAML config",
     subcommands = {
       RunCommand.class,
@@ -29,6 +29,6 @@ public final class SysbootCommand implements Runnable {
 
   @Override
   public void run() {
-    System.out.println("Run 'sysboot --help' for usage.");
+    System.out.println("Run 'fluxion --help' for usage.");
   }
 }

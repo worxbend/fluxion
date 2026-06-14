@@ -9,10 +9,10 @@ import picocli.CommandLine.Mixin;
 import picocli.CommandLine.Option;
 import picocli.CommandLine.Parameters;
 
-/** Commands for inspecting and pruning sysboot's per-profile state files. */
+/** Commands for inspecting and pruning fluxion's per-profile state files. */
 @Command(
     name = "state",
-    description = "Manage the sysboot state file",
+    description = "Manage the fluxion state file",
     subcommands = {
       StateCommand.ShowSubcommand.class,
       StateCommand.ResetSubcommand.class,
@@ -25,7 +25,7 @@ public final class StateCommand implements Runnable {
 
   @Override
   public void run() {
-    System.out.println("Run 'sysboot state --help' for subcommands.");
+    System.out.println("Run 'fluxion state --help' for subcommands.");
   }
 
   @Command(name = "show", description = "Print all entries in the state file for a profile")
@@ -88,7 +88,7 @@ public final class StateCommand implements Runnable {
     public void run() {
       Path stateFile =
           Path.of(System.getProperty("user.home"))
-              .resolve(".local/share/sysboot")
+              .resolve(".local/share/fluxion")
               .resolve(profile + ".state.json");
       if (!stateFile.toFile().exists()) {
         System.out.println("No state file found for profile: " + profile);
@@ -179,7 +179,7 @@ public final class StateCommand implements Runnable {
     public void run() {
       Path stateFile =
           Path.of(System.getProperty("user.home"))
-              .resolve(".local/share/sysboot")
+              .resolve(".local/share/fluxion")
               .resolve(profile + ".state.json");
       System.out.println(stateFile.toAbsolutePath());
     }

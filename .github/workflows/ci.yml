@@ -77,16 +77,16 @@ jobs:
         run: |
           set -eu
           mkdir -p dist
-          cp sysboot/out/cli/assembly.dest/out.jar dist/sysboot.jar
-          (cd dist && sha256sum sysboot.jar > sysboot.jar.sha256)
+          cp sysboot/out/cli/assembly.dest/out.jar dist/fluxion.jar
+          (cd dist && sha256sum fluxion.jar > fluxion.jar.sha256)
 
       - name: Upload JVM artifact
         uses: actions/upload-artifact@v4
         with:
-          name: sysboot-jvm
+          name: fluxion-jvm
           path: |
-            dist/sysboot.jar
-            dist/sysboot.jar.sha256
+            dist/fluxion.jar
+            dist/fluxion.jar.sha256
           if-no-files-found: error
 
   build-native:
@@ -116,16 +116,16 @@ jobs:
         run: |
           set -eu
           mkdir -p dist/pkg
-          cp sysboot/out/cli/nativeImage.dest/native-executable dist/pkg/sysboot
-          chmod +x dist/pkg/sysboot
-          tar -C dist/pkg -czf dist/sysboot-linux-amd64.tar.gz sysboot
-          (cd dist && sha256sum sysboot-linux-amd64.tar.gz > sysboot-linux-amd64.tar.gz.sha256)
+          cp sysboot/out/cli/nativeImage.dest/native-executable dist/pkg/fluxion
+          chmod +x dist/pkg/fluxion
+          tar -C dist/pkg -czf dist/fluxion-linux-amd64.tar.gz fluxion
+          (cd dist && sha256sum fluxion-linux-amd64.tar.gz > fluxion-linux-amd64.tar.gz.sha256)
 
       - name: Upload native artifact
         uses: actions/upload-artifact@v4
         with:
-          name: sysboot-linux-amd64
+          name: fluxion-linux-amd64
           path: |
-            dist/sysboot-linux-amd64.tar.gz
-            dist/sysboot-linux-amd64.tar.gz.sha256
+            dist/fluxion-linux-amd64.tar.gz
+            dist/fluxion-linux-amd64.tar.gz.sha256
           if-no-files-found: error

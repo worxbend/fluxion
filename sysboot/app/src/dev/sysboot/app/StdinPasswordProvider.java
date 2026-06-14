@@ -13,7 +13,7 @@ public final class StdinPasswordProvider implements SudoPasswordProvider {
   public Optional<char[]> requestPassword(String prompt) {
     Console console = System.console();
     if (console == null) {
-      System.err.println("[sysboot] " + NON_INTERACTIVE_MESSAGE);
+      System.err.println("[fluxion] " + NON_INTERACTIVE_MESSAGE);
       return Optional.empty();
     }
     char[] password = console.readPassword("%s", prompt);
