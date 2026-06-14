@@ -50,7 +50,7 @@ jobs:
       - type: dotbot
         name: dotfiles-core
         installerVersion: "v0.2.1"
-        config: "~/system-bootstrap/.files/install.conf.yaml"
+        config: "~/.system-bootstrap/.files/install.conf.yaml"
         dotbotBinary: dotbot
         probeCommand: "test -f ~/.zshrc && test -f ~/.tmux.conf"
 
