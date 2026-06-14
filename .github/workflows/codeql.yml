@@ -36,16 +36,16 @@ jobs:
           languages: ${{ matrix.language }}
           queries: +security-and-quality
 
-      - name: Set up GraalVM Java 24
+      - name: Set up GraalVM Java 25
         uses: graalvm/setup-graalvm@v1
         with:
           distribution: graalvm
-          java-version: "24"
+          java-version: "25"
           github-token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Install Mill
         run: |
-          curl -fsSL -o /usr/local/bin/mill https://github.com/com-lihaoyi/mill/releases/download/0.12.3/0.12.3
+          curl -fsSL -o /usr/local/bin/mill https://github.com/com-lihaoyi/mill/releases/download/0.12.16/0.12.16
           chmod +x /usr/local/bin/mill
 
       - name: Build for CodeQL

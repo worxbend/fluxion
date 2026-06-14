@@ -24,7 +24,7 @@ concurrency:
   cancel-in-progress: false
 
 env:
-  MILL_VERSION: "0.12.3"
+  MILL_VERSION: "0.12.16"
 
 jobs:
   build:
@@ -51,11 +51,11 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Set up GraalVM Java 24
+      - name: Set up GraalVM Java 25
         uses: graalvm/setup-graalvm@v1
         with:
           distribution: graalvm
-          java-version: "24"
+          java-version: "25"
           github-token: ${{ secrets.GITHUB_TOKEN }}
           native-image-job-reports: true
 
