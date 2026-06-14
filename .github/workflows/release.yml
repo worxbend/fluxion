@@ -61,7 +61,7 @@ jobs:
 
       - name: Install Mill
         run: |
-          curl -fsSL -o /usr/local/bin/mill "https://github.com/com-lihaoyi/mill/releases/download/${MILL_VERSION}/${MILL_VERSION}"
+          curl -fsSL -o /usr/local/bin/mill "https://repo1.maven.org/maven2/com/lihaoyi/mill-dist/${MILL_VERSION}/mill-dist-${MILL_VERSION}.exe"
           chmod +x /usr/local/bin/mill
 
       - name: Run tests

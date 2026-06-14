@@ -45,7 +45,7 @@ jobs:
 
       - name: Install Mill
         run: |
-          curl -fsSL -o /usr/local/bin/mill https://github.com/com-lihaoyi/mill/releases/download/0.12.16/0.12.16
+          curl -fsSL -o /usr/local/bin/mill https://repo1.maven.org/maven2/com/lihaoyi/mill-dist/0.12.16/mill-dist-0.12.16.exe
           chmod +x /usr/local/bin/mill
 
       - name: Build for CodeQL
