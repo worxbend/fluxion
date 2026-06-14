@@ -415,10 +415,7 @@ public final class BootstrapOrchestratorImpl implements BootstrapOrchestrator {
               listener);
       case ShellCommandModule sc ->
           emitDryRun(
-              sc.name(),
-              "shell-command",
-              List.of(sc.shell(), "-lc", "<commands>"),
-              listener);
+              sc.name(), "shell-command", List.of(sc.shell(), "-lc", "<commands>"), listener);
     }
   }
 

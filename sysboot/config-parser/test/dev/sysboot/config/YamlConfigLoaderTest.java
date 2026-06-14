@@ -238,8 +238,7 @@ class YamlConfigLoaderTest {
   }
 
   @Test
-  void load_whenWorkflowJobsDeclareSteps_parsesPhaseGraph(@TempDir Path tmpDir)
-      throws IOException {
+  void load_whenWorkflowJobsDeclareSteps_parsesPhaseGraph(@TempDir Path tmpDir) throws IOException {
     Path config =
         writeConfig(
             tmpDir,
@@ -354,7 +353,8 @@ class YamlConfigLoaderTest {
     var module = (ShellCommandModule) result.modules().getFirst();
     assertThat(module.commands()).hasSize(2);
     assertThat(module.continueOnError()).isTrue();
-    assertThat(module.probeCommand()).hasValueSatisfying(cmd -> assertThat(cmd).contains("git config"));
+    assertThat(module.probeCommand())
+        .hasValueSatisfying(cmd -> assertThat(cmd).contains("git config"));
   }
 
   private Path writeConfig(Path dir, String content) throws IOException {

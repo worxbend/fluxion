@@ -3,6 +3,12 @@ package dev.sysboot.cli;
 import java.nio.file.Path;
 import picocli.CommandLine.Option;
 
+/**
+ * Options shared by sysboot subcommands.
+ *
+ * <p>Global options are kept in a Picocli mixin so command classes stay focused on their behavior
+ * while preserving consistent option names and help text.
+ */
 public final class GlobalOptions {
 
   @Option(
@@ -21,6 +27,11 @@ public final class GlobalOptions {
       description = "Verbose logging")
   public boolean verbose;
 
+  /**
+   * Resolves the configured YAML file path.
+   *
+   * @return the explicit {@code --config} path or the default profile under the user's home
+   */
   public Path resolvedConfigFile() {
     if (configFile != null) {
       return configFile;

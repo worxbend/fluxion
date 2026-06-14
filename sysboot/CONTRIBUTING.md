@@ -4,7 +4,7 @@
 
 All code must follow the constraints in `SKILL.md`:
 
-- **Java 24** — use records, sealed interfaces, pattern matching, text blocks freely.
+- **Java 25** — use records, sealed interfaces, pattern matching, text blocks freely.
 - Methods ≤ 20 lines, classes ≤ 300 lines (infrastructure), ≤ 200 lines (domain).
 - No `null` returned from public methods — use `Optional<T>` or sealed `StepResult`.
 - All collections returned must be unmodifiable (`List.of`, `List.copyOf`).
@@ -41,7 +41,7 @@ java -jar out/cli/assembly.dest/out.jar run -c config/example-fedora.yaml --no-t
 ## Building the Native Binary
 
 ```bash
-# Requires GraalVM 24+ with native-image on PATH
+# Requires GraalVM 25+ with native-image on PATH
 mill cli.nativeImage
 # Output: out/cli/nativeImage.dest/sysboot
 ```

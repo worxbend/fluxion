@@ -10,15 +10,14 @@ Supports **Fedora** (DNF), **Arch** (pacman/paru/yay), **openSUSE** (zypper), an
 
 | Tool | Version |
 |---|---|
-| GraalVM | 24+ (`native-image` on PATH) |
-| Java | 24+ |
-| Mill | 0.12.3+ |
+| GraalVM | 25+ (`native-image` on PATH) |
+| Java | 25+ |
+| Mill | 0.12.16+ |
 
 Install GraalVM and `native-image`:
 
 ```bash
-sdk install java 24-graal          # via SDKMAN
-gu install native-image
+sdk install java 25.0.2-graalce    # via SDKMAN
 ```
 
 ---
@@ -26,13 +25,16 @@ gu install native-image
 ## Quick Start
 
 ```bash
-# 1. Clone and enter the project
-git clone https://github.com/you/sysboot && cd sysboot
+# 1. Enter the active project root
+cd sysboot
 
-# 2. Build the native binary (~2-4 minutes)
+# 2. Validate the codebase
+mill __.test
+
+# 3. Build the native binary
 mill cli.nativeImage
 
-# 3. Run your first profile
+# 4. Run your first profile
 ./out/cli/nativeImage.dest/sysboot run -c config/example-fedora.yaml
 ```
 
@@ -66,6 +68,19 @@ Commands:
   state        Show, reset, or forget persisted state
 ```
 
+### Exit Codes
+
+| Code | Meaning |
+|---:|---|
+| 0 | Success |
+| 1 | Unexpected application failure |
+| 2 | Invalid command-line usage or user input |
+| 3 | Configuration load, parse, or validation error |
+| 4 | Local file-system or stream I/O error |
+| 5 | External command, package manager, or runtime dependency error |
+
+Expected user-facing failures are printed to `stderr` without Java stack traces.
+
 ### `run`
 
 ```bash
@@ -92,6 +107,15 @@ sysboot validate -c fedora.yaml
 
 ```bash
 sysboot list -c fedora.yaml
+```
+
+### `state`
+
+```bash
+sysboot state show default
+sysboot state path default
+sysboot state forget --profile default --item git
+sysboot state reset default --force
 ```
 
 ---
@@ -210,6 +234,82 @@ Dependency direction:  cli → app → tui → executor → config-parser → co
 ```
 
 Each layer depends only on layers below it. The `core` module has zero production dependencies.
+
+More detail is available in `docs/architecture.md`.
+
+---
+
+## Build, Test, And Quality
+
+```bash
+# Compile all modules
+mill __.compile
+
+# Run all tests
+mill __.test
+
+# Run focused tests
+mill cli.test
+mill executor.test.testOnly dev.sysboot.executor.DnfPackageInstallerTest
+
+# Build a runnable fat JAR
+mill cli.assembly
+
+# Optional formatter/lint recipes from repository root
+just format
+just lint
+just verify
+```
+
+The current lint gate is Java compilation with `-Xlint:all`. Formatting uses the pinned
+`google-java-format` recipe in the repository `justfile`.
+
+---
+
+## Native Linux Binary
+
+```bash
+cd sysboot
+mill cli.nativeImage
+./out/cli/nativeImage.dest/sysboot --version
+```
+
+The native build targets GraalVM CE 25.0.2 or newer. It is Linux-first and dynamically linked against the host C library by default
+(typically glibc on mainstream distributions). It uses `--no-fallback`, includes Jackson DTO and
+Picocli reflection metadata from `graal/`, and enables HTTP(S) URL protocols for compiled-binary
+downloads. See `docs/native-image.md` for the full native-image contract and troubleshooting notes.
+
+---
+
+## Logging
+
+CLI output is concise by default. Execution progress goes to stdout in `--no-tui` mode, expected
+errors go to stderr, and internal executor logging uses SLF4J/Logback. Passwords and sudo input must
+not be logged.
+
+---
+
+## Troubleshooting
+
+| Symptom | Action |
+|---|---|
+| `mill: command not found` | Install Mill 0.12.16 or set `MILL=/path/to/mill` when using `just`. |
+| `native-image: command not found` | Install GraalVM 25+ with `native-image`. |
+| Config exits with code 3 | Run `sysboot validate -c <file>` and fix the reported YAML/schema issue. |
+| Package commands fail | Re-run with `--no-tui` to inspect command output and verify the package manager is installed. |
+| Native image misses reflection metadata | Re-run with the native-image agent as described in `CONTRIBUTING.md`, then merge `graal/` updates. |
+
+---
+
+## Release Process
+
+1. Run `just verify` from the repository root.
+2. Build the assembly with `cd sysboot && mill cli.assembly`.
+3. Build the native executable with `cd sysboot && mill cli.nativeImage`.
+4. Smoke test `./out/cli/nativeImage.dest/sysboot --help` and `validate` against example configs.
+5. Package the binary with README, license metadata, and example configs.
+
+See `docs/release.md` for a fuller release checklist.
 
 ---
 

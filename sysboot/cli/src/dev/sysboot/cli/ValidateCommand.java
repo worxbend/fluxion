@@ -1,13 +1,13 @@
 package dev.sysboot.cli;
 
 import dev.sysboot.app.ApplicationContext;
-import dev.sysboot.config.ConfigLoadException;
 import dev.sysboot.core.BootstrapConfig;
 import dev.sysboot.executor.CyclicDependencyException;
 import dev.sysboot.executor.PhaseExecutionPlanner;
 import picocli.CommandLine.Command;
 import picocli.CommandLine.Mixin;
 
+/** Validates that a YAML profile can be parsed and planned before any changes are made. */
 @Command(name = "validate", description = "Validate a config file")
 public final class ValidateCommand implements Runnable {
 
@@ -16,25 +16,16 @@ public final class ValidateCommand implements Runnable {
   @Override
   public void run() {
     var context = ApplicationContext.create(true);
-    BootstrapConfig config;
-    try {
-      config = context.configLoader().load(options.resolvedConfigFile());
-    } catch (ConfigLoadException e) {
-      System.err.println("✗ Config parse error: " + e.getMessage());
-      throw new picocli.CommandLine.ParameterException(
-          new picocli.CommandLine(this), e.getMessage());
-    }
+    BootstrapConfig config = context.configLoader().load(options.resolvedConfigFile());
 
     try {
       new PhaseExecutionPlanner().plan(config.phases());
     } catch (CyclicDependencyException e) {
-      System.err.println("✗ Cycle in job dependency graph: " + e.getMessage());
-      throw new picocli.CommandLine.ParameterException(
-          new picocli.CommandLine(this), e.getMessage());
+      throw new CliFailureException(
+          ExitCode.CONFIGURATION_ERROR, "Cycle in job dependency graph: " + e.getMessage(), e);
     } catch (IllegalArgumentException e) {
-      System.err.println("✗ Invalid job dependency: " + e.getMessage());
-      throw new picocli.CommandLine.ParameterException(
-          new picocli.CommandLine(this), e.getMessage());
+      throw new CliFailureException(
+          ExitCode.CONFIGURATION_ERROR, "Invalid job dependency: " + e.getMessage(), e);
     }
 
     System.out.printf(

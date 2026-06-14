@@ -6,7 +6,7 @@ Repository guidance for AI coding agents working in this checkout.
 
 This repository currently contains a new `sysboot/` project and deleted files from an older root Gradle application. Treat `sysboot/` as the active codebase unless the user explicitly asks about the deleted root project.
 
-`sysboot` is a Java 24, Mill-built, config-driven Linux bootstrap tool. It reads YAML profiles and installs packages, Flatpaks, shell scripts, and compiled binaries with either a TUI or plain CLI output.
+`sysboot` is a Java 25, Mill-built, config-driven Linux bootstrap tool. It reads YAML profiles and installs packages, Flatpaks, shell scripts, and compiled binaries with either a TUI or plain CLI output.
 
 ## Active Root
 
@@ -19,7 +19,7 @@ cd sysboot
 Important files:
 
 - `sysboot/build.sc` - Mill build definition.
-- `sysboot/.mill-version` - pinned Mill version, currently `0.12.3`.
+- `sysboot/.mill-version` - pinned Mill version, currently `0.12.16`.
 - `sysboot/README.md` - user-facing overview and commands.
 - `sysboot/CONTRIBUTING.md` - style and testing rules.
 - `sysboot/docs/config-schema.md` - YAML config schema.
@@ -63,7 +63,7 @@ Run a specific test class:
 mill executor.test.testOnly dev.sysboot.executor.DnfPackageInstallerTest
 ```
 
-Native image requires GraalVM 24+ and `native-image` on `PATH`.
+Native image requires GraalVM 25+ and `native-image` on `PATH`.
 
 ## Coding Rules
 
@@ -71,7 +71,7 @@ Follow `SKILL.md` and `sysboot/CONTRIBUTING.md`.
 
 Key constraints:
 
-- Java 24; use records, sealed interfaces, and pattern matching where they clarify code.
+- Java 25; use records, sealed interfaces, and pattern matching where they clarify code.
 - Mill only; do not add Gradle, Maven, or SBT.
 - Methods should stay small, approximately 20 lines or less.
 - Domain classes should stay under roughly 200 lines; infrastructure under roughly 300 lines.

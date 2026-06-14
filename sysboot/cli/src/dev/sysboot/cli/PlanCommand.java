@@ -12,6 +12,7 @@ import picocli.CommandLine.Command;
 import picocli.CommandLine.Mixin;
 import picocli.CommandLine.Option;
 
+/** Prints the phase-ordered execution plan for a config without installing anything. */
 @Command(name = "plan", description = "Show the execution plan without making any changes")
 public final class PlanCommand implements Runnable {
 
@@ -37,8 +38,8 @@ public final class PlanCommand implements Runnable {
     try {
       ordered = new PhaseExecutionPlanner().plan(config.phases());
     } catch (dev.sysboot.executor.CyclicDependencyException e) {
-      System.err.println("✗ Cycle detected: " + e.getMessage());
-      return;
+      throw new CliFailureException(
+          ExitCode.CONFIGURATION_ERROR, "Cycle detected: " + e.getMessage(), e);
     }
 
     Map<String, InstallationStatus> probeResults =

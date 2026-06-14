@@ -53,10 +53,7 @@ public final class DotbotExecutor {
               result.elapsed());
     } catch (IOException e) {
       return new StepResult.Failure(
-          module.name().value(),
-          "Failed to prepare dotbot: " + e.getMessage(),
-          1,
-          Duration.ZERO);
+          module.name().value(), "Failed to prepare dotbot: " + e.getMessage(), 1, Duration.ZERO);
     } finally {
       deleteIfExists(installer);
     }

@@ -3,6 +3,12 @@ package dev.sysboot.cli;
 import picocli.CommandLine.Command;
 import picocli.CommandLine.Mixin;
 
+/**
+ * Root command for Linux system bootstrapping from declarative YAML profiles.
+ *
+ * <p>The command itself only prints usage guidance; subcommands perform validation, planning, state
+ * management, and execution.
+ */
 @Command(
     name = "sysboot",
     mixinStandardHelpOptions = true,

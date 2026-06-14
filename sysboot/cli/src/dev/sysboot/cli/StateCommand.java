@@ -9,6 +9,7 @@ import picocli.CommandLine.Mixin;
 import picocli.CommandLine.Option;
 import picocli.CommandLine.Parameters;
 
+/** Commands for inspecting and pruning sysboot's per-profile state files. */
 @Command(
     name = "state",
     description = "Manage the sysboot state file",
@@ -102,10 +103,9 @@ public final class StateCommand implements Runnable {
         }
       }
       if (!stateFile.toFile().delete()) {
-        System.err.println("Failed to delete: " + stateFile);
-      } else {
-        System.out.println("State reset for profile: " + profile);
+        throw new CliFailureException(ExitCode.IO_ERROR, "Failed to delete: " + stateFile);
       }
+      System.out.println("State reset for profile: " + profile);
     }
   }
 
@@ -131,8 +131,7 @@ public final class StateCommand implements Runnable {
     @Override
     public void run() {
       if (phaseName == null && itemKey == null) {
-        System.err.println("Specify --phase or --item");
-        return;
+        throw new CliFailureException(ExitCode.INVALID_INPUT, "Specify --phase or --item");
       }
       var mapper = new ObjectMapper();
       var repo = new JsonStateRepository(mapper);

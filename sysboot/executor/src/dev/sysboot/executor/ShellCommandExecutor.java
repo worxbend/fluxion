@@ -34,8 +34,7 @@ public final class ShellCommandExecutor {
 
   private ProcessResult runCommand(ShellCommandModule module, String command) {
     var env = module.workingDir().map(path -> Map.of("PWD", path.toString())).orElse(Map.of());
-    return shellRunner.run(
-        java.util.List.of(module.shell(), "-lc", command), env, COMMAND_TIMEOUT);
+    return shellRunner.run(java.util.List.of(module.shell(), "-lc", command), env, COMMAND_TIMEOUT);
   }
 
   private StepResult failure(String item, ProcessResult result) {

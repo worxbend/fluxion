@@ -14,7 +14,7 @@ val mockitoVersion         = "5.12.0"
 val commonsCompressVersion = "1.26.2"
 
 trait CommonJava extends JavaModule {
-  override def javacOptions = Seq("--release", "24", "-Xlint:all", "-Xlint:-processing")
+  override def javacOptions = Seq("--release", "25", "-Xlint:all", "-Xlint:-processing")
 
   override def repositoriesTask = T.task {
     super.repositoriesTask() ++ Seq(
@@ -92,20 +92,30 @@ object cli extends CommonJava {
   override def javacOptions = super.javacOptions() ++ Seq("-Aproject=sysboot")
   override def mainClass = Some("dev.sysboot.cli.Main")
 
+  def graalConfig = T.input {
+    val graalDir = build.millSourcePath / "graal"
+    Seq(
+      PathRef(graalDir / "reflect-config.json"),
+      PathRef(graalDir / "resource-config.json")
+    )
+  }
+
   def nativeImage = T {
     val jar = assembly()
+    graalConfig()
     val out = T.dest / "sysboot"
     val graalDir = build.millSourcePath / "graal"
     os.proc(
       "native-image",
       "-jar", jar.path,
       "--no-fallback",
+      "-H:+UnlockExperimentalVMOptions",
       "-H:+ReportExceptionStackTraces",
       s"-H:ReflectionConfigurationFiles=${graalDir / "reflect-config.json"}",
       s"-H:ResourceConfigurationFiles=${graalDir / "resource-config.json"}",
-      s"-H:DynamicProxyConfigurationFiles=${graalDir / "proxy-config.json"}",
-      "--initialize-at-build-time=org.slf4j,ch.qos.logback",
-      "--initialize-at-run-time=org.jline",
+      "-H:-UnlockExperimentalVMOptions",
+      "--enable-url-protocols=http,https",
+      "--initialize-at-run-time=org.slf4j,ch.qos.logback,org.jline",
       "-o", out
     ).call(stdout = os.Inherit, stderr = os.Inherit)
     PathRef(out)

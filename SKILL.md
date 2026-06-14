@@ -8,8 +8,8 @@
 ## 1. Toolchain & Build System
 
 ### Java Version
-- **Target: Java 24** (latest LTS-equivalent; use `--enable-preview` only if sealed types / pattern matching features are needed and stabilised).
-- Source/target compatibility: `JavaVersion.VERSION_24`.
+- **Target: Java 25** (use `--enable-preview` only if preview features are intentionally required).
+- Source/target compatibility: Java 25.
 - Enable **records**, **sealed interfaces**, **pattern matching for switch**, **text blocks** everywhere appropriate.
 
 ### Build Tool: Mill
@@ -50,7 +50,7 @@ def repositoriesTask = T.task {
 ```
 sysboot/                          # root
 ├── build.sc                      # Mill build definition
-├── .mill-version                 # e.g. 0.12.3
+├── .mill-version                 # e.g. 0.12.16
 ├── config/                       # Example YAML configs (not source)
 │   └── example-fedora.yaml
 ├── docs/
