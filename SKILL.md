@@ -13,35 +13,18 @@
 - Enable **records**, **sealed interfaces**, **pattern matching for switch**, **text blocks** everywhere appropriate.
 
 ### Build Tool: Mill
-- Use **Mill 0.12.x** (latest stable). Do NOT use Gradle, Maven, or SBT.
-- Module structure follows Mill conventions: `build.sc` at root, one `object` per module.
-- Use `mill.scalalib.JavaModule` (not Scala). All modules are pure Java.
-- Dependency management: `ivy"group:artifact:version"` syntax in `ivyDeps`.
+- Use **Mill 1.1.6** via the checked-in `sysboot/mill` bootstrap script. Do NOT use Gradle, Maven, or SBT.
+- Module structure follows Mill YAML conventions: `build.mill.yaml` at root and one `package.mill.yaml` per module.
+- Use `JavaModule` for Java modules and `NativeImageModule` for the executable CLI module.
+- Dependency management: Maven coordinate strings in `mvnDeps` / `compileMvnDeps`.
 - Always pin exact versions — no `+` wildcards in production deps.
-- Use `mill.define.Cross` for any cross-cutting concerns.
-- GraalVM native image via `mill-native-image` plugin or manual `ExecCommand` task — see §3.
+- GraalVM native image via Mill's built-in `NativeImageModule` — see §3.
 
 ### Key Dependencies (pin these exact versions or latest stable at task time)
-```scala
-// build.sc — reference versions
-val picocliVersion       = "4.7.6"
-val tambuiVersion        = "0.3.0"   // snapshot: use sonatype snapshots repo
-val jacksonVersion       = "2.17.2"  // for YAML config parsing
-val slf4jVersion         = "2.0.13"
-val logbackVersion       = "1.5.6"
-val junitVersion         = "5.11.0"
-val assertjVersion       = "3.26.3"
-val mockitoVersion       = "5.12.0"
-```
+Reference versions are declared directly in module `package.mill.yaml` files. Keep dependencies pinned
+to exact versions.
 
-### Repositories (add to build.sc)
-```scala
-def repositoriesTask = T.task {
-  super.repositoriesTask() ++ Seq(
-    coursier.MavenRepository("https://central.sonatype.com/repository/maven-snapshots/")
-  )
-}
-```
+The Sonatype snapshots repository is configured in `build.mill.yaml` through `mill-repositories`.
 
 ---
 
@@ -49,8 +32,8 @@ def repositoriesTask = T.task {
 
 ```
 sysboot/                          # root
-├── build.sc                      # Mill build definition
-├── .mill-version                 # e.g. 0.12.16
+├── build.mill.yaml               # Mill YAML build header
+├── .mill-version                 # 1.1.6
 ├── config/                       # Example YAML configs (not source)
 │   └── example-fedora.yaml
 ├── docs/
@@ -79,26 +62,9 @@ Each module only depends on modules to its right. `core` has zero production dep
 ## 3. GraalVM Native Image
 
 ### Build approach
-Add a Mill task in the `app` module:
-
-```scala
-def nativeImage = T {
-  val jar = assembly()
-  val out = T.dest / "sysboot"
-  os.proc(
-    "native-image",
-    "-jar", jar.path,
-    "--no-fallback",
-    "--enable-preview",
-    "-H:+ReportExceptionStackTraces",
-    "-H:ReflectionConfigurationFiles=" + (millSourcePath / "graal" / "reflect-config.json"),
-    "-H:ResourceConfigurationFiles=" + (millSourcePath / "graal" / "resource-config.json"),
-    "--initialize-at-build-time=org.slf4j",
-    "-o", out
-  ).call(stdout = os.Inherit, stderr = os.Inherit)
-  PathRef(out)
-}
-```
+The `cli` module extends `[JavaModule, NativeImageModule]` and sets
+`jvmVersion: graalvm-community:25`. Configure native flags through `nativeImageOptions`, not a
+manual process task.
 
 ### GraalVM compatibility rules
 - **No reflection** unless registered in `graal/reflect-config.json`.

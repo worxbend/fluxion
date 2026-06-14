@@ -4,7 +4,7 @@ Persistent project context for future sessions.
 
 ## Current Understanding
 
-The active project is `sysboot`, located under `sysboot/`. It is a Java 24 Mill multi-module project that builds a Linux system bootstrap CLI/TUI and optional GraalVM native binary.
+The active project is `sysboot`, located under `sysboot/`. It is a Java 25 Mill YAML multi-module project that builds a Linux system bootstrap CLI/TUI and optional GraalVM native binary.
 
 The old root-level Gradle Java app appears removed in the current worktree. The current root contains `SKILL.md` and `sysboot/` as untracked files. Avoid reverting, cleaning, or replacing this state without explicit user direction.
 
@@ -26,7 +26,7 @@ The CLI entry point is `dev.sysboot.cli.Main`.
 ## Technical Stack
 
 - Java 24
-- Mill 0.12.x style build in `sysboot/build.sc`
+- Mill 1.1.6 YAML build in `sysboot/build.mill.yaml` plus module `package.mill.yaml` files
 - Picocli 4.7.6
 - Jackson YAML 2.17.2
 - TamboUI `0.3.0-SNAPSHOT`
@@ -63,7 +63,7 @@ Public APIs should use value objects and domain result types instead of raw stri
 - `ApplicationContext.forCli(...)` currently stores `null` for `tuiApp`, even though project rules say public methods should not return `null`. If tightening quality later, consider replacing this with `Optional<SysbootTuiApp>` or separate context types.
 - `BootstrapOrchestratorImpl.recordSuccess(...)` passes `null` for an error field in `StateEntry`; this may conflict with the repository's no-null preference depending on the `StateEntry` contract.
 - `dryRunModule(...)` emits DNF-like package commands for generic `PackageModule`, even when the configured package manager may be apt, pacman, paru, yay, or zypper. Verify whether this is intentional before relying on dry-run output.
-- `.mill-version` exists under `sysboot/` and is pinned to `0.12.3`.
+- `.mill-version` exists under `sysboot/` and is pinned to `1.1.6`.
 - The parser supports `phases`, `dependsOn`, and `restartPolicy`, but `BootstrapOrchestratorImpl` currently executes `config.modules()` as a flattened list and does not use `PhaseExecutionPlanner`.
 - `PhaseExecutionPlanner` exists and performs topological sorting plus blocked-phase computation, but it is not wired into `ApplicationContext` or the orchestrator.
 - `BootstrapModule` permits newer module types (`DotbotModule`, `DefaultShellModule`, `OhMyZshModule`, `ToolchainModule`, `NerdFontModule`, `ShellReloadModule`). Executors for several exist in `executor`, but `BootstrapOrchestratorImpl` and `ParallelProbeRunner` only switch over packages, flatpaks, shell scripts, compiled binaries, and `ZypperModule`.
@@ -94,7 +94,7 @@ From `sysboot/`:
 
 ```bash
 mill __.test
-mill configParser.test
+mill config-parser.test
 mill executor.test
 mill cli.assembly
 java -jar out/cli/assembly.dest/out.jar validate -c config/example-fedora.yaml
@@ -105,7 +105,7 @@ Native image:
 
 ```bash
 mill cli.nativeImage
-./out/cli/nativeImage.dest/sysboot --help
+./out/cli/nativeImage.dest/native-executable --help
 ```
 
 ## Documentation To Keep In Sync

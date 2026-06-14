@@ -20,7 +20,7 @@ All code must follow the constraints in `SKILL.md`:
 
 # Run a specific module's tests
 ./mill core.test
-./mill configParser.test
+./mill config-parser.test
 ./mill executor.test
 
 # Run a single test class
@@ -41,9 +41,9 @@ java -jar out/cli/assembly.dest/out.jar run -c config/example-fedora.yaml --no-t
 ## Building the Native Binary
 
 ```bash
-# Requires GraalVM 25+ with native-image on PATH
+# Uses Mill NativeImageModule with GraalVM Community 25
 ./mill cli.nativeImage
-# Output: out/cli/nativeImage.dest/sysboot
+# Output: out/cli/nativeImage.dest/native-executable
 ```
 
 If native-image build fails on new reflective types, re-run with the agent:
@@ -62,7 +62,7 @@ Then merge the generated `graal/` files and rebuild.
 - [ ] No class exceeds 300 lines.
 - [ ] No method exceeds 20 lines.
 - [ ] `./mill __.test` passes.
-- [ ] `./mill configParser.test` covers any new YAML fields.
+- [ ] `./mill config-parser.test` covers any new YAML fields.
 - [ ] New reflective types are registered in `graal/reflect-config.json`.
 - [ ] `--no-tui` mode still works (no TamboUI imports in `executor` or `core`).
 - [ ] Passwords never appear in log output.

@@ -18,8 +18,9 @@ cd sysboot
 
 Important files:
 
-- `sysboot/build.sc` - Mill build definition.
-- `sysboot/.mill-version` - pinned Mill version, currently `0.12.16`.
+- `sysboot/build.mill.yaml` - root Mill YAML build header.
+- `sysboot/*/package.mill.yaml` - module definitions.
+- `sysboot/.mill-version` - pinned Mill version, currently `1.1.6`.
 - `sysboot/README.md` - user-facing overview and commands.
 - `sysboot/CONTRIBUTING.md` - style and testing rules.
 - `sysboot/docs/config-schema.md` - YAML config schema.
@@ -51,7 +52,7 @@ Common commands:
 ```bash
 mill __.test
 mill core.test
-mill configParser.test
+mill config-parser.test
 mill executor.test
 mill cli.assembly
 mill cli.nativeImage
@@ -63,7 +64,7 @@ Run a specific test class:
 mill executor.test.testOnly dev.sysboot.executor.DnfPackageInstallerTest
 ```
 
-Native image requires GraalVM 25+ and `native-image` on `PATH`.
+Native image uses Mill `NativeImageModule` with `jvmVersion: graalvm-community:25`.
 
 ## Coding Rules
 
@@ -139,6 +140,7 @@ When adding config fields or module types:
 
 ## Worktree Notes
 
-At the time this file was written, `git status --short` showed deleted legacy root files and untracked `SKILL.md` plus `sysboot/`. Do not restore or delete those changes unless the user explicitly asks. Treat them as user-owned work.
-
-`initial-prompts.md` exists at the repository root and contains the product prompts. Treat the later "SYSBOOT — Master Engineering Prompt (v2)" section as authoritative when it conflicts with earlier prompt sections.
+`initial-prompts.md` exists at the repository root and contains historical product prompts. Treat
+the later "SYSBOOT — Master Engineering Prompt (v2)" section as product context, but prefer the
+current `sysboot/build.mill.yaml`, module `package.mill.yaml` files, and docs when build-system
+details conflict.

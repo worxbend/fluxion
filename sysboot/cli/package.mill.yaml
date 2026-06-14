@@ -1,0 +1,17 @@
+extends: [JavaModule, NativeImageModule]
+jvmVersion: graalvm-community:25
+moduleDeps: [app]
+mainClass: dev.sysboot.cli.Main
+javacOptions: [--release, "25", -Xlint:all, -Xlint:-processing, -Aproject=sysboot]
+mvnDeps:
+- info.picocli:picocli:4.7.6
+compileMvnDeps:
+- info.picocli:picocli-codegen:4.7.6
+nativeImageOptions:
+- --no-fallback
+- -H:+UnlockExperimentalVMOptions
+- -H:+ReportExceptionStackTraces
+- -H:ConfigurationFileDirectories=../../../graal
+- --enable-url-protocols=http,https
+- --initialize-at-run-time=org.slf4j,ch.qos.logback,org.jline
+- -H:-UnlockExperimentalVMOptions

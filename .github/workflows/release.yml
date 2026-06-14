@@ -77,7 +77,7 @@ jobs:
         run: ./mill cli.nativeImage
 
       - name: Smoke test native image
-        run: sysboot/out/cli/nativeImage.dest/sysboot --help >/dev/null
+        run: sysboot/out/cli/nativeImage.dest/native-executable --help >/dev/null
 
       - name: Package release assets
         run: |
@@ -85,7 +85,7 @@ jobs:
           version="${{ steps.version.outputs.version }}"
           mkdir -p dist/pkg
           cp sysboot/out/cli/assembly.dest/out.jar "dist/sysboot-${version}-all.jar"
-          cp sysboot/out/cli/nativeImage.dest/sysboot dist/pkg/sysboot
+          cp sysboot/out/cli/nativeImage.dest/native-executable dist/pkg/sysboot
           chmod +x dist/pkg/sysboot
           tar -C dist/pkg -czf "dist/sysboot-${version}-linux-amd64.tar.gz" sysboot
           (cd dist && sha256sum "sysboot-${version}-all.jar" "sysboot-${version}-linux-amd64.tar.gz" > "sysboot-${version}-checksums.sha256")

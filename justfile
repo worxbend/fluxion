@@ -58,7 +58,7 @@ native:
 
 # Build native executable and run a basic smoke test.
 native-smoke: native
-    ./sysboot/out/cli/nativeImage.dest/sysboot --help >/dev/null
+    ./sysboot/out/cli/nativeImage.dest/native-executable --help >/dev/null
 
 # Remove Mill outputs and local formatter cache.
 clean:

@@ -1,0 +1,4 @@
+mill-version: 1.1.6
+mill-jvm-version: temurin:25
+mill-repositories:
+- https://central.sonatype.com/repository/maven-snapshots/

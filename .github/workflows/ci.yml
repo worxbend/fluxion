@@ -39,7 +39,7 @@ jobs:
             ~/.cache/coursier
             ~/.ivy2/cache
             sysboot/out
-          key: ${{ runner.os }}-mill-${{ hashFiles('sysboot/.mill-version', 'sysboot/build.sc') }}
+          key: ${{ runner.os }}-mill-${{ hashFiles('sysboot/.mill-version', 'sysboot/build.mill.yaml', 'sysboot/**/package.mill.yaml') }}
           restore-keys: |
             ${{ runner.os }}-mill-
 
@@ -110,13 +110,13 @@ jobs:
         run: ./mill cli.nativeImage
 
       - name: Smoke test native image
-        run: sysboot/out/cli/nativeImage.dest/sysboot --help >/dev/null
+        run: sysboot/out/cli/nativeImage.dest/native-executable --help >/dev/null
 
       - name: Package native artifact
         run: |
           set -eu
           mkdir -p dist/pkg
-          cp sysboot/out/cli/nativeImage.dest/sysboot dist/pkg/sysboot
+          cp sysboot/out/cli/nativeImage.dest/native-executable dist/pkg/sysboot
           chmod +x dist/pkg/sysboot
           tar -C dist/pkg -czf dist/sysboot-linux-amd64.tar.gz sysboot
           (cd dist && sha256sum sysboot-linux-amd64.tar.gz > sysboot-linux-amd64.tar.gz.sha256)

@@ -1,0 +1,8 @@
+extends: JavaModule
+jvmVersion: temurin:25
+javacOptions: [--release, "25", -Xlint:all, -Xlint:-processing]
+moduleDeps: [config-parser]
+mvnDeps:
+- org.apache.commons:commons-compress:1.26.2
+- org.slf4j:slf4j-api:2.0.13
+- ch.qos.logback:logback-classic:1.5.6

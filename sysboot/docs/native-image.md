@@ -1,6 +1,6 @@
 # Native Image
 
-`sysboot` targets Linux GraalVM 25 native-image builds through the Mill task:
+`sysboot` targets Linux GraalVM 25 native-image builds through Mill's `NativeImageModule`:
 
 ```bash
 cd sysboot
@@ -10,21 +10,24 @@ cd sysboot
 The output binary is:
 
 ```text
-out/cli/nativeImage.dest/sysboot
+out/cli/nativeImage.dest/native-executable
 ```
 
 ## Build Contract
 
-The task builds the CLI assembly JAR and invokes `native-image` with:
+The `cli` module declares `extends: [JavaModule, NativeImageModule]` and
+`jvmVersion: graalvm-community:25`. The task invokes `native-image` with:
 
 - `--no-fallback`
-- explicit reflection and resource config files from `graal/`
+- GraalVM configuration from `graal/` via `-H:ConfigurationFileDirectories`
 - HTTP and HTTPS URL protocol support for binary downloads
 - SLF4J, Logback, and JLine runtime initialization
 
-GraalVM CE 25.0.2 is the validated local toolchain. By default the binary is dynamically linked
-against the host Linux C library. On mainstream Linux distributions this usually means glibc. A
-fully static or musl binary is not currently configured.
+GraalVM CE 25.0.2 is the validated local toolchain. Mill resolves it from
+`jvmVersion: graalvm-community:25`; the system `native-image` does not need to be on `PATH`. By
+default the binary is dynamically linked against the host Linux C library. On mainstream Linux
+distributions this usually means glibc. A fully static or musl binary is not currently configured.
+Mill writes the task artifact as `native-executable`; release packaging renames it to `sysboot`.
 
 ## Reflection And Resources
 
@@ -43,9 +46,9 @@ When adding reflective types:
 ## Smoke Test
 
 ```bash
-./out/cli/nativeImage.dest/sysboot --help
-./out/cli/nativeImage.dest/sysboot --version
-./out/cli/nativeImage.dest/sysboot validate -c config/example-fedora.yaml --no-tui
+./out/cli/nativeImage.dest/native-executable --help
+./out/cli/nativeImage.dest/native-executable --version
+./out/cli/nativeImage.dest/native-executable validate -c config/example-fedora.yaml --no-tui
 ```
 
 ## Troubleshooting

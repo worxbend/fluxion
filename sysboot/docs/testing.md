@@ -10,7 +10,7 @@ Focused commands:
 
 ```bash
 ./mill core.test
-./mill configParser.test
+./mill config-parser.test
 ./mill executor.test
 ./mill cli.test
 ./mill executor.test.testOnly dev.sysboot.executor.DnfPackageInstallerTest

@@ -10,14 +10,16 @@ Supports **Fedora** (DNF), **Arch** (pacman/paru/yay), **openSUSE** (zypper), an
 
 | Tool | Version |
 |---|---|
-| GraalVM | 25+ (`native-image` on PATH) |
+| GraalVM | 25+ (resolved by Mill for `cli.nativeImage`) |
 | Java | 25+ |
 | Mill | Included `./mill` bootstrap script |
 
-Install GraalVM and `native-image`:
+Mill is pinned to 1.1.6 and resolves Eclipse Temurin 25 for normal JVM work. The `cli`
+module uses Mill's `NativeImageModule` with `jvmVersion: graalvm-community:25` for native
+Linux binaries.
 
 ```bash
-sdk install java 25.0.2-graalce    # via SDKMAN
+./mill --version
 ```
 
 ---
@@ -35,7 +37,7 @@ cd sysboot
 ./mill cli.nativeImage
 
 # 4. Run your first profile
-./out/cli/nativeImage.dest/sysboot run -c config/example-fedora.yaml
+./out/cli/nativeImage.dest/native-executable run -c config/example-fedora.yaml
 ```
 
 Run in headless mode (no TUI):
@@ -271,13 +273,15 @@ The current lint gate is Java compilation with `-Xlint:all`. Formatting uses the
 ```bash
 cd sysboot
 ./mill cli.nativeImage
-./out/cli/nativeImage.dest/sysboot --version
+./out/cli/nativeImage.dest/native-executable --version
 ```
 
-The native build targets GraalVM CE 25.0.2 or newer. It is Linux-first and dynamically linked against the host C library by default
-(typically glibc on mainstream distributions). It uses `--no-fallback`, includes Jackson DTO and
-Picocli reflection metadata from `graal/`, and enables HTTP(S) URL protocols for compiled-binary
-downloads. See `docs/native-image.md` for the full native-image contract and troubleshooting notes.
+The native build uses Mill's `NativeImageModule` with GraalVM Community 25. It is Linux-first and
+dynamically linked against the host C library by default (typically glibc on mainstream
+distributions). It uses `--no-fallback`, loads Jackson DTO and Picocli reflection metadata from
+`graal/`, and enables HTTP(S) URL protocols for compiled-binary downloads. Mill writes the task
+artifact as `native-executable`; release packaging copies it to `sysboot`. See
+`docs/native-image.md` for the full native-image contract and troubleshooting notes.
 
 ---
 
@@ -294,7 +298,7 @@ not be logged.
 | Symptom | Action |
 |---|---|
 | `mill: command not found` | Run commands from `sysboot/` with `./mill`, or set `MILL=/path/to/mill` when using `just`. |
-| `native-image: command not found` | Install GraalVM 25+ with `native-image`. |
+| `nativeImageTool` cannot be resolved | Run `./mill --version` from `sysboot/` and verify Mill can download `graalvm-community:25`. |
 | Config exits with code 3 | Run `sysboot validate -c <file>` and fix the reported YAML/schema issue. |
 | Package commands fail | Re-run with `--no-tui` to inspect command output and verify the package manager is installed. |
 | Native image misses reflection metadata | Re-run with the native-image agent as described in `CONTRIBUTING.md`, then merge `graal/` updates. |
@@ -306,7 +310,7 @@ not be logged.
 1. Run `just verify` from the repository root.
 2. Build the assembly with `cd sysboot && ./mill cli.assembly`.
 3. Build the native executable with `cd sysboot && ./mill cli.nativeImage`.
-4. Smoke test `./out/cli/nativeImage.dest/sysboot --help` and `validate` against example configs.
+4. Smoke test `./out/cli/nativeImage.dest/native-executable --help` and `validate` against example configs.
 5. Package the binary with README, license metadata, and example configs.
 
 See `docs/release.md` for a fuller release checklist.
