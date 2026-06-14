@@ -1,4 +1,4 @@
-package dev.sysboot.cli;
+package dev.sysboot.cli.error;
 
 import dev.sysboot.config.ConfigLoadException;
 import dev.sysboot.executor.ShellExecutionException;

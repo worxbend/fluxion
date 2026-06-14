@@ -2,6 +2,7 @@ package dev.sysboot.cli;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import dev.sysboot.cli.error.ExitCode;
 import java.io.PrintWriter;
 import java.io.StringWriter;
 import org.junit.jupiter.api.Test;

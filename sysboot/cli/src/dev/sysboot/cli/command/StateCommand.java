@@ -1,6 +1,9 @@
-package dev.sysboot.cli;
+package dev.sysboot.cli.command;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import dev.sysboot.cli.error.CliFailureException;
+import dev.sysboot.cli.error.ExitCode;
+import dev.sysboot.cli.option.GlobalOptions;
 import dev.sysboot.core.BootstrapState;
 import dev.sysboot.executor.JsonStateRepository;
 import java.nio.file.Path;
@@ -29,7 +32,7 @@ public final class StateCommand implements Runnable {
   }
 
   @Command(name = "show", description = "Print all entries in the state file for a profile")
-  static final class ShowSubcommand implements Runnable {
+  public static final class ShowSubcommand implements Runnable {
 
     @Parameters(index = "0", description = "Profile name", defaultValue = "default")
     private String profile;
@@ -74,7 +77,7 @@ public final class StateCommand implements Runnable {
   }
 
   @Command(name = "reset", description = "Delete the entire state file for a profile")
-  static final class ResetSubcommand implements Runnable {
+  public static final class ResetSubcommand implements Runnable {
 
     @Parameters(index = "0", description = "Profile name", defaultValue = "default")
     private String profile;
@@ -110,7 +113,7 @@ public final class StateCommand implements Runnable {
   }
 
   @Command(name = "forget", description = "Remove a phase or item entry from the state file")
-  static final class ForgetSubcommand implements Runnable {
+  public static final class ForgetSubcommand implements Runnable {
 
     @Option(
         names = {"--profile"},
@@ -170,7 +173,7 @@ public final class StateCommand implements Runnable {
   }
 
   @Command(name = "path", description = "Print path to the state file")
-  static final class PathSubcommand implements Runnable {
+  public static final class PathSubcommand implements Runnable {
 
     @Parameters(index = "0", description = "Profile name", defaultValue = "default")
     private String profile;

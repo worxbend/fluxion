@@ -1,4 +1,4 @@
-package dev.sysboot.cli;
+package dev.sysboot.cli.output;
 
 import dev.sysboot.core.ExecutionEvent;
 import dev.sysboot.core.ExecutionEventListener;

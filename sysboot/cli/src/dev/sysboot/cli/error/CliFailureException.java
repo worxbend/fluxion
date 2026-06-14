@@ -1,4 +1,4 @@
-package dev.sysboot.cli;
+package dev.sysboot.cli.error;
 
 /**
  * User-facing command failure with a preclassified exit code.

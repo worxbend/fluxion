@@ -12,79 +12,79 @@
     "allDeclaredConstructors": true
   },
   {
-    "name": "dev.sysboot.cli.SysbootCommand",
+    "name": "dev.sysboot.cli.command.SysbootCommand",
     "allDeclaredFields": true,
     "allDeclaredMethods": true,
     "allDeclaredConstructors": true
   },
   {
-    "name": "dev.sysboot.cli.GlobalOptions",
+    "name": "dev.sysboot.cli.option.GlobalOptions",
     "allDeclaredFields": true,
     "allDeclaredMethods": true,
     "allDeclaredConstructors": true
   },
   {
-    "name": "dev.sysboot.cli.RunCommand",
+    "name": "dev.sysboot.cli.command.RunCommand",
     "allDeclaredFields": true,
     "allDeclaredMethods": true,
     "allDeclaredConstructors": true
   },
   {
-    "name": "dev.sysboot.cli.DryRunCommand",
+    "name": "dev.sysboot.cli.command.DryRunCommand",
     "allDeclaredFields": true,
     "allDeclaredMethods": true,
     "allDeclaredConstructors": true
   },
   {
-    "name": "dev.sysboot.cli.ValidateCommand",
+    "name": "dev.sysboot.cli.command.ValidateCommand",
     "allDeclaredFields": true,
     "allDeclaredMethods": true,
     "allDeclaredConstructors": true
   },
   {
-    "name": "dev.sysboot.cli.PlanCommand",
+    "name": "dev.sysboot.cli.command.PlanCommand",
     "allDeclaredFields": true,
     "allDeclaredMethods": true,
     "allDeclaredConstructors": true
   },
   {
-    "name": "dev.sysboot.cli.ListCommand",
+    "name": "dev.sysboot.cli.command.ListCommand",
     "allDeclaredFields": true,
     "allDeclaredMethods": true,
     "allDeclaredConstructors": true
   },
   {
-    "name": "dev.sysboot.cli.StatusCommand",
+    "name": "dev.sysboot.cli.command.StatusCommand",
     "allDeclaredFields": true,
     "allDeclaredMethods": true,
     "allDeclaredConstructors": true
   },
   {
-    "name": "dev.sysboot.cli.StateCommand",
+    "name": "dev.sysboot.cli.command.StateCommand",
     "allDeclaredFields": true,
     "allDeclaredMethods": true,
     "allDeclaredConstructors": true
   },
   {
-    "name": "dev.sysboot.cli.StateCommand$ShowSubcommand",
+    "name": "dev.sysboot.cli.command.StateCommand$ShowSubcommand",
     "allDeclaredFields": true,
     "allDeclaredMethods": true,
     "allDeclaredConstructors": true
   },
   {
-    "name": "dev.sysboot.cli.StateCommand$ResetSubcommand",
+    "name": "dev.sysboot.cli.command.StateCommand$ResetSubcommand",
     "allDeclaredFields": true,
     "allDeclaredMethods": true,
     "allDeclaredConstructors": true
   },
   {
-    "name": "dev.sysboot.cli.StateCommand$ForgetSubcommand",
+    "name": "dev.sysboot.cli.command.StateCommand$ForgetSubcommand",
     "allDeclaredFields": true,
     "allDeclaredMethods": true,
     "allDeclaredConstructors": true
   },
   {
-    "name": "dev.sysboot.cli.StateCommand$PathSubcommand",
+    "name": "dev.sysboot.cli.command.StateCommand$PathSubcommand",
     "allDeclaredFields": true,
     "allDeclaredMethods": true,
     "allDeclaredConstructors": true

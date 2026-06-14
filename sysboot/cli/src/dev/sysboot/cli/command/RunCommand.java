@@ -1,6 +1,8 @@
-package dev.sysboot.cli;
+package dev.sysboot.cli.command;
 
 import dev.sysboot.app.ApplicationContext;
+import dev.sysboot.cli.output.StdoutExecutionEventListener;
+import dev.sysboot.cli.option.GlobalOptions;
 import dev.sysboot.core.BootstrapConfig;
 import dev.sysboot.core.Phase;
 import dev.sysboot.executor.PhaseExecutionPlanner;
@@ -64,7 +66,7 @@ public final class RunCommand implements Runnable {
   @Override
   public void run() {
     boolean effectiveSkip = skipAlreadyInstalled || reProbe;
-    var context = ApplicationContext.create(options.noTui, profile, effectiveSkip, reProbe);
+    var context = ApplicationContext.create(options.noTui(), profile, effectiveSkip, reProbe);
     BootstrapConfig config = context.configLoader().load(options.resolvedConfigFile());
     BootstrapConfig filtered = applyFilters(config);
 
@@ -73,7 +75,7 @@ public final class RunCommand implements Runnable {
       return;
     }
 
-    if (options.noTui) {
+    if (options.noTui()) {
       var listener = new StdoutExecutionEventListener();
       if (dryRun) {
         context.orchestrator().dryRun(filtered, listener);

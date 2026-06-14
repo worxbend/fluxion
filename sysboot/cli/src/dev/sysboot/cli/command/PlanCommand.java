@@ -1,6 +1,9 @@
-package dev.sysboot.cli;
+package dev.sysboot.cli.command;
 
 import dev.sysboot.app.ApplicationContext;
+import dev.sysboot.cli.error.CliFailureException;
+import dev.sysboot.cli.error.ExitCode;
+import dev.sysboot.cli.option.GlobalOptions;
 import dev.sysboot.core.BootstrapConfig;
 import dev.sysboot.core.InstallationStatus;
 import dev.sysboot.core.Phase;

@@ -1,4 +1,4 @@
-package dev.sysboot.cli;
+package dev.sysboot.cli.error;
 
 /**
  * Process exit codes returned by the sysboot command-line interface.

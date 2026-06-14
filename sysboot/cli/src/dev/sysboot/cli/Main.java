@@ -1,5 +1,7 @@
 package dev.sysboot.cli;
 
+import dev.sysboot.cli.command.SysbootCommand;
+import dev.sysboot.cli.error.CliExceptionHandler;
 import picocli.CommandLine;
 
 /**

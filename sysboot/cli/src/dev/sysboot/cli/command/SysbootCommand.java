@@ -1,5 +1,6 @@
-package dev.sysboot.cli;
+package dev.sysboot.cli.command;
 
+import dev.sysboot.cli.option.GlobalOptions;
 import picocli.CommandLine.Command;
 import picocli.CommandLine.Mixin;
 
