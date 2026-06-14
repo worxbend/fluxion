@@ -49,7 +49,7 @@ jobs:
           echo "version=$version" >> "$GITHUB_OUTPUT"
 
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Set up GraalVM Java 24
         uses: graalvm/setup-graalvm@v1
