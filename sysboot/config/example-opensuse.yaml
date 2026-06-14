@@ -1,0 +1,105 @@
+profile: opensuse-workstation
+os:
+  type: opensuse
+  release: "15.6"
+
+jobs:
+  - name: system-foundation
+    description: "Refresh openSUSE and install base packages"
+    restartPolicy:
+      type: none
+    continueOnModuleError: true
+    steps:
+      - type: shell-command
+        name: refresh-system
+        commands:
+          - "sudo zypper --non-interactive refresh"
+          - "sudo zypper --non-interactive update"
+        continueOnError: false
+
+      - type: packages
+        name: core-cli-tools
+        packageManager: zypper
+        continueOnError: true
+        packages:
+          - git
+          - curl
+          - wget
+          - htop
+          - ripgrep
+          - fd
+          - bat
+          - zsh
+          - tmux
+          - neovim
+          - fzf
+          - jq
+          - tree
+
+  - name: development
+    description: "Install compiler, language, and container packages"
+    dependsOn:
+      - system-foundation
+    restartPolicy:
+      type: none
+    continueOnModuleError: true
+    steps:
+      - type: packages
+        name: dev-tools
+        packageManager: zypper
+        continueOnError: true
+        packages:
+          - gcc
+          - gcc-c++
+          - clang
+          - cmake
+          - make
+          - java-21-openjdk-devel
+          - nodejs22
+          - go
+          - python3
+          - python3-pip
+
+      - type: packages
+        name: container-tools
+        packageManager: zypper
+        continueOnError: false
+        packages:
+          - podman
+          - buildah
+          - skopeo
+
+  - name: shell
+    description: "Switch to zsh and install Oh My Zsh"
+    dependsOn:
+      - system-foundation
+    restartPolicy:
+      type: prompt-logout
+      message: "Default shell changed to zsh. Log out and back in, then re-run sysboot."
+    continueOnModuleError: false
+    steps:
+      - type: default-shell
+        name: zsh-default
+        shellPath: /bin/zsh
+        probeCommand: "getent passwd $USER | cut -d: -f7 | grep -q zsh"
+
+      - type: oh-my-zsh
+        name: oh-my-zsh
+        installDir: "~/.oh-my-zsh"
+        probeCommand: "test -d ~/.oh-my-zsh"
+
+  - name: desktop-apps
+    description: "Install desktop applications from Flathub"
+    dependsOn:
+      - system-foundation
+    restartPolicy:
+      type: none
+    continueOnModuleError: true
+    steps:
+      - type: flatpak
+        name: desktop-flatpaks
+        remote: flathub
+        appIds:
+          - com.spotify.Client
+          - org.telegram.desktop
+          - com.obsproject.Studio

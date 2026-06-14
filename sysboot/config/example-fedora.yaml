@@ -1,0 +1,242 @@
+profile: fedora-workstation
+os:
+  type: fedora
+  release: "44"
+
+jobs:
+  - name: system-foundation
+    description: "Enable Fedora repositories and install base runtime packages"
+    restartPolicy:
+      type: none
+    continueOnModuleError: false
+    steps:
+      - type: shell-command
+        name: fedora-repositories
+        commands:
+          - "sudo dnf check-update || true"
+          - "sudo dnf upgrade -y"
+          - "fedora_version=$(rpm -E %fedora); sudo dnf install -y \"https://download1.rpmfusion.org/free/fedora/rpmfusion-free-release-${fedora_version}.noarch.rpm\" \"https://download1.rpmfusion.org/nonfree/fedora/rpmfusion-nonfree-release-${fedora_version}.noarch.rpm\""
+          - "sudo rpm --import https://packages.microsoft.com/keys/microsoft.asc"
+          - "printf '%s\n' '[code]' 'name=Visual Studio Code' 'baseurl=https://packages.microsoft.com/yumrepos/vscode' 'enabled=1' 'gpgcheck=1' 'gpgkey=https://packages.microsoft.com/keys/microsoft.asc' | sudo tee /etc/yum.repos.d/vscode.repo >/dev/null"
+        continueOnError: false
+        probeCommand: "rpm -q rpmfusion-free-release rpmfusion-nonfree-release"
+
+      - type: packages
+        name: base-dependencies
+        packageManager: dnf
+        continueOnError: true
+        packages:
+          - ca-certificates
+          - curl
+          - wget
+          - gnupg2
+          - util-linux-user
+          - fuse3
+          - fedora-workstation-repositories
+          - pipewire
+          - pipewire-alsa
+          - pipewire-pulseaudio
+          - pipewire-jack-audio-connection-kit
+          - wireplumber
+
+  - name: dotfiles
+    description: "Fetch dotbot-go and apply dotfiles"
+    dependsOn:
+      - system-foundation
+    restartPolicy:
+      type: none
+    continueOnModuleError: false
+    steps:
+      - type: dotbot
+        name: dotfiles-core
+        installerVersion: "v0.2.1"
+        config: "~/system-bootstrap/.files/install.conf.yaml"
+        dotbotBinary: dotbot
+        probeCommand: "test -f ~/.zshrc && test -f ~/.tmux.conf"
+
+  - name: shell-foundation
+    description: "Install zsh, set it as login shell, and install Oh My Zsh"
+    dependsOn:
+      - system-foundation
+    restartPolicy:
+      type: prompt-logout
+      message: "Default shell changed to zsh. Log out and back in, then re-run sysboot."
+    continueOnModuleError: false
+    steps:
+      - type: packages
+        name: shell-packages
+        packageManager: dnf
+        continueOnError: false
+        packages:
+          - zsh
+          - fzf
+          - git
+
+      - type: default-shell
+        name: zsh-default
+        shellPath: /bin/zsh
+        probeCommand: "getent passwd $USER | cut -d: -f7 | grep -q zsh"
+
+      - type: oh-my-zsh
+        name: oh-my-zsh
+        installDir: "~/.oh-my-zsh"
+        probeCommand: "test -d ~/.oh-my-zsh"
+
+  - name: development
+    description: "Install package-managed CLI and development tools"
+    dependsOn:
+      - shell-foundation
+    restartPolicy:
+      type: none
+    continueOnModuleError: true
+    steps:
+      - type: packages
+        name: cli-and-dev-tools
+        packageManager: dnf
+        continueOnError: true
+        packages:
+          - alacritty
+          - kitty
+          - bat
+          - btop
+          - fd
+          - htop
+          - wl-clipboard
+          - yq
+          - jq
+          - net-tools
+          - hyperfine
+          - asciinema
+          - gdu
+          - fastfetch
+          - tig
+          - mtr
+          - nmap
+          - httpie
+          - ripgrep
+          - gcc
+          - gcc-c++
+          - clang
+          - clangd
+          - make
+          - cmake
+          - meson
+          - ninja-build
+          - podman
+          - podman-docker
+          - buildah
+          - skopeo
+          - code
+
+  - name: shell-tools
+    description: "Apply Git defaults and clone shell plugins"
+    dependsOn:
+      - development
+      - dotfiles
+    restartPolicy:
+      type: requires-new-shell
+      shell: zsh
+    continueOnModuleError: true
+    steps:
+      - type: shell-command
+        name: git-and-zsh-plugins
+        commands:
+          - "git config --global user.email 'balyszyn@gmail.com'"
+          - "git config --global user.name 'w0rxbend'"
+          - "git config --global pull.rebase true"
+          - "git config --global init.defaultBranch main"
+          - "plugin_dir=\"${ZSH_CUSTOM:-$HOME/.oh-my-zsh/custom}/plugins\"; mkdir -p \"$plugin_dir\"; test -d \"$plugin_dir/zsh-syntax-highlighting/.git\" || git clone https://github.com/zsh-users/zsh-syntax-highlighting.git \"$plugin_dir/zsh-syntax-highlighting\""
+          - "plugin_dir=\"${ZSH_CUSTOM:-$HOME/.oh-my-zsh/custom}/plugins\"; mkdir -p \"$plugin_dir\"; test -d \"$plugin_dir/zsh-autosuggestions/.git\" || git clone https://github.com/zsh-users/zsh-autosuggestions \"$plugin_dir/zsh-autosuggestions\""
+          - "plugin_dir=\"${ZSH_CUSTOM:-$HOME/.oh-my-zsh/custom}/plugins\"; mkdir -p \"$plugin_dir\"; test -d \"$plugin_dir/zsh-history-substring-search/.git\" || git clone https://github.com/zsh-users/zsh-history-substring-search \"$plugin_dir/zsh-history-substring-search\""
+        continueOnError: true
+
+  - name: toolchains
+    description: "Install language toolchains and user-level packages"
+    dependsOn:
+      - shell-tools
+    restartPolicy:
+      type: requires-new-shell
+      shell: zsh
+    continueOnModuleError: true
+    steps:
+      - type: toolchain
+        name: rustup
+        kind: RUSTUP
+        installScript: "https://sh.rustup.rs"
+        installArgs:
+          - "-y"
+          - "--no-modify-path"
+        probeCommand: "test -f ~/.cargo/bin/rustup"
+
+      - type: toolchain
+        name: sdkman
+        kind: SDKMAN
+        installScript: "https://get.sdkman.io"
+        installArgs: []
+        probeCommand: "test -d ~/.sdkman && test -f ~/.sdkman/bin/sdkman-init.sh"
+
+      - type: toolchain
+        name: cargo-binstall
+        kind: GENERIC
+        installScript: "https://raw.githubusercontent.com/cargo-bins/cargo-binstall/main/install-from-binstall-release.sh"
+        installArgs: []
+        probeCommand: "test -f ~/.cargo/bin/cargo-binstall"
+
+      - type: shell-command
+        name: sdkman-packages
+        commands:
+          - "source \"$HOME/.sdkman/bin/sdkman-init.sh\" && sdk install java"
+          - "source \"$HOME/.sdkman/bin/sdkman-init.sh\" && sdk install gradle"
+          - "source \"$HOME/.sdkman/bin/sdkman-init.sh\" && sdk install maven"
+        continueOnError: true
+
+      - type: shell-command
+        name: cargo-packages
+        commands:
+          - "export PATH=\"$HOME/.cargo/bin:$PATH\"; cargo-binstall --no-confirm eza lsd fd-find ripgrep"
+          - "export PATH=\"$HOME/.cargo/bin:$PATH\"; cargo-binstall --no-confirm bottom broot"
+        continueOnError: true
+
+  - name: fonts
+    description: "Install Nerd Fonts with the pinned sysboot installer"
+    dependsOn:
+      - development
+    restartPolicy:
+      type: none
+    continueOnModuleError: true
+    steps:
+      - type: nerd-fonts
+        name: nerd-fonts-install
+        installerVersion: "v1.0.5"
+        nerdfontBinary: "nerdfont-install"
+        config:
+          release: "latest"
+          destination: "~/.fonts"
+          refreshFontCache: true
+          families:
+            - JetBrainsMono
+            - Hack
+            - FiraCode
+            - CascadiaCode
+        probeCommand: "fc-list | grep -qi 'JetBrainsMono Nerd'"
+
+  - name: desktop-apps
+    description: "Install desktop applications from Flathub"
+    dependsOn:
+      - development
+    restartPolicy:
+      type: none
+    continueOnModuleError: true
+    steps:
+      - type: flatpak
+        name: desktop-flatpaks
+        remote: flathub
+        appIds:
+          - io.gitlab.librewolf-community
+          - com.google.Chrome
+          - com.brave.Browser
+          - dev.zed.Zed
+          - org.telegram.desktop
+          - com.discordapp.Discord
+          - com.spotify.Client
+          - com.github.tchx84.Flatseal

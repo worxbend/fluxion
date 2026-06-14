@@ -1,0 +1,11 @@
+profile: arch-workstation
+os:
+  type: arch
+modules:
+  - type: packages
+    name: cli-tools
+    packageManager: pacman
+    continueOnError: true
+    packages:
+      - git
+      - ripgrep

@@ -1,0 +1,44 @@
+package dev.sysboot.cli;
+
+import dev.sysboot.core.ExecutionEvent;
+import dev.sysboot.core.ExecutionEventListener;
+import dev.sysboot.core.StepResult;
+import picocli.CommandLine.Help.Ansi;
+
+public final class StdoutExecutionEventListener implements ExecutionEventListener {
+
+  @Override
+  public void onEvent(ExecutionEvent event) {
+    switch (event.kind()) {
+      case MODULE_STARTED ->
+          System.out.println(
+              Ansi.AUTO.string("@|bold,blue [MODULE]|@ " + event.moduleName().value()));
+      case MODULE_COMPLETED ->
+          System.out.println(
+              Ansi.AUTO.string("@|bold,blue [DONE  ]|@ " + event.moduleName().value()));
+      case ITEM_STARTED ->
+          System.out.print(Ansi.AUTO.string("  @|yellow  -->|@  " + event.item() + " ... "));
+      case ITEM_COMPLETED -> event.result().ifPresent(result -> printResult(result));
+      case ERROR -> System.out.println(Ansi.AUTO.string("@|bold,red [ERROR ]|@ " + event.item()));
+    }
+  }
+
+  private void printResult(StepResult result) {
+    switch (result) {
+      case StepResult.Success s ->
+          System.out.println(
+              Ansi.AUTO.string(
+                  "@|green OK|@ ("
+                      + String.format("%.1fs", s.elapsed().toMillis() / 1000.0)
+                      + ")"));
+      case StepResult.Failure f ->
+          System.out.println(
+              Ansi.AUTO.string("@|red FAILED|@ (exit " + f.exitCode() + "): " + f.errorMessage()));
+      case StepResult.Skipped s ->
+          System.out.println(Ansi.AUTO.string("@|yellow SKIPPED|@: " + s.reason()));
+      case StepResult.DryRun d ->
+          System.out.println(
+              Ansi.AUTO.string("@|cyan DRY-RUN|@: " + String.join(" ", d.wouldExecute())));
+    }
+  }
+}

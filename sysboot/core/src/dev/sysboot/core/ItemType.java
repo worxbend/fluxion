@@ -1,0 +1,15 @@
+package dev.sysboot.core;
+
+public enum ItemType {
+  PACKAGE,
+  FLATPAK,
+  SHELL_SCRIPT,
+  COMPILED_BINARY,
+  DOTBOT,
+  DEFAULT_SHELL,
+  OH_MY_ZSH,
+  TOOLCHAIN,
+  NERD_FONT,
+  SHELL_RELOAD,
+  SHELL_COMMAND
+}

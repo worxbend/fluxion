@@ -1,0 +1,552 @@
+profile: system-bootstrap-fedora
+os:
+  type: fedora
+  release: "44"
+
+jobs:
+  - name: system-foundation
+    description: "Update Fedora, enable third-party repositories, and install base runtime packages"
+    restartPolicy:
+      type: none
+    continueOnModuleError: false
+    steps:
+      - type: shell-command
+        name: fedora-repositories
+        commands:
+          - "sudo dnf check-update || true"
+          - "sudo dnf upgrade -y"
+          - "fedora_version=$(rpm -E %fedora); sudo dnf install -y \"https://download1.rpmfusion.org/free/fedora/rpmfusion-free-release-${fedora_version}.noarch.rpm\" \"https://download1.rpmfusion.org/nonfree/fedora/rpmfusion-nonfree-release-${fedora_version}.noarch.rpm\""
+          - "sudo rpm --import https://packages.microsoft.com/keys/microsoft.asc"
+          - "printf '%s\n' '[code]' 'name=Visual Studio Code' 'baseurl=https://packages.microsoft.com/yumrepos/vscode' 'enabled=1' 'gpgcheck=1' 'gpgkey=https://packages.microsoft.com/keys/microsoft.asc' | sudo tee /etc/yum.repos.d/vscode.repo >/dev/null"
+          - "sudo dnf check-update || true"
+        continueOnError: false
+        probeCommand: "rpm -q rpmfusion-free-release rpmfusion-nonfree-release"
+
+      - type: packages
+        name: base-dependencies
+        packageManager: dnf
+        continueOnError: true
+        packages:
+          - ca-certificates
+          - curl
+          - wget
+          - gnupg2
+          - util-linux-user
+          - fuse3
+          - fedora-workstation-repositories
+          - pipewire
+          - pipewire-alsa
+          - pipewire-pulseaudio
+          - pipewire-jack-audio-connection-kit
+          - wireplumber
+
+  - name: dotfiles
+    description: "Fetch dotbot-go and apply the old system-bootstrap Dotbot links"
+    dependsOn:
+      - system-foundation
+    restartPolicy:
+      type: none
+    continueOnModuleError: false
+    steps:
+      - type: dotbot
+        name: dotfiles-core
+        installerVersion: "v0.2.1"
+        config: "~/system-bootstrap/.files/install.conf.yaml"
+        dotbotBinary: dotbot
+        probeCommand: "test -f ~/.zshrc && test -f ~/.tmux.conf"
+
+  - name: shell-foundation
+    description: "Install zsh, set it as login shell, and install Oh My Zsh"
+    dependsOn:
+      - system-foundation
+    restartPolicy:
+      type: prompt-logout
+      message: "Default shell changed to zsh. Please log out and back in, then re-run sysboot."
+    continueOnModuleError: false
+    steps:
+      - type: packages
+        name: shell-packages
+        packageManager: dnf
+        continueOnError: false
+        packages:
+          - zsh
+          - fzf
+          - git
+
+      - type: default-shell
+        name: zsh-default
+        shellPath: /bin/zsh
+        probeCommand: "getent passwd $USER | cut -d: -f7 | grep -q zsh"
+
+      - type: oh-my-zsh
+        name: oh-my-zsh
+        installDir: "~/.oh-my-zsh"
+        probeCommand: "test -d ~/.oh-my-zsh"
+
+  - name: cli-and-dev-packages
+    description: "Install Fedora packages from the old package scripts"
+    dependsOn:
+      - shell-foundation
+    restartPolicy:
+      type: none
+    continueOnModuleError: true
+    steps:
+      - type: packages
+        name: terminal-cli-tools
+        packageManager: dnf
+        continueOnError: true
+        packages:
+          - alacritty
+          - kitty
+          - bat
+          - btop
+          - fd
+          - htop
+          - wl-clipboard
+          - yq
+          - jq
+          - net-tools
+          - hyperfine
+          - asciinema
+          - gdu
+          - fastfetch
+          - tig
+          - mtr
+          - nmap
+          - httpie
+          - ripgrep
+          - unzip
+          - stress
+          - xsensors
+          - fontconfig
+          - pipx
+          - libsecret
+          - libsecret-devel
+          - toolbox
+          - wev
+          - foot
+
+      - type: packages
+        name: build-toolchain-packages
+        packageManager: dnf
+        continueOnError: true
+        packages:
+          - gcc
+          - gcc-c++
+          - clang
+          - clangd
+          - clang-format
+          - clang-analyzer
+          - clang-tools-extra
+          - llvm
+          - llvm-devel
+          - clang-devel
+          - compiler-rt
+          - lld
+          - lldb
+          - make
+          - cmake
+          - meson
+          - ninja-build
+          - ccache
+          - flex
+          - bison
+          - gperf
+          - readline-devel
+          - libffi-devel
+          - openssl-devel
+          - openssl
+          - dfu-util
+          - protobuf-compiler
+
+      - type: packages
+        name: debug-profile-packages
+        packageManager: dnf
+        continueOnError: true
+        packages:
+          - gdb
+          - valgrind
+          - strace
+          - ltrace
+          - perf
+          - wireshark-cli
+
+      - type: packages
+        name: desktop-dev-libraries
+        packageManager: dnf
+        continueOnError: true
+        packages:
+          - gtk3-devel
+          - gtk4
+          - gtk4-devel
+          - gobject-introspection
+          - gobject-introspection-devel
+          - webkitgtk6.0-devel
+          - libXcursor-devel
+          - libXrandr-devel
+          - libXi-devel
+          - libXinerama-devel
+          - libXxf86vm-devel
+          - mesa-libGL
+          - mesa-libGL-devel
+          - mesa-libgbm
+          - mesa-libglapi
+          - mesa-libEGL
+          - mesa-filesystem
+
+      - type: packages
+        name: media-gpu-fonts-and-desktop
+        packageManager: dnf
+        continueOnError: true
+        packages:
+          - vlc
+          - mpv
+          - gstreamer1-vaapi
+          - imv
+          - ffmpeg
+          - ffmpeg-devel
+          - gstreamer1-plugins-good
+          - gstreamer1-plugins-base
+          - gstreamer1-plugin-openh264
+          - libva
+          - libva-utils
+          - mesa-va-drivers
+          - radeontop
+          - intel-media-driver
+          - texlive-scheme-basic
+          - texlive-collection-xetex
+          - fira-code-fonts
+          - gnome-tweaks
+          - gnome-extensions-app
+          - qemu-kvm
+          - libvirt
+          - virt-install
+          - bridge-utils
+          - v4l2loopback
+          - zathura
+          - mupdf
+
+      - type: packages
+        name: containers-and-extras
+        packageManager: dnf
+        continueOnError: true
+        packages:
+          - podman
+          - podman-docker
+          - buildah
+          - skopeo
+          - toolbox
+          - zoxide
+          - code
+
+  - name: shell-tools
+    description: "Install shell plugin and base Git configuration from the old scripts"
+    dependsOn:
+      - cli-and-dev-packages
+      - dotfiles
+    restartPolicy:
+      type: requires-new-shell
+      shell: zsh
+    continueOnModuleError: true
+    steps:
+      - type: shell-command
+        name: configure-system
+        commands:
+          - "sudo dnf swap -y ffmpeg-free ffmpeg --allowerasing || true"
+          - "test -d \"$HOME/.tmux/plugins/tpm\" || git clone https://github.com/tmux-plugins/tpm \"$HOME/.tmux/plugins/tpm\""
+          - "git config --global user.email 'balyszyn@gmail.com'"
+          - "git config --global user.name 'w0rxbend'"
+          - "git config --global pull.rebase true"
+          - "git config --global init.defaultBranch main"
+          - "git config --global core.autocrlf input"
+          - "timedatectl set-local-rtc 0"
+          - "timedatectl set-ntp true"
+        continueOnError: true
+        probeCommand: "git config --global --get init.defaultBranch | grep -q main"
+
+      - type: shell-command
+        name: oh-my-zsh-plugins
+        commands:
+          - "plugin_dir=\"${ZSH_CUSTOM:-$HOME/.oh-my-zsh/custom}/plugins\"; mkdir -p \"$plugin_dir\"; test -d \"$plugin_dir/zsh-syntax-highlighting/.git\" || git clone https://github.com/zsh-users/zsh-syntax-highlighting.git \"$plugin_dir/zsh-syntax-highlighting\""
+          - "plugin_dir=\"${ZSH_CUSTOM:-$HOME/.oh-my-zsh/custom}/plugins\"; mkdir -p \"$plugin_dir\"; test -d \"$plugin_dir/zsh-autosuggestions/.git\" || git clone https://github.com/zsh-users/zsh-autosuggestions \"$plugin_dir/zsh-autosuggestions\""
+          - "plugin_dir=\"${ZSH_CUSTOM:-$HOME/.oh-my-zsh/custom}/plugins\"; mkdir -p \"$plugin_dir\"; test -d \"$plugin_dir/zsh-history-substring-search/.git\" || git clone https://github.com/zsh-users/zsh-history-substring-search \"$plugin_dir/zsh-history-substring-search\""
+        continueOnError: true
+        probeCommand: "test -d ${ZSH_CUSTOM:-$HOME/.oh-my-zsh/custom}/plugins/zsh-autosuggestions"
+
+  - name: toolchains
+    description: "Install language toolchains and package managers"
+    dependsOn:
+      - shell-tools
+    restartPolicy:
+      type: requires-new-shell
+      shell: zsh
+    continueOnModuleError: true
+    steps:
+      - type: toolchain
+        name: rustup
+        kind: RUSTUP
+        installScript: "https://sh.rustup.rs"
+        installArgs:
+          - "-y"
+          - "--no-modify-path"
+        probeCommand: "test -f ~/.cargo/bin/rustup"
+
+      - type: toolchain
+        name: sdkman
+        kind: SDKMAN
+        installScript: "https://get.sdkman.io"
+        installArgs: []
+        probeCommand: "test -d ~/.sdkman && test -f ~/.sdkman/bin/sdkman-init.sh"
+
+      - type: toolchain
+        name: juliaup
+        kind: JULIAUP
+        installScript: "https://install.julialang.org"
+        installArgs:
+          - "--yes"
+        probeCommand: "test -f ~/.juliaup/bin/juliaup"
+
+      - type: toolchain
+        name: cargo-binstall
+        kind: GENERIC
+        installScript: "https://raw.githubusercontent.com/cargo-bins/cargo-binstall/main/install-from-binstall-release.sh"
+        installArgs: []
+        probeCommand: "test -f ~/.cargo/bin/cargo-binstall"
+
+      - type: shell-command
+        name: sdkman-packages
+        commands:
+          - "source \"$HOME/.sdkman/bin/sdkman-init.sh\" && sdk install java"
+          - "source \"$HOME/.sdkman/bin/sdkman-init.sh\" && sdk install gradle"
+          - "source \"$HOME/.sdkman/bin/sdkman-init.sh\" && sdk install maven"
+          - "source \"$HOME/.sdkman/bin/sdkman-init.sh\" && sdk install sbt"
+          - "source \"$HOME/.sdkman/bin/sdkman-init.sh\" && sdk install scala"
+          - "source \"$HOME/.sdkman/bin/sdkman-init.sh\" && sdk install micronaut"
+          - "source \"$HOME/.sdkman/bin/sdkman-init.sh\" && sdk install vertx"
+          - "source \"$HOME/.sdkman/bin/sdkman-init.sh\" && sdk install visualvm"
+        continueOnError: true
+        probeCommand: "test -d ~/.sdkman/candidates/java"
+
+      - type: shell-command
+        name: cargo-packages
+        commands:
+          - "export PATH=\"$HOME/.cargo/bin:$PATH\"; cargo-binstall --no-confirm eza lsd fd-find ripgrep bingrep hx just sd procs du-dust gping"
+          - "export PATH=\"$HOME/.cargo/bin:$PATH\"; cargo-binstall --no-confirm tree-sitter-cli"
+          - "export PATH=\"$HOME/.cargo/bin:$PATH\"; cargo-binstall --no-confirm macchina multibg-wayland bottom broot"
+        continueOnError: true
+        probeCommand: "test -f ~/.cargo/bin/eza && test -f ~/.cargo/bin/bottom"
+
+  - name: binaries
+    description: "Install pre-built binaries represented by current sysboot compiled-binary support"
+    dependsOn:
+      - toolchains
+    restartPolicy:
+      type: none
+    continueOnModuleError: true
+    steps:
+      - type: shell-command
+        name: binary-dist-shell-tools
+        commands:
+          - "apps=\"$HOME/.apps\"; version=v26.5.6; rm -rf \"$apps/yazi\"; mkdir -p \"$apps/yazi/bin\"; curl -L -o \"$apps/yazi/yazi.zip\" \"https://github.com/sxyazi/yazi/releases/download/${version}/yazi-x86_64-unknown-linux-gnu.zip\"; unzip -q \"$apps/yazi/yazi.zip\" -d \"$apps/yazi\"; mv -f \"$apps/yazi/yazi-x86_64-unknown-linux-gnu\"/* \"$apps/yazi/bin/\"; chmod +x \"$apps/yazi/bin/yazi\" \"$apps/yazi/bin/ya\"; rm -f \"$apps/yazi/yazi.zip\""
+          - "apps=\"$HOME/.apps\"; version=0.15.2; rm -rf \"$apps/zig\"; mkdir -p \"$apps/zig/bin\"; curl -L -o \"$apps/zig/zig.tar.xz\" \"https://ziglang.org/download/${version}/zig-x86_64-linux-${version}.tar.xz\"; tar -xf \"$apps/zig/zig.tar.xz\" -C \"$apps/zig/bin\"; ln -sf \"$apps/zig\"/bin/zig-x86_64-*/zig \"$apps/zig/bin/zig\"; chmod +x \"$apps/zig/bin/zig\"; rm -f \"$apps/zig/zig.tar.xz\""
+          - "apps=\"$HOME/.apps\"; rm -rf \"$apps/helm\"; mkdir -p \"$apps/helm/bin\"; curl -fsSL -o \"$apps/helm/get_helm.sh\" https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3; chmod 700 \"$apps/helm/get_helm.sh\"; USE_SUDO=false HELM_INSTALL_DIR=\"$apps/helm/bin\" \"$apps/helm/get_helm.sh\"; rm -f \"$apps/helm/get_helm.sh\""
+          - "apps=\"$HOME/.apps\"; rm -rf \"$apps/kubectl\"; mkdir -p \"$apps/kubectl/bin\"; curl -L -o \"$apps/kubectl/bin/kubectl\" \"https://dl.k8s.io/release/$(curl -L -s https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl\"; chmod +x \"$apps/kubectl/bin/kubectl\""
+          - "apps=\"$HOME/.apps\"; rm -rf \"$apps/kustomize\"; mkdir -p \"$apps/kustomize/bin\"; curl -L -o \"$apps/kustomize/install_kustomize.sh\" https://raw.githubusercontent.com/kubernetes-sigs/kustomize/master/hack/install_kustomize.sh; chmod +x \"$apps/kustomize/install_kustomize.sh\"; \"$apps/kustomize/install_kustomize.sh\" \"$apps/kustomize/bin\"; rm -f \"$apps/kustomize/install_kustomize.sh\""
+        continueOnError: true
+        probeCommand: "test -x ~/.apps/yazi/bin/yazi && test -x ~/.apps/zig/bin/zig"
+
+      - type: compiled-binary
+        name: minikube
+        binaryName: minikube
+        url: https://storage.googleapis.com/minikube/releases/latest/minikube-linux-amd64
+        installPath: ~/.apps/minikube/bin/minikube
+        versionCommand: "~/.apps/minikube/bin/minikube version"
+        expectedVersion: "minikube version"
+
+      - type: compiled-binary
+        name: kind
+        binaryName: kind
+        url: https://kind.sigs.k8s.io/dl/v0.31.0/kind-linux-amd64
+        installPath: ~/.apps/kind/bin/kind
+        versionCommand: "~/.apps/kind/bin/kind --version"
+        expectedVersion: "kind version"
+
+      - type: compiled-binary
+        name: zellij
+        binaryName: zellij
+        url: https://github.com/zellij-org/zellij/releases/download/v0.44.1/zellij-x86_64-unknown-linux-musl.tar.gz
+        installPath: ~/.apps/zellij/bin/zellij
+        versionCommand: "~/.apps/zellij/bin/zellij --version"
+        expectedVersion: "zellij"
+
+      - type: compiled-binary
+        name: neovide
+        binaryName: neovide
+        url: https://github.com/neovide/neovide/releases/latest/download/neovide.AppImage
+        installPath: ~/.apps/neovide/bin/neovide
+        versionCommand: "~/.apps/neovide/bin/neovide --version"
+        expectedVersion: "neovide"
+
+      - type: compiled-binary
+        name: neovim
+        binaryName: nvim
+        url: https://github.com/neovim/neovim/releases/latest/download/nvim-linux-x86_64.tar.gz
+        installPath: ~/.apps/neovim/bin/nvim
+        versionCommand: "~/.apps/neovim/bin/nvim --version"
+        expectedVersion: "NVIM v"
+
+      - type: compiled-binary
+        name: lazygit
+        binaryName: lazygit
+        url: https://github.com/jesseduffield/lazygit/releases/download/v0.61.0/lazygit_0.61.0_Linux_x86_64.tar.gz
+        installPath: ~/.apps/lazygit/bin/lazygit
+        versionCommand: "~/.apps/lazygit/bin/lazygit --version"
+        expectedVersion: "version="
+
+      - type: compiled-binary
+        name: jujutsu
+        binaryName: jj
+        url: https://github.com/jj-vcs/jj/releases/download/v0.40.0/jj-v0.40.0-x86_64-unknown-linux-musl.tar.gz
+        installPath: ~/.apps/jujutsu/bin/jj
+        versionCommand: "~/.apps/jujutsu/bin/jj --version"
+        expectedVersion: "jj"
+
+      - type: compiled-binary
+        name: xplr
+        binaryName: xplr
+        url: https://github.com/sayanarijit/xplr/releases/latest/download/xplr-linux.tar.gz
+        installPath: ~/.apps/xplr/bin/xplr
+        versionCommand: "~/.apps/xplr/bin/xplr --version"
+        expectedVersion: "xplr"
+
+  - name: fonts
+    description: "Install Nerd Fonts formerly installed by scripts/nerd-fonts.p0.sh"
+    dependsOn:
+      - cli-and-dev-packages
+    restartPolicy:
+      type: none
+    continueOnModuleError: true
+    steps:
+      - type: nerd-fonts
+        name: nerd-fonts-install
+        installerVersion: "v1.0.5"
+        nerdfontBinary: "nerdfont-install"
+        config:
+          release: "latest"
+          destination: "~/.fonts"
+          refreshFontCache: true
+          families:
+            - JetBrainsMono
+            - MPlus
+            - Terminus
+            - FantasqueSansMono
+            - Noto
+            - Hack
+            - HeavyData
+            - 3270
+            - FiraCode
+            - LiberationMono
+            - RobotoMono
+            - Mononoki
+            - Ubuntu
+            - DroidSansMono
+            - Monoid
+            - SpaceMono
+            - SourceCodePro
+            - ComicShannsMono
+            - SymbolsOnly
+            - DaddyTimeMono
+            - UbuntuMono
+            - Meslo
+            - FiraMono
+            - CodeNewRoman
+            - CascadiaCode
+            - Hasklig
+            - DejaVuSansMono
+            - ZedMono
+            - Inconsolata
+            - Hermit
+            - CommitMono
+            - Agave
+            - GeistMono
+            - Monaspace
+            - ShareTechMono
+            - Recursive
+            - D2Coding
+            - EnvyCodeR
+            - IosevkaTerm
+            - Lekton
+            - Lilex
+            - VictorMono
+        probeCommand: "fc-list | grep -qi 'JetBrainsMono Nerd'"
+
+  - name: flatpaks
+    description: "Install Flatpak applications from scripts/flatpak.sh"
+    dependsOn:
+      - cli-and-dev-packages
+    restartPolicy:
+      type: none
+    continueOnModuleError: true
+    steps:
+      - type: flatpak
+        name: desktop-flatpaks
+        remote: flathub
+        appIds:
+          - io.gitlab.librewolf-community
+          - com.google.Chrome
+          - com.brave.Browser
+          - app.zen_browser.zen
+          - dev.zed.Zed
+          - org.telegram.desktop
+          - com.discordapp.Discord
+          - org.zulip.Zulip
+          - dev.vencord.Vesktop
+          - com.spotify.Client
+          - org.audacityteam.Audacity
+          - org.kde.audiotube
+          - io.github.hrkfdn.ncspot
+          - org.gnome.Decibels
+          - io.bassi.Amberol
+          - com.github.neithern.g4music
+          - org.kde.kdenlive
+          - org.inkscape.Inkscape
+          - org.kde.krita
+          - org.blender.Blender
+          - org.freecad.FreeCAD
+          - org.godotengine.Godot
+          - org.librecad.librecad
+          - com.bambulab.BambuStudio
+          - io.gitlab.liferooter.TextPieces
+          - org.gnome.gitlab.somas.Apostrophe
+          - org.gnome.gitlab.ilhooq.Bookup
+          - io.github.diegopvlk.Dosage
+          - page.codeberg.censor.Censor
+          - com.logseq.Logseq
+          - app.devsuite.Ptyxis
+          - org.wezfurlong.wezterm
+          - com.mattjakeman.ExtensionManager
+          - com.github.tchx84.Flatseal
+          - io.github.giantpinkrobots.flatsweep
+          - io.github.flattool.Warehouse
+          - net.nokyan.Resources
+          - page.tesk.Refine
+          - io.missioncenter.MissionCenter
+          - be.alexandervanhee.gradia
+          - io.github.mrvladus.List
+          - com.belmoussaoui.Authenticator
+          - org.gnome.Polari
+          - org.gnome.dspy
+          - io.github.swordpuffin.rewaita
+          - org.gnome.design.Emblem
+          - org.mozilla.vpn
+          - io.github.zingytomato.netpeek
+          - com.oguzhaninan.Stacer
+          - com.pojtinger.felicitas.Sessions
+          - com.rafaelmardojai.Blanket
+          - io.github.nozwock.Packet
+          - org.localsend.localsend_app
+          - rest.insomnia.Insomnia
+          - com.vscodium.codium
+          - io.gitlab.news_flash.NewsFlash
+          - dev.Cogitri.Health
+          - io.github.nokse22.Exhibit

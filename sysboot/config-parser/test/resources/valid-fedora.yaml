@@ -1,0 +1,13 @@
+profile: fedora-workstation
+os:
+  type: fedora
+  release: "41"
+modules:
+  - type: packages
+    name: cli-tools
+    packageManager: dnf
+    continueOnError: true
+    packages:
+      - git
+      - curl
+      - wget

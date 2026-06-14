@@ -67,3 +67,12 @@ fabric.properties
 
 
 .idea/
+
+### Scala/Metals/Mill workspace files
+.metals/
+.bsp/
+sysboot/out/
+.cache/
+
+### Editor workspace files
+.vscode/

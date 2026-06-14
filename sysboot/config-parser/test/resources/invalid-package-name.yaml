@@ -1,0 +1,10 @@
+profile: invalid-pkg
+os:
+  type: fedora
+  release: "41"
+modules:
+  - type: packages
+    name: tools
+    packageManager: dnf
+    packages:
+      - "bad package name"

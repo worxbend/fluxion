@@ -1,0 +1,2 @@
+# Enable auto-env through sdkman_auto_env=true in ~/.sdkman/etc/config.
+java=24.0.1-tem

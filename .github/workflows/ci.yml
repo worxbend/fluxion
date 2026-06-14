@@ -1,0 +1,149 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - main
+      - master
+  pull_request:
+    branches:
+      - main
+      - master
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  MILL_VERSION: "0.12.3"
+
+jobs:
+  test:
+    name: Test
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Java 24
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "24"
+
+      - name: Install Mill
+        run: |
+          curl -fsSL -o /usr/local/bin/mill "https://github.com/com-lihaoyi/mill/releases/download/${MILL_VERSION}/${MILL_VERSION}"
+          chmod +x /usr/local/bin/mill
+
+      - name: Cache build dependencies
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cache/coursier
+            ~/.ivy2/cache
+            sysboot/out
+          key: ${{ runner.os }}-mill-${{ env.MILL_VERSION }}-${{ hashFiles('sysboot/build.sc') }}
+          restore-keys: |
+            ${{ runner.os }}-mill-${{ env.MILL_VERSION }}-
+
+      - name: Run tests
+        working-directory: sysboot
+        run: mill __.test
+
+      - name: Validate example configs
+        working-directory: sysboot
+        run: |
+          mill cli.run validate -c config/example-fedora.yaml
+          mill cli.run validate -c config/example-arch.yaml
+          mill cli.run validate -c config/example-opensuse.yaml
+          mill cli.run validate -c config/system-bootstrap-fedora.yaml
+
+  build-jvm:
+    name: Build JVM App
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Java 24
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "24"
+
+      - name: Install Mill
+        run: |
+          curl -fsSL -o /usr/local/bin/mill "https://github.com/com-lihaoyi/mill/releases/download/${MILL_VERSION}/${MILL_VERSION}"
+          chmod +x /usr/local/bin/mill
+
+      - name: Build assembly JAR
+        working-directory: sysboot
+        run: mill cli.assembly
+
+      - name: Package JVM artifact
+        run: |
+          set -eu
+          mkdir -p dist
+          cp sysboot/out/cli/assembly.dest/out.jar dist/sysboot.jar
+          (cd dist && sha256sum sysboot.jar > sysboot.jar.sha256)
+
+      - name: Upload JVM artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: sysboot-jvm
+          path: |
+            dist/sysboot.jar
+            dist/sysboot.jar.sha256
+          if-no-files-found: error
+
+  build-native:
+    name: Build Native App
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up GraalVM Java 24
+        uses: graalvm/setup-graalvm@v1
+        with:
+          distribution: graalvm
+          java-version: "24"
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          native-image-job-reports: true
+
+      - name: Install Mill
+        run: |
+          curl -fsSL -o /usr/local/bin/mill "https://github.com/com-lihaoyi/mill/releases/download/${MILL_VERSION}/${MILL_VERSION}"
+          chmod +x /usr/local/bin/mill
+
+      - name: Build native image
+        working-directory: sysboot
+        run: mill cli.nativeImage
+
+      - name: Smoke test native image
+        run: sysboot/out/cli/nativeImage.dest/sysboot --help >/dev/null
+
+      - name: Package native artifact
+        run: |
+          set -eu
+          mkdir -p dist/pkg
+          cp sysboot/out/cli/nativeImage.dest/sysboot dist/pkg/sysboot
+          chmod +x dist/pkg/sysboot
+          tar -C dist/pkg -czf dist/sysboot-linux-amd64.tar.gz sysboot
+          (cd dist && sha256sum sysboot-linux-amd64.tar.gz > sysboot-linux-amd64.tar.gz.sha256)
+
+      - name: Upload native artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: sysboot-linux-amd64
+          path: |
+            dist/sysboot-linux-amd64.tar.gz
+            dist/sysboot-linux-amd64.tar.gz.sha256
+          if-no-files-found: error

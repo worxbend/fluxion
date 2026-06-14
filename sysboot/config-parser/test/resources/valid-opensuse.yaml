@@ -1,0 +1,12 @@
+profile: opensuse-workstation
+os:
+  type: opensuse
+  release: "15.6"
+modules:
+  - type: packages
+    name: cli-tools
+    packageManager: zypper
+    continueOnError: true
+    packages:
+      - git
+      - curl

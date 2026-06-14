@@ -1,10 +1,14 @@
-name: "CodeQL"
+name: CodeQL
 
 on:
   push:
-    branches: [ "master" ]
+    branches:
+      - master
+      - main
   pull_request:
-    branches: [ "master" ]
+    branches:
+      - master
+      - main
   schedule:
     - cron: "24 3 * * 3"
 
@@ -24,18 +28,30 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
       - name: Initialize CodeQL
-        uses: github/codeql-action/init@v2
+        uses: github/codeql-action/init@v4
         with:
           languages: ${{ matrix.language }}
           queries: +security-and-quality
 
-      - name: Autobuild
-        uses: github/codeql-action/autobuild@v2
+      - name: Set up GraalVM Java 24
+        uses: graalvm/setup-graalvm@v1
+        with:
+          distribution: graalvm
+          java-version: "24"
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Install Mill
+        run: |
+          curl -fsSL -o /usr/local/bin/mill https://github.com/com-lihaoyi/mill/releases/download/0.12.3/0.12.3
+          chmod +x /usr/local/bin/mill
+
+      - name: Build for CodeQL
+        run: cd sysboot && mill __.compile
 
       - name: Perform CodeQL Analysis
-        uses: github/codeql-action/analyze@v2
+        uses: github/codeql-action/analyze@v4
         with:
           category: "/language:${{ matrix.language }}"

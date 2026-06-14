@@ -1,0 +1,133 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Release version or tag, for example v1.2.3"
+        required: true
+        type: string
+      prerelease:
+        description: "Mark the GitHub release as a prerelease"
+        required: false
+        default: false
+        type: boolean
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ github.event_name == 'workflow_dispatch' && inputs.version || github.ref_name }}
+  cancel-in-progress: false
+
+env:
+  MILL_VERSION: "0.12.3"
+
+jobs:
+  build:
+    name: Build Release Assets
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      - name: Resolve release version
+        id: version
+        run: |
+          set -eu
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            version="${{ inputs.version }}"
+          else
+            version="${GITHUB_REF_NAME}"
+          fi
+          case "$version" in
+            v*) ;;
+            *) version="v${version}" ;;
+          esac
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up GraalVM Java 24
+        uses: graalvm/setup-graalvm@v1
+        with:
+          distribution: graalvm
+          java-version: "24"
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          native-image-job-reports: true
+
+      - name: Install Mill
+        run: |
+          curl -fsSL -o /usr/local/bin/mill "https://github.com/com-lihaoyi/mill/releases/download/${MILL_VERSION}/${MILL_VERSION}"
+          chmod +x /usr/local/bin/mill
+
+      - name: Run tests
+        working-directory: sysboot
+        run: mill __.test
+
+      - name: Validate example configs
+        working-directory: sysboot
+        run: |
+          mill cli.run validate -c config/example-fedora.yaml
+          mill cli.run validate -c config/example-arch.yaml
+          mill cli.run validate -c config/example-opensuse.yaml
+          mill cli.run validate -c config/system-bootstrap-fedora.yaml
+
+      - name: Build JVM assembly
+        working-directory: sysboot
+        run: mill cli.assembly
+
+      - name: Build native image
+        working-directory: sysboot
+        run: mill cli.nativeImage
+
+      - name: Smoke test native image
+        run: sysboot/out/cli/nativeImage.dest/sysboot --help >/dev/null
+
+      - name: Package release assets
+        run: |
+          set -eu
+          version="${{ steps.version.outputs.version }}"
+          mkdir -p dist/pkg
+          cp sysboot/out/cli/assembly.dest/out.jar "dist/sysboot-${version}-all.jar"
+          cp sysboot/out/cli/nativeImage.dest/sysboot dist/pkg/sysboot
+          chmod +x dist/pkg/sysboot
+          tar -C dist/pkg -czf "dist/sysboot-${version}-linux-amd64.tar.gz" sysboot
+          (cd dist && sha256sum "sysboot-${version}-all.jar" "sysboot-${version}-linux-amd64.tar.gz" > "sysboot-${version}-checksums.sha256")
+
+      - name: Upload release assets as workflow artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: sysboot-release-${{ steps.version.outputs.version }}
+          path: |
+            dist/*.jar
+            dist/*.tar.gz
+            dist/*.sha256
+          if-no-files-found: error
+
+  publish:
+    name: Publish GitHub Release
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download release assets
+        uses: actions/download-artifact@v4
+        with:
+          name: sysboot-release-${{ needs.build.outputs.version }}
+          path: dist
+
+      - name: Publish GitHub release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ needs.build.outputs.version }}
+          name: sysboot ${{ needs.build.outputs.version }}
+          target_commitish: ${{ github.sha }}
+          generate_release_notes: true
+          prerelease: ${{ github.event_name == 'workflow_dispatch' && inputs.prerelease || false }}
+          files: |
+            dist/*.jar
+            dist/*.tar.gz
+            dist/*.sha256

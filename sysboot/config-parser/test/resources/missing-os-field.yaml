@@ -1,0 +1,7 @@
+profile: broken-profile
+modules:
+  - type: packages
+    name: tools
+    packageManager: dnf
+    packages:
+      - git
