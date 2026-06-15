@@ -1,5 +1,6 @@
 package dev.sysboot.executor;
 
+import dev.sysboot.core.AptRepositoryModule;
 import dev.sysboot.core.AssertModule;
 import dev.sysboot.core.BootstrapModule;
 import dev.sysboot.core.CompiledBinaryModule;
@@ -56,6 +57,7 @@ final class PhaseFingerprintCalculator {
     switch (module) {
       case PackageModule pm -> appendPackageModule(builder, pm);
       case ZypperModule zm -> appendPackageModule(builder, zm.asPackageModule());
+      case AptRepositoryModule arm -> appendAptRepository(builder, arm);
       case FlatpakModule fm -> {
         append(builder, "type", "flatpak");
         append(builder, "remote", fm.remote());
@@ -128,6 +130,14 @@ final class PhaseFingerprintCalculator {
     append(builder, "packageManager", module.packageManager().name());
     append(builder, "continueOnError", module.continueOnError());
     module.packages().forEach(pkg -> append(builder, "package", pkg.value()));
+  }
+
+  private void appendAptRepository(StringBuilder builder, AptRepositoryModule module) {
+    append(builder, "type", "apt-repository");
+    append(builder, "source", module.sourceEntry());
+    append(builder, "sourceList", module.sourceListPath().toString());
+    append(builder, "signingKeyUrl", module.signingKeyUrl().map(Object::toString));
+    append(builder, "keyring", module.keyringPath().map(Object::toString));
   }
 
   private void appendCompiledBinary(StringBuilder builder, CompiledBinaryModule module) {

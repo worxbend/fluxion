@@ -8,6 +8,8 @@ import dev.sysboot.core.ShellRunner;
 import dev.sysboot.core.SudoPasswordProvider;
 import dev.sysboot.executor.AptPackageInstaller;
 import dev.sysboot.executor.AptPackageProbe;
+import dev.sysboot.executor.AptRepositoryInstaller;
+import dev.sysboot.executor.AptRepositoryProbe;
 import dev.sysboot.executor.BootstrapOrchestratorImpl;
 import dev.sysboot.executor.CompiledBinaryInstaller;
 import dev.sysboot.executor.CompiledBinaryProbe;
@@ -162,6 +164,7 @@ public final class ApplicationContext {
         registry,
         new ShellScriptExecutor(primaryRunner),
         new CompiledBinaryInstaller(baseRunner),
+        new AptRepositoryInstaller(baseRunner),
         new FlatpakInstaller(baseRunner),
         new FlatpakRemoteInstaller(baseRunner),
         new DotbotExecutor(baseRunner),
@@ -183,6 +186,7 @@ public final class ApplicationContext {
             new DnfPackageProbe(runner),
             new PacmanPackageProbe(runner),
             new AptPackageProbe(runner),
+            new AptRepositoryProbe(runner),
             new ZypperPackageProbe(runner),
             new FlatpakProbe(runner),
             new FlatpakRemoteProbe(runner),

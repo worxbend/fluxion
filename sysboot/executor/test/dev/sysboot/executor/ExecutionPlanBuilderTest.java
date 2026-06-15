@@ -2,6 +2,7 @@ package dev.sysboot.executor;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import dev.sysboot.core.AptRepositoryModule;
 import dev.sysboot.core.AssertModule;
 import dev.sysboot.core.BootstrapConfig;
 import dev.sysboot.core.FlatpakRemoteModule;
@@ -19,6 +20,7 @@ import dev.sysboot.core.ProfileName;
 import dev.sysboot.core.RestartPolicy;
 import dev.sysboot.core.StepResult;
 import java.net.URI;
+import java.nio.file.Path;
 import java.time.Duration;
 import java.util.List;
 import java.util.Optional;
@@ -157,6 +159,37 @@ class ExecutionPlanBuilderTest {
                 "--if-not-exists",
                 "flathub",
                 "https://flathub.org/repo/flathub.flatpakrepo"));
+  }
+
+  @Test
+  void build_aptRepositoryModule_includesCommandPreview() {
+    var builder = new ExecutionPlanBuilder(new PackageManagerExecutorRegistry(List.of(dnf())));
+    var phase =
+        new Phase(
+            new PhaseName("repositories"),
+            "",
+            List.of(
+                new AptRepositoryModule(
+                    new ModuleName("docker"),
+                    "deb https://download.docker.com/linux/debian bookworm stable",
+                    Path.of("/etc/apt/sources.list.d/docker.list"),
+                    Optional.empty(),
+                    Optional.empty())),
+            List.of(),
+            new RestartPolicy.None(),
+            false);
+
+    ExecutionPlan plan = builder.build(config(List.of(phase)));
+
+    ExecutionPlan.Item item = plan.phases().getFirst().modules().getFirst().items().getFirst();
+    assertThat(item.item().itemType()).isEqualTo(ItemType.APT_REPOSITORY);
+    assertThat(item.commandPreview().orElseThrow())
+        .containsExactly(
+            "/bin/bash",
+            "-lc",
+            "printf %s\\\\n"
+                + " 'deb https://download.docker.com/linux/debian bookworm stable' | sudo tee"
+                + " '/etc/apt/sources.list.d/docker.list' >/dev/null && sudo apt-get update");
   }
 
   private static BootstrapConfig config(List<Phase> phases) {

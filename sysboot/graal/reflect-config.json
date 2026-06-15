@@ -204,6 +204,12 @@
     "allDeclaredConstructors": true
   },
   {
+    "name": "dev.sysboot.config.yaml.contract.AptRepositoryModuleDocument",
+    "allDeclaredFields": true,
+    "allDeclaredMethods": true,
+    "allDeclaredConstructors": true
+  },
+  {
     "name": "dev.sysboot.config.yaml.contract.FlatpakModuleDocument",
     "allDeclaredFields": true,
     "allDeclaredMethods": true,

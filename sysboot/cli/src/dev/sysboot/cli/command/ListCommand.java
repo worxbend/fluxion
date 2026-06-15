@@ -4,6 +4,7 @@ import dev.sysboot.app.ApplicationContext;
 import dev.sysboot.cli.option.GlobalOptions;
 import dev.sysboot.cli.output.JsonOutput;
 import dev.sysboot.cli.output.OutputFormat;
+import dev.sysboot.core.AptRepositoryModule;
 import dev.sysboot.core.AssertModule;
 import dev.sysboot.core.BootstrapConfig;
 import dev.sysboot.core.BootstrapModule;
@@ -83,6 +84,7 @@ public final class ListCommand implements Runnable {
   private String moduleType(BootstrapModule module) {
     return switch (module) {
       case PackageModule pm -> "📦 packages";
+      case AptRepositoryModule ignored -> "📦 apt repo";
       case FlatpakModule ignored -> "🗃 flatpak";
       case FlatpakRemoteModule ignored -> "🗃 remote";
       case ShellScriptModule ignored -> "📜 script";
@@ -103,6 +105,7 @@ public final class ListCommand implements Runnable {
   private String jsonModuleType(BootstrapModule module) {
     return switch (module) {
       case PackageModule ignored -> "packages";
+      case AptRepositoryModule ignored -> "apt-repository";
       case FlatpakModule ignored -> "flatpak";
       case FlatpakRemoteModule ignored -> "flatpak-remote";
       case ShellScriptModule ignored -> "shell-script";
@@ -123,6 +126,7 @@ public final class ListCommand implements Runnable {
   private String moduleDescription(BootstrapModule module) {
     return switch (module) {
       case PackageModule pm -> pm.packages().size() + " packages (" + pm.packageManager() + ")";
+      case AptRepositoryModule arm -> arm.sourceListPath() + " <- " + arm.sourceEntry();
       case FlatpakModule fm -> fm.appIds().size() + " apps from " + fm.remote();
       case FlatpakRemoteModule frm -> frm.remote() + " -> " + frm.url();
       case ShellScriptModule sm -> sm.script().toString();

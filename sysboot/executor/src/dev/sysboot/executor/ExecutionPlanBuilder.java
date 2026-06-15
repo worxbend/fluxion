@@ -1,5 +1,6 @@
 package dev.sysboot.executor;
 
+import dev.sysboot.core.AptRepositoryModule;
 import dev.sysboot.core.AssertModule;
 import dev.sysboot.core.BootstrapConfig;
 import dev.sysboot.core.BootstrapModule;
@@ -77,6 +78,10 @@ public final class ExecutionPlanBuilder {
     if (module instanceof FlatpakRemoteModule flatpakRemoteModule) {
       return Optional.of(flatpakRemoteCommand(flatpakRemoteModule));
     }
+    if (module instanceof AptRepositoryModule aptRepositoryModule) {
+      return Optional.of(
+          new AptRepositoryInstaller(new DefaultShellRunner()).addCommand(aptRepositoryModule));
+    }
     return item.packageManager()
         .map(
             kind ->
@@ -101,6 +106,9 @@ public final class ExecutionPlanBuilder {
 
   private List<ModuleItem> fallbackItems(BootstrapModule module) {
     return switch (module) {
+      case AptRepositoryModule arm ->
+          List.of(
+              new ModuleItem(arm.name(), arm.sourceListPath().toString(), ItemType.APT_REPOSITORY));
       case FlatpakModule fm ->
           fm.appIds().stream()
               .map(app -> new ModuleItem(fm.name(), app, ItemType.FLATPAK))
@@ -145,6 +153,7 @@ public final class ExecutionPlanBuilder {
   private String moduleType(BootstrapModule module) {
     return switch (module) {
       case PackageModule ignored -> "packages";
+      case AptRepositoryModule ignored -> "apt-repository";
       case FlatpakModule ignored -> "flatpak";
       case FlatpakRemoteModule ignored -> "flatpak-remote";
       case ShellScriptModule ignored -> "shell-script";

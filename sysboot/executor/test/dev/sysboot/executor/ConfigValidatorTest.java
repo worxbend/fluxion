@@ -2,6 +2,7 @@ package dev.sysboot.executor;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import dev.sysboot.core.AptRepositoryModule;
 import dev.sysboot.core.BinaryUrl;
 import dev.sysboot.core.BootstrapConfig;
 import dev.sysboot.core.BootstrapModule;
@@ -188,10 +189,54 @@ class ConfigValidatorTest {
             });
   }
 
+  @Test
+  void validate_whenAptRepositoryOnDebianWithSigningKey_reportsNoIssues() {
+    var module =
+        new AptRepositoryModule(
+            new ModuleName("docker"),
+            "deb [signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/debian"
+                + " bookworm stable",
+            Path.of("/etc/apt/sources.list.d/docker.list"),
+            Optional.of(URI.create("https://download.docker.com/linux/debian/gpg")),
+            Optional.of(Path.of("/etc/apt/keyrings/docker.gpg")));
+
+    ValidationReport report =
+        validator.validate(
+            config(new OsTarget.DebianTarget("12"), phase("repos", List.of(module))));
+
+    assertThat(report.issues()).isEmpty();
+  }
+
+  @Test
+  void validate_whenAptRepositoryOnFedora_reportsError() {
+    var module =
+        new AptRepositoryModule(
+            new ModuleName("docker"),
+            "deb https://download.docker.com/linux/debian bookworm stable",
+            Path.of("/etc/apt/sources.list.d/docker.list"),
+            Optional.empty(),
+            Optional.empty());
+
+    ValidationReport report = validator.validate(config(phase("repos", List.of(module))));
+
+    assertThat(report.hasErrors()).isTrue();
+    assertThat(report.issues())
+        .anySatisfy(
+            issue -> {
+              assertThat(issue.severity()).isEqualTo(ValidationIssue.Severity.ERROR);
+              assertThat(issue.path()).isEqualTo("jobs[0].steps[0].type");
+              assertThat(issue.message()).contains("APT repositories");
+            });
+  }
+
   private static BootstrapConfig config(Phase phase) {
+    return config(new OsTarget.FedoraTarget("44"), phase);
+  }
+
+  private static BootstrapConfig config(OsTarget target, Phase phase) {
     return BootstrapConfig.builder()
         .profileName(new ProfileName("test"))
-        .target(new OsTarget.FedoraTarget("44"))
+        .target(target)
         .addPhase(phase)
         .build();
   }

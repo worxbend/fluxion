@@ -3,6 +3,7 @@ package dev.sysboot.config;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import dev.sysboot.core.AptRepositoryModule;
 import dev.sysboot.core.AssertModule;
 import dev.sysboot.core.BootstrapConfig;
 import dev.sysboot.core.CompiledBinaryModule;
@@ -88,6 +89,36 @@ class YamlConfigLoaderTest {
     assertThat(module.remote()).isEqualTo("flathub");
     assertThat(module.url().toString()).isEqualTo("https://flathub.org/repo/flathub.flatpakrepo");
     assertThat(module.system()).isFalse();
+  }
+
+  @Test
+  void load_whenAptRepositoryStep_parsesRepositoryConfiguration(@TempDir Path tmpDir)
+      throws IOException {
+    Path config =
+        writeConfig(
+            tmpDir,
+            """
+            profile: debian-test
+            os:
+              type: debian
+              release: "12"
+            jobs:
+              - name: repositories
+                steps:
+                  - type: apt-repository
+                    name: docker
+                    source: deb [signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/debian bookworm stable
+                    signingKeyUrl: https://download.docker.com/linux/debian/gpg
+            """);
+
+    BootstrapConfig result = loader.load(config);
+
+    var module = (AptRepositoryModule) result.phases().getFirst().modules().getFirst();
+    assertThat(module.sourceListPath().toString()).isEqualTo("/etc/apt/sources.list.d/docker.list");
+    assertThat(module.signingKeyUrl())
+        .hasValueSatisfying(
+            uri -> assertThat(uri).hasToString("https://download.docker.com/linux/debian/gpg"));
+    assertThat(module.keyringPath()).hasValue(Path.of("/etc/apt/keyrings/docker.gpg"));
   }
 
   @Test

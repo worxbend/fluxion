@@ -6,6 +6,7 @@ import dev.sysboot.cli.error.CliFailureException;
 import dev.sysboot.cli.error.ExitCode;
 import dev.sysboot.cli.option.GlobalOptions;
 import dev.sysboot.config.ConfigLoadException;
+import dev.sysboot.core.AptRepositoryModule;
 import dev.sysboot.core.AssertModule;
 import dev.sysboot.core.BootstrapConfig;
 import dev.sysboot.core.BootstrapModule;
@@ -176,6 +177,7 @@ public final class DoctorCommand implements Runnable {
     for (BootstrapModule module : config.modules()) {
       switch (module) {
         case PackageModule pm -> managers.add(pm.packageManager());
+        case AptRepositoryModule ignored -> managers.add(PackageManagerKind.APT);
         case ZypperModule ignored -> managers.add(PackageManagerKind.ZYPPER);
         default -> {}
       }
@@ -204,6 +206,7 @@ public final class DoctorCommand implements Runnable {
   private void addModuleChecks(BootstrapModule module, List<Check> checks) {
     switch (module) {
       case FlatpakModule fm -> addFlatpakChecks(fm, checks);
+      case AptRepositoryModule arm -> addAptRepositoryChecks(arm, checks);
       case FlatpakRemoteModule frm -> addFlatpakRemoteChecks(frm, checks);
       case DefaultShellModule dsm -> checks.add(checkShellPath(dsm.shellPath()));
       case ShellCommandModule scm -> checks.add(checkRequiredCommand(scm.shell(), "shell"));
@@ -218,6 +221,12 @@ public final class DoctorCommand implements Runnable {
     if (module.remote().equals("flathub")) {
       checks.add(Check.warn("flatpak remote", "verify Flathub is configured before run"));
     }
+  }
+
+  private void addAptRepositoryChecks(AptRepositoryModule module, List<Check> checks) {
+    checks.add(checkRequiredCommand("apt-get", "apt command"));
+    checks.add(checkRequiredCommand("curl", "curl command"));
+    module.signingKeyUrl().ifPresent(url -> checks.add(checkUrl("apt signing key", url)));
   }
 
   private void addFlatpakRemoteChecks(FlatpakRemoteModule module, List<Check> checks) {

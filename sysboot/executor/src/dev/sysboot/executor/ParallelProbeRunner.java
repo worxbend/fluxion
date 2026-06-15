@@ -1,5 +1,6 @@
 package dev.sysboot.executor;
 
+import dev.sysboot.core.AptRepositoryModule;
 import dev.sysboot.core.AssertModule;
 import dev.sysboot.core.BootstrapModule;
 import dev.sysboot.core.CompiledBinaryModule;
@@ -93,6 +94,10 @@ public final class ParallelProbeRunner {
                         targets.add(
                             ModuleItem.packageItem(
                                 zm.name(), pkg.value(), PackageManagerKind.ZYPPER)));
+        case AptRepositoryModule arm ->
+            targets.add(
+                new ModuleItem(
+                    arm.name(), arm.sourceListPath().toString(), ItemType.APT_REPOSITORY));
         case FlatpakModule fm ->
             fm.appIds()
                 .forEach(appId -> targets.add(new ModuleItem(fm.name(), appId, ItemType.FLATPAK)));

@@ -114,6 +114,27 @@ Fedora uses `dnf`, Arch uses `pacman`, `paru`, or `yay`, Debian uses `apt`, and 
 Use `flatpak-remote` when the remote itself should be declared and audited instead of hidden in a
 shell command.
 
+Use `apt-repository` for Debian/Ubuntu APT sources that would otherwise be hidden in shell setup
+commands.
+
+---
+
+### `apt-repository` — add an APT source
+
+```yaml
+- type: apt-repository
+  name: docker
+  source: deb [arch=amd64 signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/debian bookworm stable
+  sourceList: /etc/apt/sources.list.d/docker.list # default: /etc/apt/sources.list.d/<name>.list
+  signingKeyUrl: https://download.docker.com/linux/debian/gpg
+  keyring: /etc/apt/keyrings/docker.gpg          # default when signingKeyUrl is set
+```
+
+Execution writes the source line with `sudo tee`, optionally installs the signing key with
+`curl | sudo gpg --dearmor`, and runs `sudo apt-get update`. `plan --show-commands`, `dry-run`,
+`status`, `diff`, and `explain` use the source list path as the item key. Validation fails when the
+target OS is not Debian/Ubuntu and warns when no signing key URL is configured.
+
 ---
 
 ### `flatpak-remote` — add a Flatpak remote

@@ -1,5 +1,6 @@
 package dev.sysboot.executor;
 
+import dev.sysboot.core.AptRepositoryModule;
 import dev.sysboot.core.AssertModule;
 import dev.sysboot.core.BootstrapConfig;
 import dev.sysboot.core.BootstrapModule;
@@ -47,6 +48,7 @@ public final class BootstrapOrchestratorImpl implements BootstrapOrchestrator {
   private final ModuleExecutorRegistry moduleExecutorRegistry;
   private final ShellScriptExecutor shellScriptExecutor;
   private final CompiledBinaryInstaller binaryInstaller;
+  private final AptRepositoryInstaller aptRepositoryInstaller;
   private final FlatpakInstaller flatpakInstaller;
   private final FlatpakRemoteInstaller flatpakRemoteInstaller;
   private final DotbotExecutor dotbotExecutor;
@@ -68,6 +70,7 @@ public final class BootstrapOrchestratorImpl implements BootstrapOrchestrator {
       PackageManagerExecutorRegistry executorRegistry,
       ShellScriptExecutor shellScriptExecutor,
       CompiledBinaryInstaller binaryInstaller,
+      AptRepositoryInstaller aptRepositoryInstaller,
       FlatpakInstaller flatpakInstaller,
       FlatpakRemoteInstaller flatpakRemoteInstaller,
       DotbotExecutor dotbotExecutor,
@@ -86,6 +89,7 @@ public final class BootstrapOrchestratorImpl implements BootstrapOrchestrator {
         new ModuleExecutorRegistry(List.of(new PackageModuleExecutor(executorRegistry)));
     this.shellScriptExecutor = shellScriptExecutor;
     this.binaryInstaller = binaryInstaller;
+    this.aptRepositoryInstaller = aptRepositoryInstaller;
     this.flatpakInstaller = flatpakInstaller;
     this.flatpakRemoteInstaller = flatpakRemoteInstaller;
     this.dotbotExecutor = dotbotExecutor;
@@ -116,6 +120,7 @@ public final class BootstrapOrchestratorImpl implements BootstrapOrchestrator {
         executorRegistry,
         shellScriptExecutor,
         binaryInstaller,
+        new AptRepositoryInstaller(new DefaultShellRunner()),
         flatpakInstaller,
         new FlatpakRemoteInstaller(new DefaultShellRunner()),
         new DotbotExecutor(new DefaultShellRunner()),
@@ -219,6 +224,7 @@ public final class BootstrapOrchestratorImpl implements BootstrapOrchestrator {
               module, listener, new ModuleExecutionContext(skipEvaluator, this::recordSuccess));
     }
     return switch (module) {
+      case AptRepositoryModule arm -> executeAptRepositoryModule(arm, listener);
       case FlatpakModule fm -> executeFlatpakModule(fm, listener);
       case FlatpakRemoteModule frm -> executeFlatpakRemoteModule(frm, listener);
       case ShellScriptModule sm -> executeShellScript(sm, listener, phaseRunner);
@@ -349,6 +355,16 @@ public final class BootstrapOrchestratorImpl implements BootstrapOrchestrator {
     return anyFailed;
   }
 
+  private boolean executeAptRepositoryModule(
+      AptRepositoryModule module, ExecutionEventListener listener) {
+    return executeItem(
+        module.name(),
+        module.sourceListPath().toString(),
+        ItemType.APT_REPOSITORY,
+        () -> aptRepositoryInstaller.add(module),
+        listener);
+  }
+
   private boolean executeFlatpakRemoteModule(
       FlatpakRemoteModule module, ExecutionEventListener listener) {
     return executeItem(
@@ -424,6 +440,12 @@ public final class BootstrapOrchestratorImpl implements BootstrapOrchestrator {
       return;
     }
     switch (module) {
+      case AptRepositoryModule arm ->
+          emitDryRun(
+              arm.name(),
+              arm.sourceListPath().toString(),
+              aptRepositoryInstaller.addCommand(arm),
+              listener);
       case FlatpakModule fm ->
           fm.appIds()
               .forEach(

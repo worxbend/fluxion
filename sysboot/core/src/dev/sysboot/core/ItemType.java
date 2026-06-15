@@ -2,6 +2,7 @@ package dev.sysboot.core;
 
 public enum ItemType {
   PACKAGE,
+  APT_REPOSITORY,
   FLATPAK,
   FLATPAK_REMOTE,
   SHELL_SCRIPT,

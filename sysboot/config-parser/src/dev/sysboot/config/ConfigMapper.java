@@ -1,5 +1,6 @@
 package dev.sysboot.config;
 
+import dev.sysboot.config.yaml.contract.AptRepositoryModuleDocument;
 import dev.sysboot.config.yaml.contract.AssertModuleDocument;
 import dev.sysboot.config.yaml.contract.ChecksumDocument;
 import dev.sysboot.config.yaml.contract.CompiledBinaryModuleDocument;
@@ -20,6 +21,7 @@ import dev.sysboot.config.yaml.contract.ShellCommandModuleDocument;
 import dev.sysboot.config.yaml.contract.ShellReloadModuleDocument;
 import dev.sysboot.config.yaml.contract.ShellScriptModuleDocument;
 import dev.sysboot.config.yaml.contract.ToolchainModuleDocument;
+import dev.sysboot.core.AptRepositoryModule;
 import dev.sysboot.core.AssertModule;
 import dev.sysboot.core.BinaryUrl;
 import dev.sysboot.core.BootstrapConfig;
@@ -146,6 +148,7 @@ final class ConfigMapper {
   private BootstrapModule mapModule(ModuleDocument dto, Path configFile) {
     return switch (dto) {
       case PackagesModuleDocument pm -> mapPackagesModule(pm);
+      case AptRepositoryModuleDocument arm -> mapAptRepositoryModule(arm);
       case FlatpakModuleDocument fm -> mapFlatpakModule(fm);
       case FlatpakRemoteModuleDocument frm -> mapFlatpakRemoteModule(frm);
       case ShellScriptModuleDocument sm -> mapShellScriptModule(sm, configFile);
@@ -172,6 +175,22 @@ final class ConfigMapper {
     }
     return new PackageModule(
         new ModuleName(requireField(dto.name, "name")), kind, packages, dto.continueOnError);
+  }
+
+  private AptRepositoryModule mapAptRepositoryModule(AptRepositoryModuleDocument dto) {
+    String name = requireField(dto.name, "apt-repository.name");
+    Optional<URI> keyUrl = mapUri(dto.signingKeyUrl);
+    Optional<Path> keyring =
+        Optional.ofNullable(dto.keyring)
+            .map(Path::of)
+            .or(() -> keyUrl.map(ignored -> Path.of("/etc/apt/keyrings/" + name + ".gpg")));
+    return new AptRepositoryModule(
+        new ModuleName(name),
+        requireField(dto.source, "apt-repository.source"),
+        Path.of(
+            dto.sourceList != null ? dto.sourceList : "/etc/apt/sources.list.d/" + name + ".list"),
+        keyUrl,
+        keyring);
   }
 
   private FlatpakModule mapFlatpakModule(FlatpakModuleDocument dto) {
@@ -326,6 +345,10 @@ final class ConfigMapper {
 
   private Optional<BinaryUrl> mapBinaryUrl(String value) {
     return Optional.ofNullable(value).map(url -> new BinaryUrl(URI.create(url)));
+  }
+
+  private Optional<URI> mapUri(String value) {
+    return Optional.ofNullable(value).map(URI::create);
   }
 
   private Path absolutePath(String rawPath, String fieldName) {

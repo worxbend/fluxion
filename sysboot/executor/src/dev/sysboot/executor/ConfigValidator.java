@@ -1,5 +1,6 @@
 package dev.sysboot.executor;
 
+import dev.sysboot.core.AptRepositoryModule;
 import dev.sysboot.core.BootstrapConfig;
 import dev.sysboot.core.BootstrapModule;
 import dev.sysboot.core.CompiledBinaryModule;
@@ -67,6 +68,8 @@ public final class ConfigValidator {
           validatePackageModule(config, packageModule, path, issues);
       case ZypperModule zypperModule ->
           validatePackageModule(config, zypperModule.asPackageModule(), path, issues);
+      case AptRepositoryModule aptRepositoryModule ->
+          validateAptRepository(config, aptRepositoryModule, path, issues);
       case FlatpakRemoteModule flatpakRemoteModule ->
           validateFlatpakRemote(flatpakRemoteModule, path, issues);
       case CompiledBinaryModule binaryModule -> validateCompiledBinary(binaryModule, path, issues);
@@ -81,6 +84,27 @@ public final class ConfigValidator {
           issues,
           path + ".url",
           "Flatpak remote '%s' should use an HTTPS repository URL".formatted(module.remote()));
+    }
+  }
+
+  private void validateAptRepository(
+      BootstrapConfig config,
+      AptRepositoryModule module,
+      String path,
+      List<ValidationIssue> issues) {
+    if (!(config.target() instanceof OsTarget.DebianTarget)) {
+      addError(issues, path + ".type", "APT repositories are only valid for debian targets");
+    }
+    module
+        .signingKeyUrl()
+        .filter(url -> !"https".equalsIgnoreCase(url.getScheme()))
+        .ifPresent(
+            url -> addWarning(issues, path + ".signingKeyUrl", "Signing key URL should use HTTPS"));
+    if (module.signingKeyUrl().isEmpty()) {
+      addWarning(
+          issues,
+          path + ".signingKeyUrl",
+          "APT repository '%s' has no signing key URL".formatted(module.name().value()));
     }
   }
 

@@ -1,5 +1,6 @@
 package dev.sysboot.tui;
 
+import dev.sysboot.core.AptRepositoryModule;
 import dev.sysboot.core.AssertModule;
 import dev.sysboot.core.BootstrapConfig;
 import dev.sysboot.core.BootstrapModule;
@@ -77,6 +78,7 @@ final class BootstrapConfigSelectionFilter {
     return switch (module) {
       case PackageModule packageModule -> filterPackageModule(packageModule, entries);
       case ZypperModule zypperModule -> filterZypperModule(zypperModule, entries);
+      case AptRepositoryModule aptRepositoryModule -> Optional.of(aptRepositoryModule);
       case FlatpakModule flatpakModule -> filterFlatpakModule(flatpakModule, entries);
       case FlatpakRemoteModule flatpakRemoteModule -> Optional.of(flatpakRemoteModule);
       case ShellCommandModule shellCommandModule ->

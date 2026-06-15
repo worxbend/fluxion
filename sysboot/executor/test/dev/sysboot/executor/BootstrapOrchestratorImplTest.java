@@ -8,6 +8,7 @@ import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import dev.sysboot.core.AptRepositoryModule;
 import dev.sysboot.core.AssertModule;
 import dev.sysboot.core.BootstrapConfig;
 import dev.sysboot.core.BootstrapState;
@@ -33,6 +34,7 @@ import dev.sysboot.core.StateEntry;
 import dev.sysboot.core.StateRepository;
 import dev.sysboot.core.StepResult;
 import java.net.URI;
+import java.nio.file.Path;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
@@ -53,6 +55,8 @@ class BootstrapOrchestratorImplTest {
   @Mock private ShellScriptExecutor shellScriptExecutor;
 
   @Mock private CompiledBinaryInstaller binaryInstaller;
+
+  @Mock private AptRepositoryInstaller aptRepositoryInstaller;
 
   @Mock private FlatpakInstaller flatpakInstaller;
 
@@ -447,6 +451,22 @@ class BootstrapOrchestratorImplTest {
   }
 
   @Test
+  void execute_whenAptRepositoryConfigured_addsRepositoryAndRecordsSuccess() {
+    var stateRepository = new InMemoryStateRepository(BootstrapState.empty("test", "1.0.0"));
+    when(aptRepositoryInstaller.add(any()))
+        .thenReturn(new StepResult.Success("/etc/apt/sources.list.d/docker.list", Duration.ZERO));
+    orchestrator = orchestrator(alwaysRun(), Optional.of(stateRepository));
+    var module = aptRepositoryModule();
+
+    orchestrator.execute(buildConfig(List.of(module)), ignored -> {});
+
+    verify(aptRepositoryInstaller).add(module);
+    assertThat(stateRepository.state().entries())
+        .extracting(StateEntry::itemType)
+        .containsExactly(dev.sysboot.core.ItemType.APT_REPOSITORY);
+  }
+
+  @Test
   void dryRun_whenFlatpakRemoteConfigured_emitsRemoteAddCommand() {
     var module =
         new FlatpakRemoteModule(
@@ -484,12 +504,32 @@ class BootstrapOrchestratorImplTest {
             "https://flathub.org/repo/flathub.flatpakrepo");
   }
 
+  @Test
+  void dryRun_whenAptRepositoryConfigured_emitsRepositoryCommand() {
+    var module = aptRepositoryModule();
+    when(aptRepositoryInstaller.addCommand(module))
+        .thenReturn(List.of("/bin/bash", "-lc", "sudo apt-get update"));
+
+    List<ExecutionEvent> events = new ArrayList<>();
+    orchestrator.dryRun(buildConfig(List.of(module)), events::add);
+
+    var dryRun =
+        (StepResult.DryRun)
+            events.stream()
+                .flatMap(event -> event.result().stream())
+                .filter(StepResult.DryRun.class::isInstance)
+                .findFirst()
+                .orElseThrow();
+    assertThat(dryRun.wouldExecute()).containsExactly("/bin/bash", "-lc", "sudo apt-get update");
+  }
+
   private BootstrapOrchestratorImpl orchestrator(
       SkipEvaluator skipEvaluator, Optional<StateRepository> stateRepository) {
     return new BootstrapOrchestratorImpl(
         new PackageManagerExecutorRegistry(List.of(dnfExecutor)),
         shellScriptExecutor,
         binaryInstaller,
+        aptRepositoryInstaller,
         flatpakInstaller,
         flatpakRemoteInstaller,
         new DotbotExecutor(new DefaultShellRunner()),
@@ -516,6 +556,7 @@ class BootstrapOrchestratorImplTest {
         new PackageManagerExecutorRegistry(List.of(dnfExecutor)),
         shellScriptExecutor,
         binaryInstaller,
+        new AptRepositoryInstaller(runner),
         flatpakInstaller,
         new FlatpakRemoteInstaller(runner),
         new DotbotExecutor(runner),
@@ -537,6 +578,16 @@ class BootstrapOrchestratorImplTest {
 
   private static List<String> dnfInstallCommand(PackageName packageName) {
     return List.of("sudo", "dnf", "install", "-y", packageName.value());
+  }
+
+  private static AptRepositoryModule aptRepositoryModule() {
+    return new AptRepositoryModule(
+        new ModuleName("docker"),
+        "deb [signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/debian"
+            + " bookworm stable",
+        Path.of("/etc/apt/sources.list.d/docker.list"),
+        Optional.of(URI.create("https://download.docker.com/linux/debian/gpg")),
+        Optional.of(Path.of("/etc/apt/keyrings/docker.gpg")));
   }
 
   private static BootstrapConfig buildConfig(List<dev.sysboot.core.BootstrapModule> modules) {

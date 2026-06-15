@@ -1,5 +1,6 @@
 package dev.sysboot.tui;
 
+import dev.sysboot.core.AptRepositoryModule;
 import dev.sysboot.core.AssertModule;
 import dev.sysboot.core.BootstrapModule;
 import dev.sysboot.core.CompiledBinaryModule;
@@ -28,6 +29,8 @@ final class SelectionEntryCatalog {
           packageModule.packages().stream().map(packageName -> packageName.value()).toList();
       case ZypperModule zypperModule ->
           zypperModule.packages().stream().map(packageName -> packageName.value()).toList();
+      case AptRepositoryModule aptRepositoryModule ->
+          List.of(aptRepositoryModule.sourceListPath().toString());
       case FlatpakModule flatpakModule -> flatpakModule.appIds();
       case FlatpakRemoteModule flatpakRemoteModule -> List.of(flatpakRemoteModule.remote());
       case ShellCommandModule shellCommandModule -> shellCommandModule.commands();
