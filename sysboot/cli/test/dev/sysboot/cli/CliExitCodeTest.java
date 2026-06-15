@@ -122,13 +122,7 @@ class CliExitCodeTest {
     Path config = writeConfig();
 
     CliResult result =
-        execute(
-            "status",
-            "--resume-command",
-            "-c",
-            config.toString(),
-            "--profile",
-            "default");
+        execute("status", "--resume-command", "-c", config.toString(), "--profile", "default");
 
     assertThat(result.exitCode()).isEqualTo(ExitCode.SUCCESS.value());
     assertThat(result.stdout())
@@ -207,12 +201,63 @@ class CliExitCodeTest {
   }
 
   @Test
+  void plan_whenFormatJson_outputsStructuredPlan() throws Exception {
+    Path config = writeConfig();
+
+    CliResult result = execute("plan", "--no-tui", "--format", "json", "-c", config.toString());
+
+    assertThat(result.exitCode()).isEqualTo(ExitCode.SUCCESS.value());
+    assertThat(result.stdout())
+        .contains("\"profileName\":\"test\"")
+        .contains("\"phases\"")
+        .contains("\"modules\"")
+        .contains("\"commandPreview\"");
+    assertThat(result.stderr()).isEmpty();
+  }
+
+  @Test
+  void list_whenFormatJson_outputsModuleList() throws Exception {
+    Path config = writeConfig();
+
+    CliResult result = execute("list", "--no-tui", "--format", "json", "-c", config.toString());
+
+    assertThat(result.exitCode()).isEqualTo(ExitCode.SUCCESS.value());
+    assertThat(result.stdout())
+        .contains("\"profileName\":\"test\"")
+        .contains("\"type\":\"packages\"")
+        .contains("\"itemCount\":1");
+    assertThat(result.stderr()).isEmpty();
+  }
+
+  @Test
+  void status_whenFormatJson_outputsProbeReport() throws Exception {
+    Path config = writeConfig();
+
+    CliResult result = execute("status", "--format", "json", "-c", config.toString());
+
+    assertThat(result.exitCode()).isEqualTo(ExitCode.SUCCESS.value());
+    assertThat(result.stdout()).contains("\"profileName\":\"test\"").contains("\"items\"");
+    assertThat(result.stderr()).isEmpty();
+  }
+
+  @Test
+  void stateShow_whenFormatJsonAndMissingState_outputsEmptyState() {
+    CliResult result = execute("state", "show", "--format", "json", "default");
+
+    assertThat(result.exitCode()).isEqualTo(ExitCode.SUCCESS.value());
+    assertThat(result.stdout())
+        .contains("\"profileName\":\"default\"")
+        .contains("\"phases\":[]")
+        .contains("\"items\":[]");
+    assertThat(result.stderr()).isEmpty();
+  }
+
+  @Test
   void generate_whenOutputExistsWithoutForce_returnsInvalidInput() throws Exception {
     Path generated = tempDir.resolve("generated.yaml");
     Files.writeString(generated, "existing");
 
-    CliResult result =
-        execute("generate", "--os", "fedora", "--output", generated.toString());
+    CliResult result = execute("generate", "--os", "fedora", "--output", generated.toString());
 
     assertThat(result.exitCode()).isEqualTo(ExitCode.INVALID_INPUT.value());
     assertThat(result.stderr()).contains("Output file already exists");
