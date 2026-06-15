@@ -4,9 +4,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import dev.sysboot.cli.error.CliFailureException;
 import dev.sysboot.cli.error.ExitCode;
 import dev.sysboot.cli.option.GlobalOptions;
-import dev.sysboot.core.BootstrapState;
 import dev.sysboot.executor.JsonStateRepository;
-import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import picocli.CommandLine.Command;
@@ -110,22 +108,16 @@ public final class StateCommand implements Runnable {
           return;
         }
       }
-      deleteIfExists(stateFile);
-      deleteIfExists(legacyStateFile);
+      repo.reset(profile);
       spec.commandLine().getOut().println("State reset for profile: " + profile);
     }
 
-    private void deleteIfExists(Path stateFile) {
-      try {
-        Files.deleteIfExists(stateFile);
-      } catch (IOException e) {
-        throw new CliFailureException(ExitCode.IO_ERROR, "Failed to delete: " + stateFile, e);
-      }
-    }
   }
 
   @Command(name = "forget", description = "Remove a phase or item entry from the state file")
   public static final class ForgetSubcommand implements Runnable {
+
+    @Spec private CommandSpec spec;
 
     @Option(
         names = {"--profile"},
@@ -150,37 +142,22 @@ public final class StateCommand implements Runnable {
       }
       var mapper = new ObjectMapper();
       var repo = new JsonStateRepository(mapper);
-      repo.load(profile)
-          .ifPresentOrElse(
-              state -> {
-                BootstrapState updated = state;
-                if (phaseName != null) {
-                  updated =
-                      new BootstrapState(
-                          state.profileName(),
-                          state.lastRunAt(),
-                          state.sysbootVersion(),
-                          state.entries(),
-                          state.phaseEntries().stream()
-                              .filter(e -> !e.phaseName().equals(phaseName))
-                              .toList());
-                  System.out.printf("Forgot phase '%s' from profile '%s'%n", phaseName, profile);
-                }
-                if (itemKey != null) {
-                  updated =
-                      new BootstrapState(
-                          state.profileName(),
-                          state.lastRunAt(),
-                          state.sysbootVersion(),
-                          state.entries().stream()
-                              .filter(e -> !e.itemKey().equals(itemKey))
-                              .toList(),
-                          state.phaseEntries());
-                  System.out.printf("Forgot item '%s' from profile '%s'%n", itemKey, profile);
-                }
-                repo.save(updated);
-              },
-              () -> System.out.println("No state file found for profile: " + profile));
+      if (repo.load(profile).isEmpty()) {
+        spec.commandLine().getOut().println("No state file found for profile: " + profile);
+        return;
+      }
+      if (phaseName != null) {
+        repo.forgetPhase(profile, phaseName);
+        spec.commandLine()
+            .getOut()
+            .printf("Forgot phase '%s' from profile '%s'%n", phaseName, profile);
+      }
+      if (itemKey != null) {
+        repo.forgetItem(profile, itemKey);
+        spec.commandLine()
+            .getOut()
+            .printf("Forgot item '%s' from profile '%s'%n", itemKey, profile);
+      }
     }
   }
 

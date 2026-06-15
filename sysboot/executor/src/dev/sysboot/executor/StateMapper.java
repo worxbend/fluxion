@@ -10,6 +10,7 @@ import dev.sysboot.executor.state.record.PhaseStateEntryRecord;
 import dev.sysboot.executor.state.record.StateEntryRecord;
 import java.time.Instant;
 import java.util.List;
+import java.util.Optional;
 
 final class StateMapper {
 
@@ -45,8 +46,8 @@ final class StateMapper {
         e.itemKey(),
         e.itemType().name(),
         e.completedAt().toString(),
-        e.version(),
-        e.checksum());
+        e.version().orElse(null),
+        e.checksum().orElse(null));
   }
 
   private static StateEntry entryFromRecord(StateEntryRecord record) {
@@ -58,17 +59,22 @@ final class StateMapper {
         record.itemKey,
         ItemType.valueOf(record.itemType),
         completedAt,
-        record.version,
-        record.checksum);
+        Optional.ofNullable(record.version),
+        Optional.ofNullable(record.checksum));
   }
 
   private static PhaseStateEntryRecord phaseEntryToRecord(PhaseStateEntry e) {
-    return new PhaseStateEntryRecord(e.phaseName(), e.status().name(), e.completedAt().toString());
+    return new PhaseStateEntryRecord(
+        e.phaseName(),
+        e.status().name(),
+        e.completedAt().toString(),
+        e.fingerprint().orElse(null));
   }
 
   private static PhaseStateEntry phaseEntryFromRecord(PhaseStateEntryRecord record) {
     Instant completedAt =
         record.completedAt != null ? Instant.parse(record.completedAt) : Instant.EPOCH;
-    return new PhaseStateEntry(record.phaseName, PhaseStatus.valueOf(record.status), completedAt);
+    return new PhaseStateEntry(
+        record.phaseName, PhaseStatus.valueOf(record.status), completedAt, Optional.ofNullable(record.fingerprint));
   }
 }

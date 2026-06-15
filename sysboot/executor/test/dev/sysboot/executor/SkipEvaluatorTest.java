@@ -33,7 +33,14 @@ class SkipEvaluatorTest {
   @Test
   void evaluate_whenStateFileHasEntry_andReProbeOff_returnsSkip() {
     StateEntry entry =
-        new StateEntry("profile", "core", "git", ItemType.PACKAGE, Instant.now(), "2.45.1", null);
+        new StateEntry(
+            "profile",
+            "core",
+            "git",
+            ItemType.PACKAGE,
+            Instant.now(),
+            Optional.of("2.45.1"),
+            Optional.empty());
     var state = new BootstrapState("profile", Instant.now(), "1.0.0", List.of(entry));
 
     var evaluator = new SkipEvaluator(Optional.of(state), probeRegistry, true, false);
@@ -47,7 +54,14 @@ class SkipEvaluatorTest {
   @Test
   void evaluate_whenReProbeOn_ignoresStateFileAndUsesProbe() {
     StateEntry entry =
-        new StateEntry("profile", "core", "git", ItemType.PACKAGE, Instant.now(), "2.45.1", null);
+        new StateEntry(
+            "profile",
+            "core",
+            "git",
+            ItemType.PACKAGE,
+            Instant.now(),
+            Optional.of("2.45.1"),
+            Optional.empty());
     var state = new BootstrapState("profile", Instant.now(), "1.0.0", List.of(entry));
 
     when(probeRegistry.probe(any(ModuleItem.class)))

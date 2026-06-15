@@ -43,6 +43,15 @@ public record BootstrapState(
     return findPhaseEntry(phaseName).map(e -> e.status() == PhaseStatus.COMPLETED).orElse(false);
   }
 
+  public boolean isPhaseCompleted(String phaseName, String fingerprint) {
+    Objects.requireNonNull(fingerprint);
+    return findPhaseEntry(phaseName)
+        .filter(e -> e.status() == PhaseStatus.COMPLETED)
+        .flatMap(PhaseStateEntry::fingerprint)
+        .filter(fingerprint::equals)
+        .isPresent();
+  }
+
   public BootstrapState withEntry(StateEntry newEntry) {
     List<StateEntry> updated =
         entries.stream()
@@ -62,6 +71,26 @@ public record BootstrapState(
             .filter(e -> !e.phaseName().equals(newEntry.phaseName()))
             .collect(Collectors.toCollection(ArrayList::new));
     updated.add(newEntry);
+    return new BootstrapState(
+        profileName, Instant.now(), sysbootVersion, entries, List.copyOf(updated));
+  }
+
+  public BootstrapState withoutItem(String itemKey) {
+    Objects.requireNonNull(itemKey);
+    List<StateEntry> updated =
+        entries.stream()
+            .filter(e -> !e.itemKey().equals(itemKey))
+            .collect(Collectors.toCollection(ArrayList::new));
+    return new BootstrapState(
+        profileName, Instant.now(), sysbootVersion, List.copyOf(updated), phaseEntries);
+  }
+
+  public BootstrapState withoutPhase(String phaseName) {
+    Objects.requireNonNull(phaseName);
+    List<PhaseStateEntry> updated =
+        phaseEntries.stream()
+            .filter(e -> !e.phaseName().equals(phaseName))
+            .collect(Collectors.toCollection(ArrayList::new));
     return new BootstrapState(
         profileName, Instant.now(), sysbootVersion, entries, List.copyOf(updated));
   }

@@ -7,5 +7,11 @@ public interface StateRepository {
 
   void save(BootstrapState state);
 
-  void recordSuccess(String profileName, StateEntry entry);
+  BootstrapState recordSuccess(String profileName, StateEntry entry);
+
+  void reset(String profileName);
+
+  Optional<BootstrapState> forgetItem(String profileName, String itemKey);
+
+  Optional<BootstrapState> forgetPhase(String profileName, String phaseName);
 }

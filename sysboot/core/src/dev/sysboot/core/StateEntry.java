@@ -2,6 +2,7 @@ package dev.sysboot.core;
 
 import java.time.Instant;
 import java.util.Objects;
+import java.util.Optional;
 
 public record StateEntry(
     String profileName,
@@ -9,8 +10,8 @@ public record StateEntry(
     String itemKey,
     ItemType itemType,
     Instant completedAt,
-    String version,
-    String checksum) {
+    Optional<String> version,
+    Optional<String> checksum) {
 
   public StateEntry {
     Objects.requireNonNull(profileName);
@@ -18,5 +19,7 @@ public record StateEntry(
     Objects.requireNonNull(itemKey);
     Objects.requireNonNull(itemType);
     Objects.requireNonNull(completedAt);
+    Objects.requireNonNull(version);
+    Objects.requireNonNull(checksum);
   }
 }

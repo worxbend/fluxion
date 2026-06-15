@@ -18,6 +18,7 @@ import dev.sysboot.executor.DnfPackageInstaller;
 import dev.sysboot.executor.DnfPackageProbe;
 import dev.sysboot.executor.DotbotExecutor;
 import dev.sysboot.executor.DotbotProbe;
+import dev.sysboot.executor.ExecutionPlanBuilder;
 import dev.sysboot.executor.FlatpakInstaller;
 import dev.sysboot.executor.FlatpakProbe;
 import dev.sysboot.executor.InstalledProbeRegistry;
@@ -52,16 +53,19 @@ public final class ApplicationContext {
   private final ConfigLoader configLoader;
   private final Optional<SysbootTuiApp> tuiApp;
   private final ParallelProbeRunner parallelProbeRunner;
+  private final ExecutionPlanBuilder executionPlanBuilder;
 
   private ApplicationContext(
       BootstrapOrchestrator orchestrator,
       ConfigLoader configLoader,
       Optional<SysbootTuiApp> tuiApp,
-      ParallelProbeRunner parallelProbeRunner) {
+      ParallelProbeRunner parallelProbeRunner,
+      ExecutionPlanBuilder executionPlanBuilder) {
     this.orchestrator = orchestrator;
     this.configLoader = configLoader;
     this.tuiApp = tuiApp;
     this.parallelProbeRunner = parallelProbeRunner;
+    this.executionPlanBuilder = executionPlanBuilder;
   }
 
   public BootstrapOrchestrator orchestrator() {
@@ -78,6 +82,10 @@ public final class ApplicationContext {
 
   public ParallelProbeRunner parallelProbeRunner() {
     return parallelProbeRunner;
+  }
+
+  public ExecutionPlanBuilder executionPlanBuilder() {
+    return executionPlanBuilder;
   }
 
   public static ApplicationContext create(
@@ -114,7 +122,8 @@ public final class ApplicationContext {
         orchestrator,
         new YamlConfigLoader(),
         Optional.of(tuiApp),
-        new ParallelProbeRunner(probeRegistry));
+        new ParallelProbeRunner(probeRegistry),
+        new ExecutionPlanBuilder(registry));
   }
 
   public static ApplicationContext forCli(
@@ -136,7 +145,8 @@ public final class ApplicationContext {
         orchestrator,
         new YamlConfigLoader(),
         Optional.empty(),
-        new ParallelProbeRunner(probeRegistry));
+        new ParallelProbeRunner(probeRegistry),
+        new ExecutionPlanBuilder(registry));
   }
 
   private static BootstrapOrchestratorImpl buildOrchestrator(

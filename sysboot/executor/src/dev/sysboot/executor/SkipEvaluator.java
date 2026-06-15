@@ -17,7 +17,7 @@ import java.util.Optional;
  */
 public final class SkipEvaluator {
 
-  private final Optional<BootstrapState> state;
+  private Optional<BootstrapState> state;
   private final InstalledProbeRegistry probeRegistry;
   private final boolean skipAlreadyInstalled;
   private final boolean reProbe;
@@ -49,7 +49,7 @@ public final class SkipEvaluator {
         return new SkipDecision.Skip(
             item.key(),
             new InstallationStatus.InstalledFromState(
-                item.key(), entry.completedAt(), entry.version()));
+                item.key(), entry.completedAt(), entry.version().orElse(null)));
       }
     }
 
@@ -60,6 +60,10 @@ public final class SkipEvaluator {
       case InstallationStatus.NotInstalled ignored -> new SkipDecision.Run(item.key());
       case InstallationStatus.Unknown ignored -> new SkipDecision.Run(item.key());
     };
+  }
+
+  public void refreshState(BootstrapState updatedState) {
+    this.state = Optional.of(updatedState);
   }
 
   public static SkipEvaluator alwaysRun() {

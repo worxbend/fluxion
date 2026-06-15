@@ -6,10 +6,7 @@ import dev.sysboot.cli.error.ExitCode;
 import dev.sysboot.cli.option.GlobalOptions;
 import dev.sysboot.core.BootstrapConfig;
 import dev.sysboot.core.InstallationStatus;
-import dev.sysboot.core.Phase;
-import dev.sysboot.core.RestartPolicy;
-import dev.sysboot.executor.PhaseExecutionPlanner;
-import java.util.List;
+import dev.sysboot.executor.ExecutionPlan;
 import java.util.Map;
 import picocli.CommandLine.Command;
 import picocli.CommandLine.Mixin;
@@ -37,9 +34,9 @@ public final class PlanCommand implements Runnable {
     var context = ApplicationContext.create(true, profile, skipAlreadyInstalled, false);
     BootstrapConfig config = context.configLoader().load(options.resolvedConfigFile());
 
-    List<Phase> ordered;
+    ExecutionPlan plan;
     try {
-      ordered = new PhaseExecutionPlanner().plan(config.phases());
+      plan = context.executionPlanBuilder().build(config);
     } catch (dev.sysboot.executor.CyclicDependencyException e) {
       throw new CliFailureException(
           ExitCode.CONFIGURATION_ERROR, "Cycle detected: " + e.getMessage(), e);
@@ -53,45 +50,32 @@ public final class PlanCommand implements Runnable {
     System.out.println("Execution plan for: " + config.profileName().value());
     System.out.println();
 
-    for (int i = 0; i < ordered.size(); i++) {
-      Phase phase = ordered.get(i);
+    for (int i = 0; i < plan.phases().size(); i++) {
+      ExecutionPlan.Phase phase = plan.phases().get(i);
       String deps =
           phase.dependsOn().isEmpty()
               ? "no deps"
               : "after: "
                   + phase.dependsOn().stream()
-                      .map(p -> p.value())
                       .reduce((a, b) -> a + ", " + b)
                       .orElse("");
 
-      System.out.printf("Phase %d: %-25s [%s]%n", i + 1, phase.name().value(), deps);
+      System.out.printf("Phase %d: %-25s [%s]%n", i + 1, phase.name(), deps);
 
-      for (var module : phase.modules()) {
-        for (var item : flatItems(module)) {
-          String skipLabel = computeSkipLabel(item, probeResults);
-          System.out.printf("  • %-35s %s%n", item, skipLabel);
+      for (ExecutionPlan.Module module : phase.modules()) {
+        for (ExecutionPlan.Item item : module.items()) {
+          String skipLabel = computeSkipLabel(item.item().key(), probeResults);
+          System.out.printf("  • %-35s %s%n", item.item().displayName(), skipLabel);
         }
       }
 
-      switch (phase.restartPolicy()) {
-        case RestartPolicy.PromptLogout pr ->
-            System.out.println("  → After this phase: RESTART REQUIRED");
-        case RestartPolicy.RequiresNewShell rns ->
-            System.out.println(
-                "  → After this phase: new-shell wrapper (" + rns.shell().binaryName() + ")");
-        case RestartPolicy.None ignored -> {}
+      switch (phase.restartEffect()) {
+        case PROMPT_LOGOUT -> System.out.println("  → After this phase: RESTART REQUIRED");
+        case REQUIRES_NEW_SHELL -> System.out.println("  → After this phase: new-shell wrapper");
+        case NONE -> {}
       }
       System.out.println();
     }
-  }
-
-  private List<String> flatItems(dev.sysboot.core.BootstrapModule module) {
-    return switch (module) {
-      case dev.sysboot.core.PackageModule pm -> pm.packages().stream().map(p -> p.value()).toList();
-      case dev.sysboot.core.FlatpakModule fm -> fm.appIds();
-      case dev.sysboot.core.ZypperModule zm -> zm.packages().stream().map(p -> p.value()).toList();
-      default -> List.of(module.name().value());
-    };
   }
 
   private String computeSkipLabel(String item, Map<String, InstallationStatus> probeResults) {

@@ -62,9 +62,33 @@ public final class JsonStateRepository implements StateRepository {
   }
 
   @Override
-  public void recordSuccess(String profileName, StateEntry entry) {
+  public BootstrapState recordSuccess(String profileName, StateEntry entry) {
     BootstrapState current = load(profileName).orElse(BootstrapState.empty(profileName, "1.0.0"));
-    save(current.withEntry(entry));
+    BootstrapState updated = current.withEntry(entry);
+    save(updated);
+    return updated;
+  }
+
+  @Override
+  public void reset(String profileName) {
+    deleteIfExists(path(profileName));
+    deleteIfExists(legacyPath(profileName));
+  }
+
+  @Override
+  public Optional<BootstrapState> forgetItem(String profileName, String itemKey) {
+    Optional<BootstrapState> current = load(profileName);
+    Optional<BootstrapState> updated = current.map(state -> state.withoutItem(itemKey));
+    updated.ifPresent(this::save);
+    return updated;
+  }
+
+  @Override
+  public Optional<BootstrapState> forgetPhase(String profileName, String phaseName) {
+    Optional<BootstrapState> current = load(profileName);
+    Optional<BootstrapState> updated = current.map(state -> state.withoutPhase(phaseName));
+    updated.ifPresent(this::save);
+    return updated;
   }
 
   private Path stateFilePath(String profileName) {
@@ -85,5 +109,13 @@ public final class JsonStateRepository implements StateRepository {
       return stateFile;
     }
     return statePaths.legacyStateFile(profileName);
+  }
+
+  private void deleteIfExists(Path stateFile) {
+    try {
+      Files.deleteIfExists(stateFile);
+    } catch (IOException e) {
+      throw new StateWriteException("Failed to delete state file: " + stateFile, e);
+    }
   }
 }
