@@ -78,6 +78,7 @@ Commands:
   run        alias for apply
   dry-run    show what would happen
   validate   check the YAML
+  lint       score profile quality and safety
   list       print modules
   plan       show job order
   graph      render the job dependency graph

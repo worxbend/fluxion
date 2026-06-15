@@ -245,6 +245,36 @@ class CliExitCodeTest {
   }
 
   @Test
+  void lint_outputsAdvisoryProfileScore() throws Exception {
+    Path config = writeBinaryWithoutChecksumConfig();
+
+    CliResult result = execute("lint", "-c", config.toString());
+
+    assertThat(result.exitCode()).isEqualTo(ExitCode.SUCCESS.value());
+    assertThat(result.stdout())
+        .contains("Quality score:")
+        .contains("warning safety")
+        .contains("checksum")
+        .contains("info reproducibility");
+    assertThat(result.stderr()).isEmpty();
+  }
+
+  @Test
+  void lint_whenFormatJson_outputsMachineReadableFindings() throws Exception {
+    Path config = writeShellConfig("/bin/sh");
+
+    CliResult result = execute("lint", "--format", "json", "-c", config.toString());
+
+    assertThat(result.exitCode()).isEqualTo(ExitCode.SUCCESS.value());
+    assertThat(result.stdout())
+        .contains("\"profileName\":\"test\"")
+        .contains("\"score\"")
+        .contains("\"category\":\"recoverability\"")
+        .contains("\"path\":\"jobs[0].steps[0].probeCommand\"");
+    assertThat(result.stderr()).isEmpty();
+  }
+
+  @Test
   void plan_whenFormatJson_outputsStructuredPlan() throws Exception {
     Path config = writeConfig();
 

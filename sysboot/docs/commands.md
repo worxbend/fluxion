@@ -5,6 +5,7 @@ Fluxion commands are designed around a safe read-first workflow:
 ```bash
 fluxion generate --os auto --profile starter --output ~/.config/fluxion/starter.yaml
 fluxion validate -c ~/.config/fluxion/starter.yaml
+fluxion lint -c ~/.config/fluxion/starter.yaml
 fluxion doctor -c ~/.config/fluxion/starter.yaml
 fluxion plan -c ~/.config/fluxion/starter.yaml
 fluxion graph -c ~/.config/fluxion/starter.yaml --format mermaid
@@ -94,6 +95,20 @@ fluxion validate -c config/example-fedora.yaml --format json
 Use this before `apply`, especially after editing dependencies, module names, URLs, or package
 lists. Warnings do not fail validation unless `--strict` is set. JSON output is stable enough for
 shell automation and CI checks.
+
+## `lint`
+
+Scores profile quality and reports advisory findings.
+
+```bash
+fluxion lint -c config/example-fedora.yaml
+fluxion lint -c config/example-fedora.yaml --format json
+```
+
+`lint` is intentionally separate from `validate`: validation checks correctness, while lint flags
+profile quality and safety concerns. The first rule set warns about compiled binaries without
+checksums, shell command modules without probes, potentially destructive shell commands, downloaded
+content piped into a shell, and embedded `sudo` inside shell commands.
 
 ## `doctor`
 

@@ -43,6 +43,7 @@ and parallel agent analysis.
 - Native release archives include the binary, root README, docs, and example configs.
 - The Mill/Maven dependency update cadence is documented in `sysboot/docs/dependency-updates.md`.
 - `graph` renders the phase DAG as Mermaid, DOT, or JSON.
+- `lint` reports advisory profile quality and safety findings with text/JSON output.
 
 ## P0 - Trust And Correctness
 
@@ -692,6 +693,10 @@ Report contents:
 - redacted command output snippets for failures
 
 ### 32. Add profile quality scoring
+
+Status: first slice implemented as `fluxion lint`, with text/JSON output and advisory checks for
+compiled-binary checksums/versions, shell-command probes, destructive shell commands, `curl | sh`,
+and embedded `sudo`.
 
 Fluxion can guide users toward safer bootstrap profiles without being a policy engine.
 

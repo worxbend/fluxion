@@ -48,6 +48,12 @@
     "allDeclaredConstructors": true
   },
   {
+    "name": "dev.sysboot.cli.command.LintCommand",
+    "allDeclaredFields": true,
+    "allDeclaredMethods": true,
+    "allDeclaredConstructors": true
+  },
+  {
     "name": "dev.sysboot.cli.output.OutputFormat",
     "allDeclaredFields": true,
     "allDeclaredMethods": true,

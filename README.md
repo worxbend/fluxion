@@ -65,6 +65,7 @@ apply      apply a profile
 run        alias for apply
 dry-run    show what would be executed
 validate   validate YAML
+lint       score profile quality and safety
 list       list configured modules
 plan       show phase order and planned work
 graph      render the phase dependency graph
