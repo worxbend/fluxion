@@ -232,12 +232,16 @@ public final class DoctorCommand implements Runnable {
     }
     if (skipNetwork) {
       checks.add(Check.warn("network", "skipped " + module.url().value()));
+      module
+          .checksumUrl()
+          .ifPresent(url -> checks.add(Check.warn("checksum network", "skipped " + url.value())));
       return;
     }
-    checks.add(checkUrl(module.url().value()));
+    checks.add(checkUrl("network", module.url().value()));
+    module.checksumUrl().ifPresent(url -> checks.add(checkUrl("checksum network", url.value())));
   }
 
-  private Check checkUrl(URI uri) {
+  private Check checkUrl(String label, URI uri) {
     try {
       HttpRequest request =
           HttpRequest.newBuilder(uri)
@@ -249,13 +253,13 @@ public final class DoctorCommand implements Runnable {
               .send(request, HttpResponse.BodyHandlers.discarding())
               .statusCode();
       return status < 400
-          ? Check.pass("network", uri.toString())
-          : Check.fail("network", uri + " -> " + status);
+          ? Check.pass(label, uri.toString())
+          : Check.fail(label, uri + " -> " + status);
     } catch (IOException e) {
-      return Check.fail("network", uri + " -> " + e.getMessage());
+      return Check.fail(label, uri + " -> " + e.getMessage());
     } catch (InterruptedException e) {
       Thread.currentThread().interrupt();
-      return Check.fail("network", uri + " -> interrupted");
+      return Check.fail(label, uri + " -> interrupted");
     }
   }
 

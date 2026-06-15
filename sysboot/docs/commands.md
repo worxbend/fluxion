@@ -130,7 +130,7 @@ Checks include:
 - Flatpak command and Flathub reminder
 - configured shell paths
 - compiled-binary artifact formats
-- compiled-binary URL reachability unless `--skip-network` is used
+- compiled-binary URL and checksum URL reachability unless `--skip-network` is used
 
 Any failed check returns exit code `5`. Warnings are printed but do not fail the command.
 

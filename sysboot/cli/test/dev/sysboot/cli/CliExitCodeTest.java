@@ -728,6 +728,26 @@ class CliExitCodeTest {
     assertThat(result.stderr()).contains("Doctor found");
   }
 
+  @Test
+  void doctor_whenChecksumUrlConfigured_checksChecksumNetwork() throws Exception {
+    Path config = writeBinaryWithChecksumUrlConfig();
+    String originalHome = System.getProperty("user.home");
+    System.setProperty("user.home", tempDir.toString());
+    try {
+      CliResult result = execute("doctor", "--skip-network", "-c", config.toString());
+
+      assertThat(result.exitCode()).isEqualTo(ExitCode.SUCCESS.value());
+      assertThat(result.stdout())
+          .contains("[warn] network")
+          .contains("rg.tar.gz")
+          .contains("[warn] checksum network")
+          .contains("rg.sha256");
+      assertThat(result.stderr()).isEmpty();
+    } finally {
+      System.setProperty("user.home", originalHome);
+    }
+  }
+
   private CliResult execute(String... args) {
     CommandLine commandLine = Main.commandLine();
     var stdout = new StringWriter();
@@ -883,6 +903,28 @@ class CliExitCodeTest {
                 name: ripgrep
                 binaryName: rg
                 url: https://example.test/rg.zip
+                installPath: /usr/local/bin/rg
+        """);
+    return config;
+  }
+
+  private Path writeBinaryWithChecksumUrlConfig() throws IOException {
+    Path config = tempDir.resolve("binary-checksum-url-profile.yaml");
+    Files.writeString(
+        config,
+        """
+        profile: test
+        os:
+          type: fedora
+          release: "44"
+        jobs:
+          - name: base
+            steps:
+              - type: compiled-binary
+                name: ripgrep
+                binaryName: rg
+                url: https://example.test/rg.tar.gz
+                checksumUrl: https://example.test/rg.sha256
                 installPath: /usr/local/bin/rg
         """);
     return config;

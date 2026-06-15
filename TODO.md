@@ -681,6 +681,8 @@ Implementation:
 - Persist installed artifact URL, checksum, and detected version in state.
   - Status: implemented for compiled-binary successes when checksum/version data is available.
 - Add `doctor` checks for unsupported archive formats and non-HTTPS URLs.
+  - Status: unsupported archive formats and compiled-binary URL/checksum URL reachability are
+    implemented; non-HTTPS URLs are rejected while parsing.
 
 ### 31. Add run reports
 
