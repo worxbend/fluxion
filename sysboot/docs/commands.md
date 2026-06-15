@@ -139,11 +139,13 @@ Prints the phase-ordered execution plan.
 ```bash
 fluxion plan -c config/example-fedora.yaml
 fluxion plan -c config/example-fedora.yaml --skip-already-installed
+fluxion plan -c config/example-fedora.yaml --show-commands
 fluxion plan -c config/example-fedora.yaml --format json
 ```
 
 The plan uses the same phase ordering as execution and shows restart checkpoints. With
 `--skip-already-installed`, Fluxion probes configured items and marks what would be skipped.
+`--show-commands` prints executor command previews for items where Fluxion can derive one.
 JSON output includes phases, modules, item keys, item types, package managers, status labels, and
 command previews where available.
 

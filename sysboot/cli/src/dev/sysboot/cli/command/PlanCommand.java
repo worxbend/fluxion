@@ -43,6 +43,9 @@ public final class PlanCommand implements Runnable {
       description = "Output format: ${COMPLETION-CANDIDATES}")
   private OutputFormat format;
 
+  @Option(names = "--show-commands", description = "Show executor command previews when available")
+  private boolean showCommands;
+
   @Override
   public void run() {
     var context = ApplicationContext.create(true, profile, skipAlreadyInstalled, false);
@@ -83,6 +86,9 @@ public final class PlanCommand implements Runnable {
         for (ExecutionPlan.Item item : module.items()) {
           String skipLabel = computeSkipLabel(item.item().key(), probeResults);
           out.printf("  • %-35s %s%n", item.item().displayName(), skipLabel);
+          if (showCommands && item.commandPreview().isPresent()) {
+            out.printf("    $ %s%n", String.join(" ", item.commandPreview().orElseThrow()));
+          }
         }
       }
 

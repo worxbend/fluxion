@@ -45,6 +45,7 @@ and parallel agent analysis.
 - `graph` renders the phase DAG as Mermaid, DOT, or JSON.
 - `lint` reports advisory profile quality and safety findings with text/JSON output.
 - `status --version-drift` filters directly to version-drifted items.
+- `plan --show-commands` displays executor command previews where available.
 
 ## P0 - Trust And Correctness
 

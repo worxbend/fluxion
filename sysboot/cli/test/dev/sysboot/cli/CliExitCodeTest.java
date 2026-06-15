@@ -290,6 +290,19 @@ class CliExitCodeTest {
   }
 
   @Test
+  void plan_whenShowCommands_outputsCommandPreviews() throws Exception {
+    Path config = writeConfig();
+
+    CliResult result = execute("plan", "--show-commands", "-c", config.toString());
+
+    assertThat(result.exitCode()).isEqualTo(ExitCode.SUCCESS.value());
+    assertThat(result.stdout())
+        .contains("Execution plan for: test")
+        .contains("$ sudo dnf install -y git");
+    assertThat(result.stderr()).isEmpty();
+  }
+
+  @Test
   void graph_outputsMermaidPhaseDag() throws Exception {
     Path config = writeDependentPhaseConfig();
 
