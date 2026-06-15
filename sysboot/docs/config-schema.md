@@ -143,7 +143,8 @@ The interpreter is detected from the shebang line; falls back to `/bin/bash`. Th
   continueOnError: false        # default: false
 ```
 
-Supported archive formats: `.tar.gz`, `.tgz`. Plain binaries (no extension) are also supported.
+Supported artifact formats: `.tar.gz`, `.tgz`, or plain binary URLs. Other archive formats such as
+`.zip` and `.tar.xz` are rejected by validation because the installer cannot extract them yet.
 
 The binary is copied to `installPath`. If the parent directory is root-owned, `sudo cp` is used.
 When `checksum` is omitted, Fluxion logs an explicit warning and installs from the HTTPS source

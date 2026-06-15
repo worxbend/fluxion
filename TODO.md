@@ -46,6 +46,7 @@ and parallel agent analysis.
 - `lint` reports advisory profile quality and safety findings with text/JSON output.
 - `status --version-drift` filters directly to version-drifted items.
 - `plan --show-commands` displays executor command previews where available.
+- `validate` and `doctor` reject unsupported compiled-binary archive formats before installation.
 
 ## P0 - Trust And Correctness
 

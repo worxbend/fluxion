@@ -80,6 +80,29 @@ class ConfigValidatorTest {
   }
 
   @Test
+  void validate_whenCompiledBinaryArchiveUnsupported_reportsError() throws Exception {
+    var module =
+        new CompiledBinaryModule(
+            new ModuleName("ripgrep"),
+            "rg",
+            new BinaryUrl(new URI("https://example.test/rg.zip")),
+            Optional.empty(),
+            Path.of("/usr/local/bin/rg"),
+            false);
+
+    ValidationReport report = validator.validate(config(phase("base", List.of(module))));
+
+    assertThat(report.hasErrors()).isTrue();
+    assertThat(report.issues())
+        .anySatisfy(
+            issue -> {
+              assertThat(issue.severity()).isEqualTo(ValidationIssue.Severity.ERROR);
+              assertThat(issue.path()).isEqualTo("jobs[0].steps[0].url");
+              assertThat(issue.message()).contains("unsupported artifact format");
+            });
+  }
+
+  @Test
   void validate_whenPackageModuleHasDuplicatePackage_reportsWarning() {
     var module = packageModule(PackageManagerKind.DNF, "git", "git");
 

@@ -100,6 +100,13 @@ public final class ConfigValidator {
 
   private void validateCompiledBinary(
       CompiledBinaryModule module, String path, List<ValidationIssue> issues) {
+    if (!CompiledBinaryArtifactFormat.isSupported(module.url().value())) {
+      addError(
+          issues,
+          path + ".url",
+          "Compiled binary '%s' uses an unsupported artifact format; supported formats are %s"
+              .formatted(module.name().value(), CompiledBinaryArtifactFormat.supportedFormats()));
+    }
     if (module.checksum().isEmpty()) {
       addWarning(
           issues,

@@ -15,6 +15,7 @@ import dev.sysboot.core.PackageManagerKind;
 import dev.sysboot.core.PackageModule;
 import dev.sysboot.core.ShellCommandModule;
 import dev.sysboot.core.ZypperModule;
+import dev.sysboot.executor.CompiledBinaryArtifactFormat;
 import dev.sysboot.executor.JsonStateRepository;
 import dev.sysboot.executor.StateReadException;
 import java.io.IOException;
@@ -222,6 +223,13 @@ public final class DoctorCommand implements Runnable {
   }
 
   private void addNetworkCheck(CompiledBinaryModule module, List<Check> checks) {
+    if (!CompiledBinaryArtifactFormat.isSupported(module.url().value())) {
+      checks.add(
+          Check.fail(
+              "binary artifact",
+              module.url().value() + " is not " + CompiledBinaryArtifactFormat.supportedFormats()));
+      return;
+    }
     if (skipNetwork) {
       checks.add(Check.warn("network", "skipped " + module.url().value()));
       return;

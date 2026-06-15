@@ -678,6 +678,17 @@ class CliExitCodeTest {
     assertThat(result.stderr()).contains("Doctor found");
   }
 
+  @Test
+  void doctor_whenCompiledBinaryArchiveUnsupported_returnsDependencyError() throws Exception {
+    Path config = writeUnsupportedBinaryArchiveConfig();
+
+    CliResult result = execute("doctor", "--skip-network", "-c", config.toString());
+
+    assertThat(result.exitCode()).isEqualTo(ExitCode.EXTERNAL_DEPENDENCY_ERROR.value());
+    assertThat(result.stdout()).contains("[fail] binary artifact").contains("rg.zip");
+    assertThat(result.stderr()).contains("Doctor found");
+  }
+
   private CliResult execute(String... args) {
     CommandLine commandLine = Main.commandLine();
     var stdout = new StringWriter();
@@ -813,6 +824,27 @@ class CliExitCodeTest {
                 checksum:
                   algorithm: sha256
                   value: abcdef
+        """);
+    return config;
+  }
+
+  private Path writeUnsupportedBinaryArchiveConfig() throws IOException {
+    Path config = tempDir.resolve("unsupported-binary-profile.yaml");
+    Files.writeString(
+        config,
+        """
+        profile: test
+        os:
+          type: fedora
+          release: "44"
+        jobs:
+          - name: base
+            steps:
+              - type: compiled-binary
+                name: ripgrep
+                binaryName: rg
+                url: https://example.test/rg.zip
+                installPath: /usr/local/bin/rg
         """);
     return config;
   }
