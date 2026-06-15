@@ -94,6 +94,9 @@ a fresh login shell wrapper so tools installed into shell startup paths are visi
 Each package is installed in a **separate process** so one failure never blocks others.
 
 Package names are validated to reject shell metacharacters (space, `$`, `;`, `|`, `&`, `` ` ``, `>`, `<`).
+`fluxion validate` also checks that the selected package manager matches the configured OS target:
+Fedora uses `dnf`, Arch uses `pacman`, `paru`, or `yay`, Debian uses `apt`, and openSUSE uses
+`zypper`. Duplicate package names are reported as warnings.
 
 ---
 
@@ -145,6 +148,7 @@ Supported archive formats: `.tar.gz`, `.tgz`. Plain binaries (no extension) are 
 The binary is copied to `installPath`. If the parent directory is root-owned, `sudo cp` is used.
 When `checksum` is omitted, Fluxion logs an explicit warning and installs from the HTTPS source
 without integrity verification. Use SHA-256 checksums for downloaded binaries whenever possible.
+`fluxion validate --strict` treats missing compiled-binary checksums as configuration failures.
 
 ---
 

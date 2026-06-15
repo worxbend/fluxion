@@ -167,6 +167,43 @@ class CliExitCodeTest {
 
     CliResult validate = execute("validate", "--no-tui", "-c", generated.toString());
     assertThat(validate.exitCode()).isEqualTo(ExitCode.SUCCESS.value());
+    assertThat(validate.stdout()).contains("Config is valid");
+  }
+
+  @Test
+  void validate_whenFormatJson_outputsJsonReport() throws Exception {
+    Path config = writeConfig();
+
+    CliResult result = execute("validate", "--no-tui", "--format", "json", "-c", config.toString());
+
+    assertThat(result.exitCode()).isEqualTo(ExitCode.SUCCESS.value());
+    assertThat(result.stdout())
+        .contains("\"profileName\":\"test\"")
+        .contains("\"valid\":true")
+        .contains("\"issues\":[]");
+    assertThat(result.stderr()).isEmpty();
+  }
+
+  @Test
+  void validate_whenStrictWarnings_returnsConfigurationError() throws Exception {
+    Path config = writeBinaryWithoutChecksumConfig();
+
+    CliResult result = execute("validate", "--no-tui", "--strict", "-c", config.toString());
+
+    assertThat(result.exitCode()).isEqualTo(ExitCode.CONFIGURATION_ERROR.value());
+    assertThat(result.stdout()).contains("warning").contains("checksum");
+    assertThat(result.stderr()).contains("Config validation failed");
+  }
+
+  @Test
+  void validate_whenPackageManagerDoesNotMatchTarget_reportsError() throws Exception {
+    Path config = writeWrongPackageManagerConfig();
+
+    CliResult result = execute("validate", "--no-tui", "-c", config.toString());
+
+    assertThat(result.exitCode()).isEqualTo(ExitCode.CONFIGURATION_ERROR.value());
+    assertThat(result.stdout()).contains("jobs[0].steps[0].packageManager").contains("apt");
+    assertThat(result.stderr()).contains("Config validation failed");
   }
 
   @Test
@@ -263,6 +300,47 @@ class CliExitCodeTest {
                   - "echo ready"
         """
             .formatted(shell));
+    return config;
+  }
+
+  private Path writeBinaryWithoutChecksumConfig() throws IOException {
+    Path config = tempDir.resolve("binary-profile.yaml");
+    Files.writeString(
+        config,
+        """
+        profile: test
+        os:
+          type: fedora
+          release: "44"
+        jobs:
+          - name: base
+            steps:
+              - type: compiled-binary
+                name: ripgrep
+                binaryName: rg
+                url: https://example.test/rg.tar.gz
+                installPath: /usr/local/bin/rg
+        """);
+    return config;
+  }
+
+  private Path writeWrongPackageManagerConfig() throws IOException {
+    Path config = tempDir.resolve("wrong-package-manager.yaml");
+    Files.writeString(
+        config,
+        """
+        profile: test
+        os:
+          type: fedora
+          release: "44"
+        jobs:
+          - name: base
+            steps:
+              - type: packages
+                name: tools
+                packageManager: apt
+                packages: [git]
+        """);
     return config;
   }
 

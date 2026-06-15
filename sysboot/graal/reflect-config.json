@@ -42,6 +42,12 @@
     "allDeclaredConstructors": true
   },
   {
+    "name": "dev.sysboot.cli.command.ValidateCommand$OutputFormat",
+    "allDeclaredFields": true,
+    "allDeclaredMethods": true,
+    "allDeclaredConstructors": true
+  },
+  {
     "name": "dev.sysboot.cli.command.PlanCommand",
     "allDeclaredFields": true,
     "allDeclaredMethods": true,

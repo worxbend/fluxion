@@ -33,6 +33,9 @@ and parallel agent analysis.
 - `generate` creates starter configs with `minimal`, `developer`, `desktop`, and `dotfiles`
   presets.
 - `doctor` performs host readiness checks for a profile.
+- `validate` now uses structured diagnostics with path-aware issues, JSON output, strict warning
+  failure mode, package-manager/OS compatibility checks, duplicate package warnings, and missing
+  compiled-binary checksum warnings.
 
 ## P0 - Trust And Correctness
 

@@ -43,13 +43,18 @@ should still be reviewed before running.
 
 ## `validate`
 
-Loads YAML, maps it into the domain model, and checks the phase dependency graph.
+Loads YAML, maps it into the domain model, checks the phase dependency graph, and reports
+configuration diagnostics.
 
 ```bash
 fluxion validate -c config/example-fedora.yaml
+fluxion validate -c config/example-fedora.yaml --strict
+fluxion validate -c config/example-fedora.yaml --format json
 ```
 
 Use this before `run`, especially after editing dependencies, module names, URLs, or package lists.
+Warnings do not fail validation unless `--strict` is set. JSON output is stable enough for shell
+automation and CI checks.
 
 ## `doctor`
 
@@ -153,4 +158,3 @@ Prints configured modules and their item counts or source paths.
 ```bash
 fluxion list -c config/example-fedora.yaml
 ```
-
