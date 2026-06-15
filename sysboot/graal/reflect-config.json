@@ -108,6 +108,12 @@
     "allDeclaredConstructors": true
   },
   {
+    "name": "dev.sysboot.cli.command.ImportCommand$FlatpaksSubcommand",
+    "allDeclaredFields": true,
+    "allDeclaredMethods": true,
+    "allDeclaredConstructors": true
+  },
+  {
     "name": "dev.sysboot.cli.command.DoctorCommand",
     "allDeclaredFields": true,
     "allDeclaredMethods": true,

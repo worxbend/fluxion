@@ -7,8 +7,6 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.util.List;
-import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.TimeUnit;
 import picocli.CommandLine.Command;
 import picocli.CommandLine.Model.CommandSpec;
 import picocli.CommandLine.Option;
@@ -17,8 +15,11 @@ import picocli.CommandLine.Spec;
 @Command(
     name = "import",
     description = "Generate review-required profile fragments from the host",
-    subcommands = {ImportCommand.PackagesSubcommand.class})
+    subcommands = {ImportCommand.PackagesSubcommand.class, ImportCommand.FlatpaksSubcommand.class})
 public final class ImportCommand implements Runnable {
+
+  private static final HostCommandRunner HOST_COMMANDS =
+      new HostCommandRunner(Duration.ofSeconds(5), 20_000);
 
   @Spec private CommandSpec spec;
 
@@ -29,9 +30,6 @@ public final class ImportCommand implements Runnable {
 
   @Command(name = "packages", description = "Import installed host packages into a YAML fragment")
   public static final class PackagesSubcommand implements Runnable {
-
-    private static final Duration COMMAND_TIMEOUT = Duration.ofSeconds(5);
-    private static final int MAX_PACKAGES = 20_000;
 
     @Spec private CommandSpec spec;
 
@@ -67,20 +65,22 @@ public final class ImportCommand implements Runnable {
     }
 
     private HostPackages detectPackages() {
-      if (commandExists("rpm")) {
-        CommandResult result = commandLines("rpm", "-qa", "--qf", "%{NAME}\n");
+      if (HOST_COMMANDS.commandExists("rpm")) {
+        HostCommandRunner.CommandResult result =
+            HOST_COMMANDS.lines("rpm", "-qa", "--qf", "%{NAME}\n");
         if (result.success()) {
           return new HostPackages(rpmManager(), result.lines());
         }
       }
-      if (commandExists("pacman")) {
-        CommandResult result = commandLines("pacman", "-Qq");
+      if (HOST_COMMANDS.commandExists("pacman")) {
+        HostCommandRunner.CommandResult result = HOST_COMMANDS.lines("pacman", "-Qq");
         if (result.success()) {
           return new HostPackages("pacman", result.lines());
         }
       }
-      if (commandExists("dpkg-query")) {
-        CommandResult result = commandLines("dpkg-query", "-W", "-f=${binary:Package}\n");
+      if (HOST_COMMANDS.commandExists("dpkg-query")) {
+        HostCommandRunner.CommandResult result =
+            HOST_COMMANDS.lines("dpkg-query", "-W", "-f=${binary:Package}\n");
         if (result.success()) {
           return new HostPackages("apt", result.lines());
         }
@@ -90,10 +90,10 @@ public final class ImportCommand implements Runnable {
     }
 
     private String rpmManager() {
-      if (commandExists("dnf")) {
+      if (HOST_COMMANDS.commandExists("dnf")) {
         return "dnf";
       }
-      if (commandExists("zypper")) {
+      if (HOST_COMMANDS.commandExists("zypper")) {
         return "zypper";
       }
       return "dnf";
@@ -144,58 +144,112 @@ public final class ImportCommand implements Runnable {
       return value.matches("[A-Za-z0-9_.+:-]+") ? value : "\"" + value.replace("\"", "\\\"") + "\"";
     }
 
-    private boolean commandExists(String command) {
-      String path = System.getenv("PATH");
-      if (path == null || path.isBlank()) {
-        return false;
-      }
-      return java.util.Arrays.stream(path.split(java.io.File.pathSeparator))
-          .map(Path::of)
-          .map(dir -> dir.resolve(command))
-          .anyMatch(Files::isExecutable);
-    }
-
-    private CommandResult commandLines(String... command) {
-      Process process;
-      try {
-        process =
-            new ProcessBuilder(command).redirectError(ProcessBuilder.Redirect.DISCARD).start();
-      } catch (IOException e) {
-        return new CommandResult(false, List.of());
-      }
-      return collect(process);
-    }
-
-    private CommandResult collect(Process process) {
-      CompletableFuture<List<String>> output =
-          CompletableFuture.supplyAsync(
-              () -> process.inputReader().lines().limit(MAX_PACKAGES).toList());
-      try {
-        if (!process.waitFor(COMMAND_TIMEOUT.toMillis(), TimeUnit.MILLISECONDS)) {
-          process.destroyForcibly();
-          return new CommandResult(false, List.of());
-        }
-        return new CommandResult(process.exitValue() == 0, sorted(output.join()));
-      } catch (InterruptedException e) {
-        Thread.currentThread().interrupt();
-        process.destroyForcibly();
-        return new CommandResult(false, List.of());
-      }
-    }
-
-    private List<String> sorted(List<String> lines) {
-      return lines.stream().map(String::strip).filter(line -> !line.isBlank()).sorted().toList();
-    }
-
     private record HostPackages(String packageManager, List<String> names) {
       private HostPackages {
         names = List.copyOf(names);
       }
     }
+  }
 
-    private record CommandResult(boolean success, List<String> lines) {
-      private CommandResult {
-        lines = List.copyOf(lines);
+  @Command(name = "flatpaks", description = "Import installed Flatpak apps into a YAML fragment")
+  public static final class FlatpaksSubcommand implements Runnable {
+
+    @Spec private CommandSpec spec;
+
+    @Option(
+        names = {"--from-host"},
+        description = "Read Flatpak apps from the current host",
+        required = true)
+    private boolean fromHost;
+
+    @Option(
+        names = {"--output"},
+        description = "Output YAML path",
+        required = true)
+    private Path output;
+
+    @Option(
+        names = {"--force"},
+        description = "Overwrite the output file if it exists")
+    private boolean force;
+
+    @Override
+    public void run() {
+      if (!fromHost) {
+        throw new CliFailureException(ExitCode.INVALID_INPUT, "Specify --from-host");
+      }
+      if (Files.exists(output) && !force) {
+        throw new CliFailureException(
+            ExitCode.INVALID_INPUT, "Output file already exists. Use --force to overwrite.");
+      }
+      HostFlatpaks flatpaks = detectFlatpaks();
+      writeFragment(flatpaks);
+      spec.commandLine().getOut().println("Imported Flatpaks: " + output.toAbsolutePath());
+    }
+
+    private HostFlatpaks detectFlatpaks() {
+      if (!HOST_COMMANDS.commandExists("flatpak")) {
+        throw new CliFailureException(
+            ExitCode.EXTERNAL_DEPENDENCY_ERROR, "Flatpak command not found");
+      }
+      HostCommandRunner.CommandResult apps =
+          HOST_COMMANDS.lines("flatpak", "list", "--app", "--columns=application");
+      if (!apps.success() || apps.lines().isEmpty()) {
+        throw new CliFailureException(
+            ExitCode.EXTERNAL_DEPENDENCY_ERROR, "No installed Flatpak apps found");
+      }
+      HostCommandRunner.CommandResult remotes =
+          HOST_COMMANDS.lines("flatpak", "remotes", "--columns=name");
+      return new HostFlatpaks(preferredRemote(remotes.lines()), apps.lines());
+    }
+
+    private String preferredRemote(List<String> remotes) {
+      if (remotes.contains("flathub")) {
+        return "flathub";
+      }
+      return remotes.isEmpty() ? "flathub" : remotes.getFirst();
+    }
+
+    private void writeFragment(HostFlatpaks flatpaks) {
+      try {
+        if (output.getParent() != null) {
+          Files.createDirectories(output.getParent());
+        }
+        Files.writeString(output, render(flatpaks));
+      } catch (IOException e) {
+        throw new CliFailureException(
+            ExitCode.IO_ERROR, "Failed to write import fragment: " + output.toAbsolutePath(), e);
+      }
+    }
+
+    private String render(HostFlatpaks flatpaks) {
+      return """
+      # Review required. Generated from this host's Flatpak installation.
+      # Remove machine-specific, transient, or unwanted apps before applying.
+      jobs:
+        - name: imported-flatpaks
+          restartPolicy:
+            type: none
+          steps:
+            - type: flatpak
+              name: imported-flatpaks
+              remote: %s
+              appIds:
+      %s
+      """
+          .formatted(flatpaks.remote(), appLines(flatpaks.appIds()));
+    }
+
+    private String appLines(List<String> appIds) {
+      var output = new StringBuilder();
+      appIds.forEach(
+          appId -> output.append("          - ").append(appId).append(System.lineSeparator()));
+      return output.toString();
+    }
+
+    private record HostFlatpaks(String remote, List<String> appIds) {
+      private HostFlatpaks {
+        appIds = List.copyOf(appIds);
       }
     }
   }

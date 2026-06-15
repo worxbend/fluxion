@@ -21,6 +21,7 @@ import java.time.Instant;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Optional;
+import java.util.concurrent.TimeUnit;
 import org.junit.jupiter.api.Assumptions;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -482,6 +483,35 @@ class CliExitCodeTest {
   }
 
   @Test
+  void importFlatpaks_writesReviewRequiredFragment() throws Exception {
+    Assumptions.assumeTrue(hasInstalledFlatpaks());
+    Path output = tempDir.resolve("flatpaks.yaml");
+
+    CliResult result = execute("import", "flatpaks", "--from-host", "--output", output.toString());
+
+    assertThat(result.exitCode()).isEqualTo(ExitCode.SUCCESS.value());
+    assertThat(result.stdout()).contains("Imported Flatpaks:");
+    assertThat(output).exists();
+    assertThat(Files.readString(output))
+        .contains("Review required")
+        .contains("type: flatpak")
+        .contains("remote:")
+        .contains("appIds:");
+    assertThat(result.stderr()).isEmpty();
+  }
+
+  @Test
+  void importFlatpaks_whenOutputExistsWithoutForce_returnsInvalidInput() throws Exception {
+    Path output = tempDir.resolve("flatpaks.yaml");
+    Files.writeString(output, "existing");
+
+    CliResult result = execute("import", "flatpaks", "--from-host", "--output", output.toString());
+
+    assertThat(result.exitCode()).isEqualTo(ExitCode.INVALID_INPUT.value());
+    assertThat(result.stderr()).contains("Output file already exists");
+  }
+
+  @Test
   void doctor_whenConfigIsReady_returnsSuccessWithReport() throws Exception {
     Path config = writeShellConfig("/bin/sh");
     String originalHome = System.getProperty("user.home");
@@ -646,6 +676,28 @@ class CliExitCodeTest {
 
   private boolean hasSupportedPackageDatabase() {
     return commandExists("rpm") || commandExists("pacman") || commandExists("dpkg-query");
+  }
+
+  private boolean hasInstalledFlatpaks() {
+    if (!commandExists("flatpak")) {
+      return false;
+    }
+    try {
+      Process process =
+          new ProcessBuilder("flatpak", "list", "--app", "--columns=application")
+              .redirectError(ProcessBuilder.Redirect.DISCARD)
+              .start();
+      if (!process.waitFor(5, TimeUnit.SECONDS)) {
+        process.destroyForcibly();
+        return false;
+      }
+      return process.exitValue() == 0 && !process.inputReader().lines().toList().isEmpty();
+    } catch (IOException e) {
+      return false;
+    } catch (InterruptedException e) {
+      Thread.currentThread().interrupt();
+      return false;
+    }
   }
 
   private boolean commandExists(String command) {

@@ -548,12 +548,12 @@ Explain:
 
 ### 26. Add workstation snapshot/import workflows
 
-Status: snapshot and package import slices are implemented. `fluxion snapshot --output
+Status: snapshot, package import, and Flatpak import slices are implemented. `fluxion snapshot --output
 snapshot.json` produces review-required JSON for OS metadata, detected package managers, package
 inventory when available, Flatpak apps/remotes, default shell, and common toolchain presence.
 `fluxion import packages --from-host --output packages.yaml` now generates a review-required YAML
-packages fragment from RPM, Pacman, or Dpkg host databases. Flatpak import remains a later
-expansion.
+packages fragment from RPM, Pacman, or Dpkg host databases. `fluxion import flatpaks --from-host
+--output flatpaks.yaml` generates a review-required YAML Flatpak fragment from installed app IDs.
 
 Fluxion should help users turn a hand-built machine into a reproducible profile. This is a clear
 differentiator from dotfile tools and a lighter-weight alternative to writing Ansible roles from
