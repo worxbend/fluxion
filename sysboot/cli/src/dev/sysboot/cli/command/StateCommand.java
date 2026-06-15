@@ -152,6 +152,7 @@ public final class StateCommand implements Runnable {
       output.put("status", phase.status().name().toLowerCase());
       output.put("completedAt", phase.completedAt().toString());
       output.put("fingerprint", phase.fingerprint().orElse(null));
+      output.put("reason", phase.reason().orElse(null));
       return output;
     }
 

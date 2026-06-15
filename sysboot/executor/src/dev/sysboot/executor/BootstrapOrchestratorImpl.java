@@ -129,7 +129,13 @@ public final class BootstrapOrchestratorImpl implements BootstrapOrchestrator {
     for (Phase phase : ordered) {
       if (isBlocked(phase, failed)) {
         blocked.add(phase.name());
-        listener.onEvent(ExecutionEvent.phaseBlocked(phase.name(), firstFailedDep(phase, failed)));
+        String failedDependency = firstFailedDep(phase, failed);
+        recordPhaseState(
+            phase.name(),
+            PhaseStatus.BLOCKED,
+            fingerprintCalculator.fingerprint(phase),
+            Optional.of("Blocked by failed phase: " + failedDependency));
+        listener.onEvent(ExecutionEvent.phaseBlocked(phase.name(), failedDependency));
         continue;
       }
 
@@ -146,10 +152,14 @@ public final class BootstrapOrchestratorImpl implements BootstrapOrchestrator {
 
       if (phaseResult == PhaseExecutionResult.HARD_FAILURE) {
         failed.add(phase.name());
-        recordPhaseState(phase.name(), PhaseStatus.FAILED, fingerprint);
+        recordPhaseState(
+            phase.name(),
+            PhaseStatus.FAILED,
+            fingerprint,
+            Optional.of("Phase stopped after a module failure"));
         listener.onEvent(ExecutionEvent.phaseFailed(phase.name()));
       } else {
-        recordPhaseState(phase.name(), PhaseStatus.COMPLETED, fingerprint);
+        recordPhaseState(phase.name(), PhaseStatus.COMPLETED, fingerprint, Optional.empty());
         listener.onEvent(ExecutionEvent.phaseCompleted(phase.name()));
         handleRestartPolicy(phase, listener);
 
@@ -449,7 +459,8 @@ public final class BootstrapOrchestratorImpl implements BootstrapOrchestrator {
         });
   }
 
-  private void recordPhaseState(PhaseName phase, PhaseStatus status, String fingerprint) {
+  private void recordPhaseState(
+      PhaseName phase, PhaseStatus status, String fingerprint, Optional<String> reason) {
     stateRepository.ifPresent(
         repo -> {
           var current =
@@ -458,7 +469,7 @@ public final class BootstrapOrchestratorImpl implements BootstrapOrchestrator {
           var updated =
               current.withPhaseEntry(
                   new PhaseStateEntry(
-                      phase.value(), status, Instant.now(), Optional.of(fingerprint)));
+                      phase.value(), status, Instant.now(), Optional.of(fingerprint), reason));
           repo.save(updated);
           skipEvaluator.refreshState(updated);
         });

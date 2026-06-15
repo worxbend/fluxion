@@ -205,6 +205,8 @@ class BootstrapOrchestratorImplTest {
   void execute_whenPhaseDisallowsModuleErrors_blocksDependentPhase() {
     when(dnfExecutor.install(any()))
         .thenReturn(new StepResult.Failure("git", "not found", 1, Duration.ofMillis(100)));
+    var stateRepository = new InMemoryStateRepository(BootstrapState.empty("test", "1.0.0"));
+    orchestrator = orchestrator(alwaysRun(), Optional.of(stateRepository));
 
     var config =
         buildPhasedConfig(
@@ -236,6 +238,10 @@ class BootstrapOrchestratorImplTest {
         .filteredOn(e -> e.kind() == EventKind.PHASE_BLOCKED)
         .extracting(e -> e.phaseContext().orElseThrow())
         .containsExactly("dependent");
+    assertThat(stateRepository.state().findPhaseEntry("foundation").orElseThrow().reason())
+        .contains("Phase stopped after a module failure");
+    assertThat(stateRepository.state().findPhaseEntry("dependent").orElseThrow().reason())
+        .contains("Blocked by failed phase: foundation");
     verify(dnfExecutor, times(1)).install(any());
   }
 

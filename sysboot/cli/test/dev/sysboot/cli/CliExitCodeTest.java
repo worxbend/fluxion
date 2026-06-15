@@ -544,13 +544,21 @@ class CliExitCodeTest {
               Instant.now(),
               "1.0.0",
               List.of(),
-              List.of(new PhaseStateEntry("base", PhaseStatus.COMPLETED, Instant.now()))));
+              List.of(
+                  new PhaseStateEntry(
+                      "base",
+                      PhaseStatus.COMPLETED,
+                      Instant.now(),
+                      Optional.empty(),
+                      Optional.of("already applied")))));
 
       CliResult result =
           execute("state", "show", "-c", config.toString(), "--format", "json", "default");
 
       assertThat(result.exitCode()).isEqualTo(ExitCode.SUCCESS.value());
-      assertThat(result.stdout()).contains("\"nextPhase\":\"desktop\"");
+      assertThat(result.stdout())
+          .contains("\"nextPhase\":\"desktop\"")
+          .contains("\"reason\":\"already applied\"");
       assertThat(result.stderr()).isEmpty();
     } finally {
       System.setProperty("user.home", originalHome);

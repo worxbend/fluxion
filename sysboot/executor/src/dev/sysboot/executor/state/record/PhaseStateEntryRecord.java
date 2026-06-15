@@ -16,6 +16,9 @@ public final class PhaseStateEntryRecord {
   @JsonProperty("fingerprint")
   public String fingerprint;
 
+  @JsonProperty("reason")
+  public String reason;
+
   public PhaseStateEntryRecord() {}
 
   public PhaseStateEntryRecord(String phaseName, String status, String completedAt) {
@@ -24,9 +27,15 @@ public final class PhaseStateEntryRecord {
 
   public PhaseStateEntryRecord(
       String phaseName, String status, String completedAt, String fingerprint) {
+    this(phaseName, status, completedAt, fingerprint, null);
+  }
+
+  public PhaseStateEntryRecord(
+      String phaseName, String status, String completedAt, String fingerprint, String reason) {
     this.phaseName = phaseName;
     this.status = status;
     this.completedAt = completedAt;
     this.fingerprint = fingerprint;
+    this.reason = reason;
   }
 }

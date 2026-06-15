@@ -114,6 +114,27 @@ class JsonStateRepositoryTest {
   }
 
   @Test
+  void saveAndLoad_roundTrip_preservesPhaseReason() {
+    var phaseEntry =
+        new PhaseStateEntry(
+            "foundation",
+            PhaseStatus.FAILED,
+            Instant.parse("2026-06-01T10:00:00Z"),
+            Optional.of("abc123"),
+            Optional.of("Phase stopped after a module failure"));
+    BootstrapState state = BootstrapState.empty("test-profile", "1.0.0").withPhaseEntry(phaseEntry);
+
+    var repo = newRepo();
+    repo.save(state);
+
+    Optional<BootstrapState> loaded = repo.load("test-profile");
+    assertThat(loaded).isPresent();
+    assertThat(loaded.get().phaseEntries()).hasSize(1);
+    assertThat(loaded.get().phaseEntries().get(0).reason())
+        .contains("Phase stopped after a module failure");
+  }
+
+  @Test
   void recordSuccess_addsEntryToExistingState() {
     var repo = newRepo();
     StateEntry first =
