@@ -127,6 +127,26 @@ class ConfigValidatorTest {
   }
 
   @Test
+  void validate_whenCompiledBinaryHasSignatureUrl_doesNotReportMissingIntegrityMetadata()
+      throws Exception {
+    var module =
+        new CompiledBinaryModule(
+            new ModuleName("ripgrep"),
+            "rg",
+            new BinaryUrl(new URI("https://example.test/rg.tar.gz")),
+            Optional.empty(),
+            Optional.empty(),
+            Optional.of(new BinaryUrl(new URI("https://example.test/rg.tar.gz.asc"))),
+            Path.of("/usr/local/bin/rg"),
+            false);
+
+    ValidationReport report = validator.validate(config(phase("base", List.of(module))));
+
+    assertThat(report.issues())
+        .noneMatch(issue -> issue.path().equals("jobs[0].steps[0].checksum"));
+  }
+
+  @Test
   void validate_whenCompiledBinaryHasChecksumAndChecksumUrl_reportsError() throws Exception {
     var module =
         new CompiledBinaryModule(

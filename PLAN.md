@@ -841,13 +841,14 @@ Implementation:
 
 - Treat missing checksums as errors in `validate --strict`.
 - Support SHA-256 checksum URLs, inline checksums, and detached signatures.
-  - Status: inline checksums and HTTPS `checksumUrl` files are implemented; detached signatures
-    remain open.
+  - Status: inline checksums, HTTPS `checksumUrl` files, and HTTPS detached `signatureUrl`
+    verification with `gpg --batch --verify` are implemented.
 - Persist installed artifact URL, checksum, and detected version in state.
   - Status: implemented for compiled-binary successes when checksum/version data is available.
 - Add `doctor` checks for unsupported archive formats and non-HTTPS URLs.
-  - Status: unsupported archive formats and compiled-binary URL/checksum URL reachability are
-    implemented; non-HTTPS URLs are rejected while parsing.
+  - Status: unsupported archive formats, compiled-binary URL/checksum URL/signature URL
+    reachability, and `gpg` availability for signature verification are implemented; non-HTTPS URLs
+    are rejected while parsing.
 
 ### 31. Add run reports
 

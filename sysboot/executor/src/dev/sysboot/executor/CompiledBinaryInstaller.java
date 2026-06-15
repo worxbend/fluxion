@@ -38,6 +38,7 @@ public final class CompiledBinaryInstaller {
   private final ShellRunner shellRunner;
   private final HttpClient httpClient;
   private final ChecksumResolver checksumResolver;
+  private final DetachedSignatureVerifier signatureVerifier;
 
   public CompiledBinaryInstaller(ShellRunner shellRunner) {
     this(shellRunner, new ChecksumResolver());
@@ -46,6 +47,7 @@ public final class CompiledBinaryInstaller {
   CompiledBinaryInstaller(ShellRunner shellRunner, ChecksumResolver checksumResolver) {
     this.shellRunner = shellRunner;
     this.checksumResolver = checksumResolver;
+    this.signatureVerifier = new DetachedSignatureVerifier(shellRunner);
     this.httpClient =
         HttpClient.newBuilder()
             .connectTimeout(Duration.ofSeconds(30))
@@ -56,14 +58,16 @@ public final class CompiledBinaryInstaller {
   public StepResult install(CompiledBinaryModule module) {
     Instant start = Instant.now();
     Path tempFile = null;
+    Optional<Path> signatureFile = Optional.empty();
     try {
       tempFile = Files.createTempFile("sysboot-", "-" + module.binaryName());
       Path downloadedFile = tempFile;
       download(module.url().value(), downloadedFile);
+      signatureFile = verifyDetachedSignature(module, downloadedFile);
       Optional<Checksum> checksum = checksumResolver.resolve(module);
       if (checksum.isPresent()) {
         verifyChecksum(downloadedFile, checksum.orElseThrow());
-      } else {
+      } else if (module.signatureUrl().isEmpty()) {
         log.warn("Installing downloaded binary '{}' without checksum verification", module.name());
       }
       extractOrCopy(downloadedFile, module);
@@ -77,7 +81,19 @@ public final class CompiledBinaryInstaller {
           module.binaryName(), e.getMessage(), 1, Duration.between(start, Instant.now()));
     } finally {
       deleteTempFile(tempFile);
+      signatureFile.ifPresent(this::deleteTempFile);
     }
+  }
+
+  private Optional<Path> verifyDetachedSignature(CompiledBinaryModule module, Path downloadedFile)
+      throws IOException {
+    if (module.signatureUrl().isEmpty()) {
+      return Optional.empty();
+    }
+    Path signatureFile = Files.createTempFile("sysboot-", ".sig");
+    download(module.signatureUrl().orElseThrow().value(), signatureFile);
+    signatureVerifier.verify(signatureFile, downloadedFile);
+    return Optional.of(signatureFile);
   }
 
   private void download(URI url, Path destination) throws IOException {

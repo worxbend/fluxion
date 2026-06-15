@@ -265,15 +265,22 @@ public final class DoctorCommand implements Runnable {
               module.url().value() + " is not " + CompiledBinaryArtifactFormat.supportedFormats()));
       return;
     }
+    module
+        .signatureUrl()
+        .ifPresent(url -> checks.add(checkRequiredCommand("gpg", "signature command")));
     if (skipNetwork) {
       checks.add(Check.warn("network", "skipped " + module.url().value()));
       module
           .checksumUrl()
           .ifPresent(url -> checks.add(Check.warn("checksum network", "skipped " + url.value())));
+      module
+          .signatureUrl()
+          .ifPresent(url -> checks.add(Check.warn("signature network", "skipped " + url.value())));
       return;
     }
     checks.add(checkUrl("network", module.url().value()));
     module.checksumUrl().ifPresent(url -> checks.add(checkUrl("checksum network", url.value())));
+    module.signatureUrl().ifPresent(url -> checks.add(checkUrl("signature network", url.value())));
   }
 
   private Check checkUrl(String label, URI uri) {

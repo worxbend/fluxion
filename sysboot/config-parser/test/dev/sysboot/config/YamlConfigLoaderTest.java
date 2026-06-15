@@ -486,6 +486,33 @@ class YamlConfigLoaderTest {
   }
 
   @Test
+  void load_whenCompiledBinarySignatureUrlPresent_parsesSignatureUrl(@TempDir Path tmpDir)
+      throws IOException {
+    Path config =
+        writeConfig(
+            tmpDir,
+            """
+            profile: binary-test
+            os:
+              type: fedora
+              release: "41"
+            modules:
+              - type: compiled-binary
+                name: zoxide
+                binaryName: zoxide
+                url: https://example.com/zoxide.tar.gz
+                signatureUrl: https://example.com/zoxide.tar.gz.asc
+                installPath: ~/.local/bin/zoxide
+            """);
+
+    BootstrapConfig result = loader.load(config);
+
+    var module = (CompiledBinaryModule) result.modules().getFirst();
+    assertThat(module.signatureUrl())
+        .hasValueSatisfying(url -> assertThat(url.toString()).endsWith(".asc"));
+  }
+
+  @Test
   void load_whenCompiledBinaryInstallPathIsRelative_throwsConfigLoadException(@TempDir Path tmpDir)
       throws IOException {
     Path config =

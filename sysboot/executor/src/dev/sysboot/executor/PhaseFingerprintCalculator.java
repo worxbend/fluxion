@@ -170,6 +170,7 @@ final class PhaseFingerprintCalculator {
     append(builder, "url", module.url().toString());
     append(builder, "checksum", module.checksum().map(Object::toString));
     append(builder, "checksumUrl", module.checksumUrl().map(Object::toString));
+    append(builder, "signatureUrl", module.signatureUrl().map(Object::toString));
     append(builder, "installPath", module.installPath().toString());
     append(builder, "continueOnError", module.continueOnError());
     append(builder, "versionCommand", module.versionCommand());

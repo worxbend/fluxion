@@ -37,12 +37,15 @@ public final class ProfileLinter {
   }
 
   private void lintBinary(CompiledBinaryModule module, String path, List<ProfileLintIssue> issues) {
-    if (module.checksum().isEmpty() && module.checksumUrl().isEmpty()) {
+    if (module.checksum().isEmpty()
+        && module.checksumUrl().isEmpty()
+        && module.signatureUrl().isEmpty()) {
       warning(
           issues,
           "safety",
           path + ".checksum",
-          "Compiled binary '%s' should declare a checksum".formatted(module.name().value()));
+          "Compiled binary '%s' should declare a checksum or detached signature"
+              .formatted(module.name().value()));
     }
     if (module.expectedVersion().isEmpty()) {
       info(

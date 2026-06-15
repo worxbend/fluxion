@@ -10,6 +10,7 @@ public record CompiledBinaryModule(
     BinaryUrl url,
     Optional<Checksum> checksum,
     Optional<BinaryUrl> checksumUrl,
+    Optional<BinaryUrl> signatureUrl,
     Path installPath,
     boolean continueOnError,
     Optional<String> versionCommand,
@@ -22,6 +23,7 @@ public record CompiledBinaryModule(
     Objects.requireNonNull(url);
     Objects.requireNonNull(checksum);
     Objects.requireNonNull(checksumUrl);
+    Objects.requireNonNull(signatureUrl);
     Objects.requireNonNull(installPath);
     Objects.requireNonNull(versionCommand);
     Objects.requireNonNull(expectedVersion);
@@ -37,7 +39,15 @@ public record CompiledBinaryModule(
       Optional<Checksum> checksum,
       Path installPath,
       boolean continueOnError) {
-    this(name, binaryName, url, checksum, Optional.empty(), installPath, continueOnError);
+    this(
+        name,
+        binaryName,
+        url,
+        checksum,
+        Optional.empty(),
+        Optional.empty(),
+        installPath,
+        continueOnError);
   }
 
   public CompiledBinaryModule(
@@ -54,6 +64,27 @@ public record CompiledBinaryModule(
         url,
         checksum,
         checksumUrl,
+        Optional.empty(),
+        installPath,
+        continueOnError);
+  }
+
+  public CompiledBinaryModule(
+      ModuleName name,
+      String binaryName,
+      BinaryUrl url,
+      Optional<Checksum> checksum,
+      Optional<BinaryUrl> checksumUrl,
+      Optional<BinaryUrl> signatureUrl,
+      Path installPath,
+      boolean continueOnError) {
+    this(
+        name,
+        binaryName,
+        url,
+        checksum,
+        checksumUrl,
+        signatureUrl,
         installPath,
         continueOnError,
         Optional.empty(),

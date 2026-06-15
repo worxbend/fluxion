@@ -2,8 +2,10 @@ package dev.sysboot.executor;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import dev.sysboot.core.BinaryUrl;
 import dev.sysboot.core.BootstrapConfig;
 import dev.sysboot.core.BootstrapModule;
+import dev.sysboot.core.CompiledBinaryModule;
 import dev.sysboot.core.ModuleName;
 import dev.sysboot.core.OsTarget;
 import dev.sysboot.core.Phase;
@@ -11,6 +13,8 @@ import dev.sysboot.core.PhaseName;
 import dev.sysboot.core.ProfileName;
 import dev.sysboot.core.RestartPolicy;
 import dev.sysboot.core.ShellCommandModule;
+import java.net.URI;
+import java.nio.file.Path;
 import java.util.List;
 import java.util.Optional;
 import org.junit.jupiter.api.Test;
@@ -53,6 +57,13 @@ class ProfileLinterTest {
             });
   }
 
+  @Test
+  void lint_whenCompiledBinaryHasDetachedSignature_doesNotRequireChecksum() throws Exception {
+    var report = linter.lint(config(signedBinaryModule()));
+
+    assertThat(report.issues()).noneMatch(issue -> issue.path().endsWith(".checksum"));
+  }
+
   private static BootstrapConfig config(BootstrapModule module) {
     return BootstrapConfig.builder()
         .profileName(new ProfileName("test"))
@@ -71,5 +82,17 @@ class ProfileLinterTest {
         Optional.empty(),
         false,
         Optional.of("test -f /etc/yum.repos.d/example.repo"));
+  }
+
+  private static CompiledBinaryModule signedBinaryModule() throws Exception {
+    return new CompiledBinaryModule(
+        new ModuleName("ripgrep"),
+        "rg",
+        new BinaryUrl(new URI("https://example.test/rg.tar.gz")),
+        Optional.empty(),
+        Optional.empty(),
+        Optional.of(new BinaryUrl(new URI("https://example.test/rg.tar.gz.asc"))),
+        Path.of("/usr/local/bin/rg"),
+        false);
   }
 }

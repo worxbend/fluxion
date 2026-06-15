@@ -836,6 +836,26 @@ class CliExitCodeTest {
     }
   }
 
+  @Test
+  void doctor_whenSignatureUrlConfigured_checksGpgAndSignatureNetwork() throws Exception {
+    Path config = writeBinaryWithSignatureUrlConfig();
+    String originalHome = System.getProperty("user.home");
+    System.setProperty("user.home", tempDir.toString());
+    try {
+      CliResult result = execute("doctor", "--skip-network", "-c", config.toString());
+
+      assertThat(result.exitCode()).isEqualTo(ExitCode.SUCCESS.value());
+      assertThat(result.stdout())
+          .contains("[pass] signature command")
+          .contains("gpg")
+          .contains("[warn] signature network")
+          .contains("rg.tar.gz.asc");
+      assertThat(result.stderr()).isEmpty();
+    } finally {
+      System.setProperty("user.home", originalHome);
+    }
+  }
+
   private CliResult execute(String... args) {
     CommandLine commandLine = Main.commandLine();
     var stdout = new StringWriter();
@@ -1013,6 +1033,28 @@ class CliExitCodeTest {
                 binaryName: rg
                 url: https://example.test/rg.tar.gz
                 checksumUrl: https://example.test/rg.sha256
+                installPath: /usr/local/bin/rg
+        """);
+    return config;
+  }
+
+  private Path writeBinaryWithSignatureUrlConfig() throws IOException {
+    Path config = tempDir.resolve("binary-signature-url-profile.yaml");
+    Files.writeString(
+        config,
+        """
+        profile: test
+        os:
+          type: fedora
+          release: "44"
+        jobs:
+          - name: base
+            steps:
+              - type: compiled-binary
+                name: ripgrep
+                binaryName: rg
+                url: https://example.test/rg.tar.gz
+                signatureUrl: https://example.test/rg.tar.gz.asc
                 installPath: /usr/local/bin/rg
         """);
     return config;

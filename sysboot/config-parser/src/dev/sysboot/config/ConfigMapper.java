@@ -262,6 +262,7 @@ final class ConfigMapper {
         url,
         mapChecksum(dto.checksum),
         mapBinaryUrl(dto.checksumUrl),
+        mapBinaryUrl(dto.signatureUrl),
         installPath,
         dto.continueOnError,
         Optional.ofNullable(dto.versionCommand),

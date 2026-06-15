@@ -110,7 +110,6 @@ the main roadmap once their value and implementation shape are clear.
 ## Security And Supply Chain
 
 - Require or strongly warn for checksums on compiled binaries.
-- Support detached signature verification for downloaded binaries.
 - Add allowlists for domains used by compiled-binary modules.
 - Redact secrets in shell output, logs, state, and TUI events.
 - Add CodeQL and dependency review gates to release branches.

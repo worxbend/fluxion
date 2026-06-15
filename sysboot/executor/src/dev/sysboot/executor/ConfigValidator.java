@@ -210,11 +210,14 @@ public final class ConfigValidator {
                     path + ".checksum.algorithm",
                     "Compiled binary '%s' uses unsupported checksum algorithm '%s'"
                         .formatted(module.name().value(), checksum.algorithm())));
-    if (module.checksum().isEmpty() && module.checksumUrl().isEmpty()) {
+    if (module.checksum().isEmpty()
+        && module.checksumUrl().isEmpty()
+        && module.signatureUrl().isEmpty()) {
       addWarning(
           issues,
           path + ".checksum",
-          "Compiled binary '%s' has no checksum".formatted(module.name().value()));
+          "Compiled binary '%s' has no checksum or detached signature"
+              .formatted(module.name().value()));
     }
   }
 
