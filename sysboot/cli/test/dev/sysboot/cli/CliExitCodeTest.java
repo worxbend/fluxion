@@ -150,6 +150,19 @@ class CliExitCodeTest {
   }
 
   @Test
+  void applyDryRun_whenConsoleMissing_usesPlainOutput() throws Exception {
+    Assumptions.assumeTrue(System.console() == null);
+    Path config = writeConfig();
+
+    CliResult result =
+        executeCapturingSystemOut("apply", "--dry-run", "-c", config.toString(), "--yes");
+
+    assertThat(result.exitCode()).isEqualTo(ExitCode.SUCCESS.value());
+    assertThat(result.stdout()).contains("[PHASE").contains("DRY-RUN").contains("git");
+    assertThat(result.stderr()).isEmpty();
+  }
+
+  @Test
   void run_whenFromPhaseDoesNotExist_returnsConfigurationError() throws Exception {
     Path config = writeConfig();
 

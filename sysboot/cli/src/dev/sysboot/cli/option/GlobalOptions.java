@@ -47,6 +47,10 @@ public final class GlobalOptions {
     return noTui;
   }
 
+  public boolean useTui() {
+    return !noTui && System.console() != null;
+  }
+
   public boolean verbose() {
     return verbose;
   }

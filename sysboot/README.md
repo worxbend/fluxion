@@ -53,6 +53,11 @@ No TUI:
 fluxion apply -c config/example-fedora.yaml --no-tui
 ```
 
+Fluxion starts the terminal UI only when a real console is available. CI, pipes, and build-tool runs
+fall back to plain output automatically; `--no-tui` remains the clearest choice for scripts.
+In TUI mode, the pre-run selector lets you toggle whole jobs, drill into steps, and drill into
+step entries before starting the selected subset.
+
 From the repo before installing:
 
 ```bash

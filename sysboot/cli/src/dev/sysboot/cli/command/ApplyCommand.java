@@ -74,7 +74,8 @@ public final class ApplyCommand implements Runnable {
   @Override
   public void run() {
     boolean effectiveSkip = skipAlreadyInstalled || reProbe;
-    var context = ApplicationContext.create(options.noTui(), profile, effectiveSkip, reProbe);
+    boolean useTui = options.useTui();
+    var context = ApplicationContext.create(!useTui, profile, effectiveSkip, reProbe);
     BootstrapConfig config = context.configLoader().load(options.resolvedConfigFile());
     BootstrapConfig filtered = applyFilters(config);
 
@@ -83,7 +84,7 @@ public final class ApplyCommand implements Runnable {
       return;
     }
 
-    if (options.noTui()) {
+    if (!useTui) {
       var listener =
           new StdoutExecutionEventListener(
               event ->
@@ -107,7 +108,7 @@ public final class ApplyCommand implements Runnable {
             .orElseThrow(() -> new IllegalStateException("TUI mode is not available"))
             .run(filtered, dryRun);
       } catch (java.io.IOException e) {
-        throw new RuntimeException("TUI error: " + e.getMessage(), e);
+        throw new CliFailureException(ExitCode.IO_ERROR, "TUI error: " + e.getMessage(), e);
       }
     }
   }

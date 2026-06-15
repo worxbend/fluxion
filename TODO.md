@@ -467,6 +467,12 @@ Add filters:
 
 The current TUI path should render continuously during execution.
 
+Status: first slices implemented. Picocli now only selects TUI mode when a real console is present,
+so build/test/CI invocations fall back to plain output unless `--no-tui` already made that explicit.
+The TUI path prompts before execution with checklist-style job, step, and entry selection, then
+executes the filtered config on a virtual thread and redraws from the event queue on a tick.
+Dedicated TamboUI Toolkit/CSS widgets, richer keyboard bindings, and pane layout remain open.
+
 Implementation:
 
 - Run orchestration on a virtual thread.

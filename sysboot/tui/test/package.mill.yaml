@@ -1,0 +1,8 @@
+extends: [build.tui.JavaTests, TestModule.Junit5]
+sources: [.]
+forkArgs: [-Dnet.bytebuddy.experimental=true]
+mvnDeps:
+- org.junit.jupiter:junit-jupiter:5.11.0
+- org.junit.platform:junit-platform-launcher:1.11.0
+- com.github.sbt.junit:jupiter-interface:0.13.3
+- org.assertj:assertj-core:3.26.3

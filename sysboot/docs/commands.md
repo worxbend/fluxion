@@ -27,6 +27,12 @@ Global options:
 --version            Print version
 ```
 
+`apply` uses the terminal UI only when Fluxion detects a real console. In CI, build tools, pipes, or
+other non-interactive runs, Fluxion falls back to plain output automatically. `--no-tui` keeps plain
+output explicit for scripts. In TUI mode, Fluxion opens a pre-run selector before mutating the host:
+`j N` toggles a job, `s N` opens a job's steps, `t N` toggles a step or entry, `e N` opens a step's
+entries, `b` goes back, `run` starts the selected subset, and `q` cancels.
+
 ## `generate`
 
 Creates a starter YAML profile without personal defaults.
