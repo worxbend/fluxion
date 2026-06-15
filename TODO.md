@@ -55,6 +55,8 @@ and parallel agent analysis.
 - Compiled binaries support HTTPS `checksumUrl` SHA-256 files as an alternative to inline checksums.
 - Compiled-binary state records persist source URL, resolved checksum, and detected version when
   available.
+- `report last` renders Markdown/HTML reports from persisted state, including phase state, item
+  provenance, and resume guidance when a config is supplied.
 
 ## P0 - Trust And Correctness
 
@@ -688,6 +690,12 @@ Implementation:
 
 After a long bootstrap, the user should get a useful artifact: what changed, what failed, what was
 skipped, and how to resume. This is valuable for personal audit, support, and team onboarding.
+
+Status: first slice implemented as `fluxion report last` with Markdown/HTML output from persisted
+state. It includes profile metadata, config path when supplied, phase state, item provenance fields,
+and a resume command when Fluxion can infer the next incomplete phase. Host inventory, run IDs,
+duration, skipped/failed item summaries, restart checkpoint history, and redacted failure snippets
+remain open.
 
 Command:
 

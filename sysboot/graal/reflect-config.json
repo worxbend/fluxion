@@ -162,6 +162,18 @@
     "allDeclaredConstructors": true
   },
   {
+    "name": "dev.sysboot.cli.command.ReportCommand",
+    "allDeclaredFields": true,
+    "allDeclaredMethods": true,
+    "allDeclaredConstructors": true
+  },
+  {
+    "name": "dev.sysboot.cli.command.ReportCommand$LastSubcommand",
+    "allDeclaredFields": true,
+    "allDeclaredMethods": true,
+    "allDeclaredConstructors": true
+  },
+  {
     "name": "dev.sysboot.config.yaml.contract.ConfigDocument",
     "allDeclaredFields": true,
     "allDeclaredMethods": true,

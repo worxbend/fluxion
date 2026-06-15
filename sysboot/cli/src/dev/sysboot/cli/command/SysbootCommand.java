@@ -27,6 +27,7 @@ import picocli.CommandLine.Mixin;
       ListCommand.class,
       StatusCommand.class,
       StateCommand.class,
+      ReportCommand.class,
       GenerateCommand.class,
       SnapshotCommand.class,
       ImportCommand.class,

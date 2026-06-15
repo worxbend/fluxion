@@ -276,6 +276,21 @@ JSON output includes a phase `reason` when Fluxion has recorded why a phase fail
 JSON item output includes persisted provenance fields where available: `version`, `checksum`, and
 `sourceUrl`.
 
+## `report`
+
+Renders a persisted report from the latest state.
+
+```bash
+fluxion report last --profile default
+fluxion report last --profile default --format html
+fluxion report last -c config/example-fedora.yaml --profile default
+```
+
+Markdown is the default output format. HTML is available for saving or sharing. The report includes
+the profile, last run time, state version, phase timeline, recorded items, versions, checksums, and
+source URLs when available. When `-c` is supplied, Fluxion loads the config and prints a resume
+command for the next incomplete phase when one can be inferred.
+
 ## `list`
 
 Prints configured modules and their item counts or source paths.

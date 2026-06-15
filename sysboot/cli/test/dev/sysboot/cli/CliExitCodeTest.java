@@ -590,6 +590,81 @@ class CliExitCodeTest {
   }
 
   @Test
+  void reportLast_whenStateExists_outputsMarkdownReportWithResumeCommand() throws Exception {
+    Path config = writeDependentPhaseConfig();
+    String originalHome = System.getProperty("user.home");
+    System.setProperty("user.home", tempDir.toString());
+    try {
+      var repo = new JsonStateRepository(new ObjectMapper());
+      repo.save(
+          new BootstrapState(
+              "default",
+              Instant.parse("2026-06-01T10:00:00Z"),
+              "1.0.0",
+              List.of(
+                  new StateEntry(
+                      "default",
+                      "ripgrep",
+                      "/usr/local/bin/rg",
+                      ItemType.COMPILED_BINARY,
+                      Instant.parse("2026-06-01T10:01:00Z"),
+                      Optional.of("14.1.1"),
+                      Optional.of("a".repeat(64)),
+                      Optional.of("https://example.test/rg.tar.gz"))),
+              List.of(
+                  new PhaseStateEntry(
+                      "base", PhaseStatus.COMPLETED, Instant.parse("2026-06-01T10:02:00Z")))));
+
+      CliResult result = execute("report", "last", "-c", config.toString(), "--profile", "default");
+
+      assertThat(result.exitCode()).isEqualTo(ExitCode.SUCCESS.value());
+      assertThat(result.stdout())
+          .contains("# Fluxion Run Report")
+          .contains("fluxion apply -c")
+          .contains("--from-phase desktop")
+          .contains("/usr/local/bin/rg")
+          .contains("https://example.test/rg.tar.gz");
+      assertThat(result.stderr()).isEmpty();
+    } finally {
+      System.setProperty("user.home", originalHome);
+    }
+  }
+
+  @Test
+  void reportLast_whenFormatHtml_outputsHtmlReport() throws Exception {
+    String originalHome = System.getProperty("user.home");
+    System.setProperty("user.home", tempDir.toString());
+    try {
+      var repo = new JsonStateRepository(new ObjectMapper());
+      repo.save(
+          new BootstrapState(
+              "default",
+              Instant.parse("2026-06-01T10:00:00Z"),
+              "1.0.0",
+              List.of(),
+              List.of(new PhaseStateEntry("base", PhaseStatus.COMPLETED, Instant.now()))));
+
+      CliResult result = execute("report", "last", "--format", "html", "--profile", "default");
+
+      assertThat(result.exitCode()).isEqualTo(ExitCode.SUCCESS.value());
+      assertThat(result.stdout())
+          .contains("<!doctype html>")
+          .contains("<h1>Fluxion Run Report</h1>");
+      assertThat(result.stderr()).isEmpty();
+    } finally {
+      System.setProperty("user.home", originalHome);
+    }
+  }
+
+  @Test
+  void reportLast_whenStateMissing_returnsConfigurationError() {
+    CliResult result = execute("report", "last", "--profile", "missing");
+
+    assertThat(result.exitCode()).isEqualTo(ExitCode.CONFIGURATION_ERROR.value());
+    assertThat(result.stderr()).contains("No state file found for profile: missing");
+  }
+
+  @Test
   void generate_whenOutputExistsWithoutForce_returnsInvalidInput() throws Exception {
     Path generated = tempDir.resolve("generated.yaml");
     Files.writeString(generated, "existing");
