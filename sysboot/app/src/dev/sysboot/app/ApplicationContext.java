@@ -36,6 +36,8 @@ import dev.sysboot.executor.PacmanPackageProbe;
 import dev.sysboot.executor.ParallelProbeRunner;
 import dev.sysboot.executor.ParuPackageInstaller;
 import dev.sysboot.executor.PtyShellRunner;
+import dev.sysboot.executor.RpmRepositoryInstaller;
+import dev.sysboot.executor.RpmRepositoryProbe;
 import dev.sysboot.executor.ShellReloadExecutor;
 import dev.sysboot.executor.ShellScriptExecutor;
 import dev.sysboot.executor.ShellScriptProbe;
@@ -165,6 +167,7 @@ public final class ApplicationContext {
         new ShellScriptExecutor(primaryRunner),
         new CompiledBinaryInstaller(baseRunner),
         new AptRepositoryInstaller(baseRunner),
+        new RpmRepositoryInstaller(baseRunner),
         new FlatpakInstaller(baseRunner),
         new FlatpakRemoteInstaller(baseRunner),
         new DotbotExecutor(baseRunner),
@@ -187,6 +190,7 @@ public final class ApplicationContext {
             new PacmanPackageProbe(runner),
             new AptPackageProbe(runner),
             new AptRepositoryProbe(runner),
+            new RpmRepositoryProbe(runner),
             new ZypperPackageProbe(runner),
             new FlatpakProbe(runner),
             new FlatpakRemoteProbe(runner),

@@ -14,6 +14,7 @@ import dev.sysboot.core.OsTarget;
 import dev.sysboot.core.PackageManagerKind;
 import dev.sysboot.core.PackageModule;
 import dev.sysboot.core.RestartPolicy;
+import dev.sysboot.core.RpmRepositoryModule;
 import dev.sysboot.core.ShellCommandModule;
 import dev.sysboot.core.ShellScriptModule;
 import java.io.IOException;
@@ -119,6 +120,38 @@ class YamlConfigLoaderTest {
         .hasValueSatisfying(
             uri -> assertThat(uri).hasToString("https://download.docker.com/linux/debian/gpg"));
     assertThat(module.keyringPath()).hasValue(Path.of("/etc/apt/keyrings/docker.gpg"));
+  }
+
+  @Test
+  void load_whenRpmRepositoryStep_parsesRepositoryConfiguration(@TempDir Path tmpDir)
+      throws IOException {
+    Path config =
+        writeConfig(
+            tmpDir,
+            """
+            profile: fedora-test
+            os:
+              type: fedora
+              release: "44"
+            jobs:
+              - name: repositories
+                steps:
+                  - type: rpm-repository
+                    name: docker
+                    baseUrl: https://download.docker.com/linux/fedora/$releasever/$basearch/stable
+                    gpgKeyUrl: https://download.docker.com/linux/fedora/gpg
+            """);
+
+    BootstrapConfig result = loader.load(config);
+
+    var module = (RpmRepositoryModule) result.phases().getFirst().modules().getFirst();
+    assertThat(module.repositoryId()).isEqualTo("docker");
+    assertThat(module.repoFilePath().toString()).isEqualTo("/etc/yum.repos.d/docker.repo");
+    assertThat(module.gpgKeyUrl())
+        .hasValueSatisfying(
+            uri -> assertThat(uri).hasToString("https://download.docker.com/linux/fedora/gpg"));
+    assertThat(module.enabled()).isTrue();
+    assertThat(module.gpgCheck()).isTrue();
   }
 
   @Test

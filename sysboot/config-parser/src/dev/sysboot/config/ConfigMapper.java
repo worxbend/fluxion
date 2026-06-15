@@ -17,6 +17,7 @@ import dev.sysboot.config.yaml.contract.OsDocument;
 import dev.sysboot.config.yaml.contract.PackagesModuleDocument;
 import dev.sysboot.config.yaml.contract.PhaseDocument;
 import dev.sysboot.config.yaml.contract.RestartPolicyDocument;
+import dev.sysboot.config.yaml.contract.RpmRepositoryModuleDocument;
 import dev.sysboot.config.yaml.contract.ShellCommandModuleDocument;
 import dev.sysboot.config.yaml.contract.ShellReloadModuleDocument;
 import dev.sysboot.config.yaml.contract.ShellScriptModuleDocument;
@@ -45,6 +46,7 @@ import dev.sysboot.core.Phase;
 import dev.sysboot.core.PhaseName;
 import dev.sysboot.core.ProfileName;
 import dev.sysboot.core.RestartPolicy;
+import dev.sysboot.core.RpmRepositoryModule;
 import dev.sysboot.core.ScriptPath;
 import dev.sysboot.core.ShellCommandModule;
 import dev.sysboot.core.ShellKind;
@@ -149,6 +151,7 @@ final class ConfigMapper {
     return switch (dto) {
       case PackagesModuleDocument pm -> mapPackagesModule(pm);
       case AptRepositoryModuleDocument arm -> mapAptRepositoryModule(arm);
+      case RpmRepositoryModuleDocument rrm -> mapRpmRepositoryModule(rrm);
       case FlatpakModuleDocument fm -> mapFlatpakModule(fm);
       case FlatpakRemoteModuleDocument frm -> mapFlatpakRemoteModule(frm);
       case ShellScriptModuleDocument sm -> mapShellScriptModule(sm, configFile);
@@ -191,6 +194,18 @@ final class ConfigMapper {
             dto.sourceList != null ? dto.sourceList : "/etc/apt/sources.list.d/" + name + ".list"),
         keyUrl,
         keyring);
+  }
+
+  private RpmRepositoryModule mapRpmRepositoryModule(RpmRepositoryModuleDocument dto) {
+    String name = requireField(dto.name, "rpm-repository.name");
+    return new RpmRepositoryModule(
+        new ModuleName(name),
+        dto.id != null ? dto.id : name,
+        URI.create(requireField(dto.baseUrl, "rpm-repository.baseUrl")),
+        Path.of(dto.repoFile != null ? dto.repoFile : "/etc/yum.repos.d/" + name + ".repo"),
+        mapUri(dto.gpgKeyUrl),
+        dto.enabled == null || dto.enabled,
+        dto.gpgCheck == null || dto.gpgCheck);
   }
 
   private FlatpakModule mapFlatpakModule(FlatpakModuleDocument dto) {

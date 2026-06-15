@@ -17,6 +17,7 @@ import dev.sysboot.core.OhMyZshModule;
 import dev.sysboot.core.PackageModule;
 import dev.sysboot.core.Phase;
 import dev.sysboot.core.RestartPolicy;
+import dev.sysboot.core.RpmRepositoryModule;
 import dev.sysboot.core.ShellCommandModule;
 import dev.sysboot.core.ShellReloadModule;
 import dev.sysboot.core.ShellScriptModule;
@@ -82,6 +83,10 @@ public final class ExecutionPlanBuilder {
       return Optional.of(
           new AptRepositoryInstaller(new DefaultShellRunner()).addCommand(aptRepositoryModule));
     }
+    if (module instanceof RpmRepositoryModule rpmRepositoryModule) {
+      return Optional.of(
+          new RpmRepositoryInstaller(new DefaultShellRunner()).addCommand(rpmRepositoryModule));
+    }
     return item.packageManager()
         .map(
             kind ->
@@ -109,6 +114,9 @@ public final class ExecutionPlanBuilder {
       case AptRepositoryModule arm ->
           List.of(
               new ModuleItem(arm.name(), arm.sourceListPath().toString(), ItemType.APT_REPOSITORY));
+      case RpmRepositoryModule rrm ->
+          List.of(
+              new ModuleItem(rrm.name(), rrm.repoFilePath().toString(), ItemType.RPM_REPOSITORY));
       case FlatpakModule fm ->
           fm.appIds().stream()
               .map(app -> new ModuleItem(fm.name(), app, ItemType.FLATPAK))
@@ -154,6 +162,7 @@ public final class ExecutionPlanBuilder {
     return switch (module) {
       case PackageModule ignored -> "packages";
       case AptRepositoryModule ignored -> "apt-repository";
+      case RpmRepositoryModule ignored -> "rpm-repository";
       case FlatpakModule ignored -> "flatpak";
       case FlatpakRemoteModule ignored -> "flatpak-remote";
       case ShellScriptModule ignored -> "shell-script";

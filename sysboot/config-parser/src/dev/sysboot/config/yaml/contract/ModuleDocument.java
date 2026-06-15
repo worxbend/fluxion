@@ -8,6 +8,7 @@ import com.fasterxml.jackson.annotation.JsonTypeInfo;
 @JsonSubTypes({
   @JsonSubTypes.Type(value = PackagesModuleDocument.class, name = "packages"),
   @JsonSubTypes.Type(value = AptRepositoryModuleDocument.class, name = "apt-repository"),
+  @JsonSubTypes.Type(value = RpmRepositoryModuleDocument.class, name = "rpm-repository"),
   @JsonSubTypes.Type(value = FlatpakModuleDocument.class, name = "flatpak"),
   @JsonSubTypes.Type(value = FlatpakRemoteModuleDocument.class, name = "flatpak-remote"),
   @JsonSubTypes.Type(value = ShellScriptModuleDocument.class, name = "shell-script"),
@@ -25,6 +26,7 @@ import com.fasterxml.jackson.annotation.JsonTypeInfo;
 public abstract sealed class ModuleDocument
     permits PackagesModuleDocument,
         AptRepositoryModuleDocument,
+        RpmRepositoryModuleDocument,
         FlatpakModuleDocument,
         FlatpakRemoteModuleDocument,
         ShellScriptModuleDocument,

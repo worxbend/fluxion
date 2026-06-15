@@ -16,6 +16,7 @@ import dev.sysboot.core.NerdFontModule;
 import dev.sysboot.core.OhMyZshModule;
 import dev.sysboot.core.PackageManagerKind;
 import dev.sysboot.core.PackageModule;
+import dev.sysboot.core.RpmRepositoryModule;
 import dev.sysboot.core.ShellCommandModule;
 import dev.sysboot.core.ShellReloadModule;
 import dev.sysboot.core.ShellScriptModule;
@@ -98,6 +99,9 @@ public final class ParallelProbeRunner {
             targets.add(
                 new ModuleItem(
                     arm.name(), arm.sourceListPath().toString(), ItemType.APT_REPOSITORY));
+        case RpmRepositoryModule rrm ->
+            targets.add(
+                new ModuleItem(rrm.name(), rrm.repoFilePath().toString(), ItemType.RPM_REPOSITORY));
         case FlatpakModule fm ->
             fm.appIds()
                 .forEach(appId -> targets.add(new ModuleItem(fm.name(), appId, ItemType.FLATPAK)));

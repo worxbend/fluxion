@@ -18,6 +18,7 @@ import dev.sysboot.core.Phase;
 import dev.sysboot.core.PhaseName;
 import dev.sysboot.core.ProfileName;
 import dev.sysboot.core.RestartPolicy;
+import dev.sysboot.core.RpmRepositoryModule;
 import dev.sysboot.core.StepResult;
 import java.net.URI;
 import java.nio.file.Path;
@@ -190,6 +191,43 @@ class ExecutionPlanBuilderTest {
             "printf %s\\\\n"
                 + " 'deb https://download.docker.com/linux/debian bookworm stable' | sudo tee"
                 + " '/etc/apt/sources.list.d/docker.list' >/dev/null && sudo apt-get update");
+  }
+
+  @Test
+  void build_rpmRepositoryModule_includesCommandPreview() {
+    var builder = new ExecutionPlanBuilder(new PackageManagerExecutorRegistry(List.of(dnf())));
+    var phase =
+        new Phase(
+            new PhaseName("repositories"),
+            "",
+            List.of(
+                new RpmRepositoryModule(
+                    new ModuleName("docker"),
+                    "docker",
+                    URI.create("https://download.docker.com/linux/fedora/$releasever/stable"),
+                    Path.of("/etc/yum.repos.d/docker.repo"),
+                    Optional.empty(),
+                    true,
+                    false)),
+            List.of(),
+            new RestartPolicy.None(),
+            false);
+
+    ExecutionPlan plan = builder.build(config(List.of(phase)));
+
+    ExecutionPlan.Item item = plan.phases().getFirst().modules().getFirst().items().getFirst();
+    assertThat(item.item().itemType()).isEqualTo(ItemType.RPM_REPOSITORY);
+    assertThat(item.commandPreview().orElseThrow())
+        .containsExactly(
+            "/bin/bash",
+            "-lc",
+            "printf %s '[docker]\n"
+                + "name=docker\n"
+                + "baseurl=https://download.docker.com/linux/fedora/$releasever/stable\n"
+                + "enabled=1\n"
+                + "gpgcheck=0\n"
+                + "' | sudo tee '/etc/yum.repos.d/docker.repo' >/dev/null && sudo dnf makecache"
+                + " --refresh");
   }
 
   private static BootstrapConfig config(List<Phase> phases) {

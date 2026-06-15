@@ -9,6 +9,7 @@ import dev.sysboot.core.OsTarget;
 import dev.sysboot.core.PackageManagerKind;
 import dev.sysboot.core.PackageModule;
 import dev.sysboot.core.Phase;
+import dev.sysboot.core.RpmRepositoryModule;
 import dev.sysboot.core.ZypperModule;
 import java.util.ArrayList;
 import java.util.HashSet;
@@ -70,6 +71,8 @@ public final class ConfigValidator {
           validatePackageModule(config, zypperModule.asPackageModule(), path, issues);
       case AptRepositoryModule aptRepositoryModule ->
           validateAptRepository(config, aptRepositoryModule, path, issues);
+      case RpmRepositoryModule rpmRepositoryModule ->
+          validateRpmRepository(config, rpmRepositoryModule, path, issues);
       case FlatpakRemoteModule flatpakRemoteModule ->
           validateFlatpakRemote(flatpakRemoteModule, path, issues);
       case CompiledBinaryModule binaryModule -> validateCompiledBinary(binaryModule, path, issues);
@@ -105,6 +108,30 @@ public final class ConfigValidator {
           issues,
           path + ".signingKeyUrl",
           "APT repository '%s' has no signing key URL".formatted(module.name().value()));
+    }
+  }
+
+  private void validateRpmRepository(
+      BootstrapConfig config,
+      RpmRepositoryModule module,
+      String path,
+      List<ValidationIssue> issues) {
+    if (!(config.target() instanceof OsTarget.FedoraTarget)) {
+      addError(issues, path + ".type", "RPM repositories are only valid for fedora targets");
+    }
+    if (!"https".equalsIgnoreCase(module.baseUrl().getScheme())) {
+      addWarning(issues, path + ".baseUrl", "RPM repository base URL should use HTTPS");
+    }
+    module
+        .gpgKeyUrl()
+        .filter(url -> !"https".equalsIgnoreCase(url.getScheme()))
+        .ifPresent(url -> addWarning(issues, path + ".gpgKeyUrl", "GPG key URL should use HTTPS"));
+    if (module.gpgCheck() && module.gpgKeyUrl().isEmpty()) {
+      addWarning(
+          issues,
+          path + ".gpgKeyUrl",
+          "RPM repository '%s' has gpgCheck enabled but no GPG key URL"
+              .formatted(module.name().value()));
     }
   }
 

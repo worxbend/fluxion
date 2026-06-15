@@ -24,6 +24,7 @@ import dev.sysboot.core.PhaseStateEntry;
 import dev.sysboot.core.PhaseStatus;
 import dev.sysboot.core.ProcessResult;
 import dev.sysboot.core.RestartPolicy;
+import dev.sysboot.core.RpmRepositoryModule;
 import dev.sysboot.core.ShellCommandModule;
 import dev.sysboot.core.ShellReloadModule;
 import dev.sysboot.core.ShellRunner;
@@ -49,6 +50,7 @@ public final class BootstrapOrchestratorImpl implements BootstrapOrchestrator {
   private final ShellScriptExecutor shellScriptExecutor;
   private final CompiledBinaryInstaller binaryInstaller;
   private final AptRepositoryInstaller aptRepositoryInstaller;
+  private final RpmRepositoryInstaller rpmRepositoryInstaller;
   private final FlatpakInstaller flatpakInstaller;
   private final FlatpakRemoteInstaller flatpakRemoteInstaller;
   private final DotbotExecutor dotbotExecutor;
@@ -71,6 +73,7 @@ public final class BootstrapOrchestratorImpl implements BootstrapOrchestrator {
       ShellScriptExecutor shellScriptExecutor,
       CompiledBinaryInstaller binaryInstaller,
       AptRepositoryInstaller aptRepositoryInstaller,
+      RpmRepositoryInstaller rpmRepositoryInstaller,
       FlatpakInstaller flatpakInstaller,
       FlatpakRemoteInstaller flatpakRemoteInstaller,
       DotbotExecutor dotbotExecutor,
@@ -90,6 +93,7 @@ public final class BootstrapOrchestratorImpl implements BootstrapOrchestrator {
     this.shellScriptExecutor = shellScriptExecutor;
     this.binaryInstaller = binaryInstaller;
     this.aptRepositoryInstaller = aptRepositoryInstaller;
+    this.rpmRepositoryInstaller = rpmRepositoryInstaller;
     this.flatpakInstaller = flatpakInstaller;
     this.flatpakRemoteInstaller = flatpakRemoteInstaller;
     this.dotbotExecutor = dotbotExecutor;
@@ -121,6 +125,7 @@ public final class BootstrapOrchestratorImpl implements BootstrapOrchestrator {
         shellScriptExecutor,
         binaryInstaller,
         new AptRepositoryInstaller(new DefaultShellRunner()),
+        new RpmRepositoryInstaller(new DefaultShellRunner()),
         flatpakInstaller,
         new FlatpakRemoteInstaller(new DefaultShellRunner()),
         new DotbotExecutor(new DefaultShellRunner()),
@@ -225,6 +230,7 @@ public final class BootstrapOrchestratorImpl implements BootstrapOrchestrator {
     }
     return switch (module) {
       case AptRepositoryModule arm -> executeAptRepositoryModule(arm, listener);
+      case RpmRepositoryModule rrm -> executeRpmRepositoryModule(rrm, listener);
       case FlatpakModule fm -> executeFlatpakModule(fm, listener);
       case FlatpakRemoteModule frm -> executeFlatpakRemoteModule(frm, listener);
       case ShellScriptModule sm -> executeShellScript(sm, listener, phaseRunner);
@@ -365,6 +371,16 @@ public final class BootstrapOrchestratorImpl implements BootstrapOrchestrator {
         listener);
   }
 
+  private boolean executeRpmRepositoryModule(
+      RpmRepositoryModule module, ExecutionEventListener listener) {
+    return executeItem(
+        module.name(),
+        module.repoFilePath().toString(),
+        ItemType.RPM_REPOSITORY,
+        () -> rpmRepositoryInstaller.add(module),
+        listener);
+  }
+
   private boolean executeFlatpakRemoteModule(
       FlatpakRemoteModule module, ExecutionEventListener listener) {
     return executeItem(
@@ -445,6 +461,12 @@ public final class BootstrapOrchestratorImpl implements BootstrapOrchestrator {
               arm.name(),
               arm.sourceListPath().toString(),
               aptRepositoryInstaller.addCommand(arm),
+              listener);
+      case RpmRepositoryModule rrm ->
+          emitDryRun(
+              rrm.name(),
+              rrm.repoFilePath().toString(),
+              rpmRepositoryInstaller.addCommand(rrm),
               listener);
       case FlatpakModule fm ->
           fm.appIds()

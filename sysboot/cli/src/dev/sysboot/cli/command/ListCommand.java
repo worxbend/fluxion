@@ -17,6 +17,7 @@ import dev.sysboot.core.ManualModule;
 import dev.sysboot.core.NerdFontModule;
 import dev.sysboot.core.OhMyZshModule;
 import dev.sysboot.core.PackageModule;
+import dev.sysboot.core.RpmRepositoryModule;
 import dev.sysboot.core.ShellCommandModule;
 import dev.sysboot.core.ShellReloadModule;
 import dev.sysboot.core.ShellScriptModule;
@@ -85,6 +86,7 @@ public final class ListCommand implements Runnable {
     return switch (module) {
       case PackageModule pm -> "📦 packages";
       case AptRepositoryModule ignored -> "📦 apt repo";
+      case RpmRepositoryModule ignored -> "📦 rpm repo";
       case FlatpakModule ignored -> "🗃 flatpak";
       case FlatpakRemoteModule ignored -> "🗃 remote";
       case ShellScriptModule ignored -> "📜 script";
@@ -106,6 +108,7 @@ public final class ListCommand implements Runnable {
     return switch (module) {
       case PackageModule ignored -> "packages";
       case AptRepositoryModule ignored -> "apt-repository";
+      case RpmRepositoryModule ignored -> "rpm-repository";
       case FlatpakModule ignored -> "flatpak";
       case FlatpakRemoteModule ignored -> "flatpak-remote";
       case ShellScriptModule ignored -> "shell-script";
@@ -127,6 +130,7 @@ public final class ListCommand implements Runnable {
     return switch (module) {
       case PackageModule pm -> pm.packages().size() + " packages (" + pm.packageManager() + ")";
       case AptRepositoryModule arm -> arm.sourceListPath() + " <- " + arm.sourceEntry();
+      case RpmRepositoryModule rrm -> rrm.repoFilePath() + " <- " + rrm.baseUrl();
       case FlatpakModule fm -> fm.appIds().size() + " apps from " + fm.remote();
       case FlatpakRemoteModule frm -> frm.remote() + " -> " + frm.url();
       case ShellScriptModule sm -> sm.script().toString();

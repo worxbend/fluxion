@@ -17,6 +17,7 @@ import dev.sysboot.core.Phase;
 import dev.sysboot.core.PhaseName;
 import dev.sysboot.core.ProfileName;
 import dev.sysboot.core.RestartPolicy;
+import dev.sysboot.core.RpmRepositoryModule;
 import java.net.URI;
 import java.nio.file.Path;
 import java.util.List;
@@ -226,6 +227,73 @@ class ConfigValidatorTest {
               assertThat(issue.severity()).isEqualTo(ValidationIssue.Severity.ERROR);
               assertThat(issue.path()).isEqualTo("jobs[0].steps[0].type");
               assertThat(issue.message()).contains("APT repositories");
+            });
+  }
+
+  @Test
+  void validate_whenRpmRepositoryOnFedoraWithGpgKey_reportsNoIssues() {
+    var module =
+        new RpmRepositoryModule(
+            new ModuleName("docker"),
+            "docker",
+            URI.create("https://download.docker.com/linux/fedora/$releasever/stable"),
+            Path.of("/etc/yum.repos.d/docker.repo"),
+            Optional.of(URI.create("https://download.docker.com/linux/fedora/gpg")),
+            true,
+            true);
+
+    ValidationReport report = validator.validate(config(phase("repos", List.of(module))));
+
+    assertThat(report.issues()).isEmpty();
+  }
+
+  @Test
+  void validate_whenRpmRepositoryOnDebian_reportsError() {
+    var module =
+        new RpmRepositoryModule(
+            new ModuleName("docker"),
+            "docker",
+            URI.create("https://download.docker.com/linux/fedora/$releasever/stable"),
+            Path.of("/etc/yum.repos.d/docker.repo"),
+            Optional.empty(),
+            true,
+            false);
+
+    ValidationReport report =
+        validator.validate(
+            config(new OsTarget.DebianTarget("12"), phase("repos", List.of(module))));
+
+    assertThat(report.hasErrors()).isTrue();
+    assertThat(report.issues())
+        .anySatisfy(
+            issue -> {
+              assertThat(issue.severity()).isEqualTo(ValidationIssue.Severity.ERROR);
+              assertThat(issue.path()).isEqualTo("jobs[0].steps[0].type");
+              assertThat(issue.message()).contains("RPM repositories");
+            });
+  }
+
+  @Test
+  void validate_whenRpmRepositoryChecksGpgWithoutKey_reportsWarning() {
+    var module =
+        new RpmRepositoryModule(
+            new ModuleName("docker"),
+            "docker",
+            URI.create("https://download.docker.com/linux/fedora/$releasever/stable"),
+            Path.of("/etc/yum.repos.d/docker.repo"),
+            Optional.empty(),
+            true,
+            true);
+
+    ValidationReport report = validator.validate(config(phase("repos", List.of(module))));
+
+    assertThat(report.hasWarnings()).isTrue();
+    assertThat(report.issues())
+        .anySatisfy(
+            issue -> {
+              assertThat(issue.severity()).isEqualTo(ValidationIssue.Severity.WARNING);
+              assertThat(issue.path()).isEqualTo("jobs[0].steps[0].gpgKeyUrl");
+              assertThat(issue.message()).contains("no GPG key URL");
             });
   }
 

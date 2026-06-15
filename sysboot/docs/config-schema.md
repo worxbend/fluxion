@@ -117,6 +117,9 @@ shell command.
 Use `apt-repository` for Debian/Ubuntu APT sources that would otherwise be hidden in shell setup
 commands.
 
+Use `rpm-repository` for Fedora DNF repository files that would otherwise be hidden in shell setup
+commands.
+
 ---
 
 ### `apt-repository` — add an APT source
@@ -134,6 +137,26 @@ Execution writes the source line with `sudo tee`, optionally installs the signin
 `curl | sudo gpg --dearmor`, and runs `sudo apt-get update`. `plan --show-commands`, `dry-run`,
 `status`, `diff`, and `explain` use the source list path as the item key. Validation fails when the
 target OS is not Debian/Ubuntu and warns when no signing key URL is configured.
+
+---
+
+### `rpm-repository` — add a Fedora DNF repository
+
+```yaml
+- type: rpm-repository
+  name: docker
+  id: docker
+  baseUrl: https://download.docker.com/linux/fedora/$releasever/$basearch/stable
+  repoFile: /etc/yum.repos.d/docker.repo # default: /etc/yum.repos.d/<name>.repo
+  gpgKeyUrl: https://download.docker.com/linux/fedora/gpg
+  enabled: true                          # default: true
+  gpgCheck: true                         # default: true
+```
+
+Execution writes an auditable `.repo` file with `sudo tee` and refreshes metadata with
+`sudo dnf makecache --refresh`. `plan --show-commands`, `dry-run`, `status`, `diff`, and `explain`
+use the repo file path as the item key. Validation fails when the target OS is not Fedora and warns
+when URLs are not HTTPS or when `gpgCheck` is enabled without a `gpgKeyUrl`.
 
 ---
 

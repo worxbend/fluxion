@@ -14,6 +14,7 @@ import dev.sysboot.core.OhMyZshModule;
 import dev.sysboot.core.PackageModule;
 import dev.sysboot.core.Phase;
 import dev.sysboot.core.RestartPolicy;
+import dev.sysboot.core.RpmRepositoryModule;
 import dev.sysboot.core.ShellCommandModule;
 import dev.sysboot.core.ShellReloadModule;
 import dev.sysboot.core.ShellScriptModule;
@@ -58,6 +59,7 @@ final class PhaseFingerprintCalculator {
       case PackageModule pm -> appendPackageModule(builder, pm);
       case ZypperModule zm -> appendPackageModule(builder, zm.asPackageModule());
       case AptRepositoryModule arm -> appendAptRepository(builder, arm);
+      case RpmRepositoryModule rrm -> appendRpmRepository(builder, rrm);
       case FlatpakModule fm -> {
         append(builder, "type", "flatpak");
         append(builder, "remote", fm.remote());
@@ -138,6 +140,16 @@ final class PhaseFingerprintCalculator {
     append(builder, "sourceList", module.sourceListPath().toString());
     append(builder, "signingKeyUrl", module.signingKeyUrl().map(Object::toString));
     append(builder, "keyring", module.keyringPath().map(Object::toString));
+  }
+
+  private void appendRpmRepository(StringBuilder builder, RpmRepositoryModule module) {
+    append(builder, "type", "rpm-repository");
+    append(builder, "id", module.repositoryId());
+    append(builder, "baseUrl", module.baseUrl().toString());
+    append(builder, "repoFile", module.repoFilePath().toString());
+    append(builder, "gpgKeyUrl", module.gpgKeyUrl().map(Object::toString));
+    append(builder, "enabled", module.enabled());
+    append(builder, "gpgCheck", module.gpgCheck());
   }
 
   private void appendCompiledBinary(StringBuilder builder, CompiledBinaryModule module) {
