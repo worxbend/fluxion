@@ -154,6 +154,12 @@ Supported step types:
 
 Full schema lives in `docs/config-schema.md`.
 
+More docs:
+
+- `docs/commands.md`
+- `docs/architecture.md`
+- `docs/enhancements.md`
+
 ## Dev Loop
 
 ```bash

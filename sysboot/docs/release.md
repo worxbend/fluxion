@@ -11,6 +11,8 @@ Use this checklist for Linux binary releases.
    ./out/cli/nativeImage.dest/native-executable --help
    ./out/cli/nativeImage.dest/native-executable --version
    ./out/cli/nativeImage.dest/native-executable validate -c config/example-fedora.yaml --no-tui
+   ./out/cli/nativeImage.dest/native-executable generate --os fedora --profile smoke --output /tmp/fluxion-smoke.yaml --force
+   ./out/cli/nativeImage.dest/native-executable doctor -c /tmp/fluxion-smoke.yaml --skip-network
    ```
 
 5. Record the Java, GraalVM, Mill, and host distribution versions.

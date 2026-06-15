@@ -1,0 +1,156 @@
+# Command Reference
+
+Fluxion commands are designed around a safe read-first workflow:
+
+```bash
+fluxion generate --os auto --profile starter --output ~/.config/fluxion/starter.yaml
+fluxion validate -c ~/.config/fluxion/starter.yaml
+fluxion doctor -c ~/.config/fluxion/starter.yaml
+fluxion plan -c ~/.config/fluxion/starter.yaml
+fluxion run -c ~/.config/fluxion/starter.yaml
+```
+
+Global options:
+
+```text
+-c, --config=FILE    YAML profile path. Defaults to ~/.config/fluxion/default.yaml
+--no-tui             Use plain stdout instead of the terminal UI
+-v, --verbose        Reserved for more detailed output
+-h, --help           Print help
+--version            Print version
+```
+
+## `generate`
+
+Creates a starter YAML profile without personal defaults.
+
+```bash
+fluxion generate --os auto --profile starter --preset developer --output ~/.config/fluxion/starter.yaml
+```
+
+Options:
+
+```text
+--os auto|fedora|arch|opensuse|debian
+--profile NAME
+--preset minimal|developer|desktop|dotfiles
+--output PATH
+--force
+```
+
+`--os auto` reads `/etc/os-release` and chooses the matching package manager. Generated configs
+should still be reviewed before running.
+
+## `validate`
+
+Loads YAML, maps it into the domain model, and checks the phase dependency graph.
+
+```bash
+fluxion validate -c config/example-fedora.yaml
+```
+
+Use this before `run`, especially after editing dependencies, module names, URLs, or package lists.
+
+## `doctor`
+
+Checks host readiness for a profile.
+
+```bash
+fluxion doctor -c config/example-fedora.yaml
+fluxion doctor -c config/example-fedora.yaml --skip-network
+```
+
+Checks include:
+
+- config readability and parsing
+- host OS detection
+- writable state directory
+- sudo command presence
+- configured package-manager commands
+- Flatpak command and Flathub reminder
+- configured shell paths
+- compiled-binary URL reachability unless `--skip-network` is used
+
+Any failed check returns exit code `5`. Warnings are printed but do not fail the command.
+
+## `plan`
+
+Prints the phase-ordered execution plan.
+
+```bash
+fluxion plan -c config/example-fedora.yaml
+fluxion plan -c config/example-fedora.yaml --skip-already-installed
+```
+
+The plan uses the same phase ordering as execution and shows restart checkpoints. With
+`--skip-already-installed`, Fluxion probes configured items and marks what would be skipped.
+
+## `run`
+
+Executes a profile.
+
+```bash
+fluxion run -c config/example-fedora.yaml
+fluxion run -c config/example-fedora.yaml --no-tui --skip-already-installed
+```
+
+Useful options:
+
+```text
+--phase PHASE[,PHASE]       Run only selected phases
+--from-phase PHASE          Resume from a specific phase
+--dry-run                   Emit dry-run events instead of executing
+--skip-already-installed    Use state and probes to skip known installed work
+--re-probe                  Ignore state and rely on live probes
+--probe-only                Probe configured items without installing
+--profile PROFILE           State profile name
+```
+
+When a phase uses `restartPolicy: prompt-logout`, Fluxion records completed state, prints a resume
+command, and stops cleanly.
+
+## `dry-run`
+
+Runs the orchestrator dry-run path for the full config.
+
+```bash
+fluxion dry-run -c config/example-fedora.yaml
+```
+
+Prefer `plan` when you want a concise phase view. Prefer `run --dry-run` when you want execution
+events shaped like a real run.
+
+## `status`
+
+Reports live probe status for configured items.
+
+```bash
+fluxion status -c config/example-fedora.yaml
+fluxion status -c config/example-fedora.yaml --resume-command
+```
+
+`--resume-command` prints the command for the next incomplete phase based on saved state.
+
+## `state`
+
+Manages persisted state under `~/.local/share/fluxion`.
+
+```bash
+fluxion state show default
+fluxion state path default
+fluxion state forget --profile default --item git
+fluxion state forget --profile default --phase shell-foundation
+fluxion state reset default --force
+```
+
+State records successful items and phase completion fingerprints. A completed phase is skipped only
+when its stored fingerprint still matches the current config.
+
+## `list`
+
+Prints configured modules and their item counts or source paths.
+
+```bash
+fluxion list -c config/example-fedora.yaml
+```
+

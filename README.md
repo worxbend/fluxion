@@ -107,6 +107,12 @@ Full schema: `sysboot/docs/config-schema.md`.
 
 Example profiles: `sysboot/config/`.
 
+More docs:
+
+- `sysboot/docs/commands.md`
+- `sysboot/docs/architecture.md`
+- `sysboot/docs/enhancements.md`
+
 ## Development Notes
 
 Module direction is:

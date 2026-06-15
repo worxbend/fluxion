@@ -107,10 +107,11 @@ Module types include packages, Flatpak apps, shell scripts, compiled binaries, a
 
 Be careful with current implementation maturity:
 
-- `ConfigMapper` supports both legacy flat `modules` and newer `phases`.
-- `PhaseExecutionPlanner` exists but is not currently used by `BootstrapOrchestratorImpl`.
-- Several parsed module types have domain records and some executor classes, but are not yet handled by the main orchestrator switch.
-- Example configs still use flat `modules`.
+- `ConfigMapper` supports preferred `jobs`/`steps`, legacy `phases`, and legacy flat `modules`.
+- `BootstrapOrchestratorImpl` uses `PhaseExecutionPlanner` for ordered phase execution.
+- Package modules now use the `ModuleExecutor` foundation; other module types still have direct
+  orchestrator dispatch and can be migrated incrementally.
+- Example configs use the preferred `jobs`/`steps` schema.
 
 ## Change Guidelines
 

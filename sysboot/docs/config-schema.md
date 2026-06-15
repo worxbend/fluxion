@@ -165,6 +165,81 @@ extracts the configured binary entry, and runs it with `--config`.
 
 ---
 
+### `default-shell` — change the user's login shell
+
+```yaml
+- type: default-shell
+  name: zsh-default
+  shell: /bin/zsh                 # preferred
+  probeCommand: "getent passwd $USER | cut -d: -f7 | grep -q zsh"
+```
+
+`shellPath` is accepted as a deprecated alias for `shell`.
+
+---
+
+### `oh-my-zsh` — install Oh My Zsh
+
+```yaml
+- type: oh-my-zsh
+  name: oh-my-zsh
+  installDir: "~/.oh-my-zsh"      # optional, default: ~/.oh-my-zsh
+  probeCommand: "test -d ~/.oh-my-zsh"
+```
+
+---
+
+### `toolchain` — run an upstream toolchain installer
+
+```yaml
+- type: toolchain
+  name: rustup
+  kind: RUSTUP                    # RUSTUP | JULIAUP | SDKMAN | GENERIC
+  installScriptUrl: "https://sh.rustup.rs"
+  installArgs:
+    - "-y"
+    - "--no-modify-path"
+  postInstallEnvSource: "~/.cargo/env"
+  continueOnError: true
+  probeCommand: "test -f ~/.cargo/bin/rustup"
+```
+
+`installScript` is accepted as a deprecated alias for `installScriptUrl`.
+
+---
+
+### `nerd-fonts` — install Nerd Font families
+
+```yaml
+- type: nerd-fonts
+  name: nerd-fonts-install
+  installerVersion: "v1.0.5"
+  nerdfontBinary: "nerdfont-install"
+  config:
+    release: "latest"
+    destination: "~/.local/share/fonts/NerdFonts"
+    refreshFontCache: true
+    families:
+      - JetBrainsMono
+      - Hack
+  probeCommand: "fc-list | grep -qi JetBrains"
+```
+
+---
+
+### `shell-reload` — force later work through a fresh shell
+
+```yaml
+- type: shell-reload
+  name: reload-zsh
+  shell: zsh                      # zsh | bash | sh
+  description: "Reload shell after installing toolchains"
+```
+
+Use this when a previous step writes shell startup files that later commands need to observe.
+
+---
+
 ### `shell-command` — run inline shell commands
 
 ```yaml

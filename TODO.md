@@ -17,6 +17,23 @@ and parallel agent analysis.
   - `./mill cli.nativeImage`
   - native binary `--help` / `--version` / `validate`
 
+## Implemented Since This Roadmap Was Written
+
+- User-facing product name is `fluxion`; Java packages remain `dev.sysboot`.
+- State path is centralized on `~/.local/share/fluxion` with legacy `sysboot` state awareness.
+- Shipped configs use placeholders instead of personal Git identity defaults.
+- Package probes are package-manager-aware through `ModuleItem`.
+- `run --phase` and `run --from-phase` validate missing phases.
+- Config parser and state persistence records use boundary-specific package/class names instead of
+  generic DTO naming.
+- Phase completion is guarded by stored phase fingerprints.
+- Skip state refreshes after successful item writes during a run.
+- State item metadata uses `Optional` rather than nullable version/checksum fields.
+- Plain CLI restart checkpoints print resume guidance, and `status --resume-command` is available.
+- `generate` creates starter configs with `minimal`, `developer`, `desktop`, and `dotfiles`
+  presets.
+- `doctor` performs host readiness checks for a profile.
+
 ## P0 - Trust And Correctness
 
 ### 1. Decide and enforce one product name
@@ -500,6 +517,10 @@ Implementation:
 - Update `graal/*.json` whenever DTOs, Picocli commands, or resources change.
 
 ## Later Ideas
+
+See `sysboot/docs/enhancements.md` for a broader backlog of product, CLI, state, security, TUI,
+release, and documentation ideas. Promote items from that document into this roadmap when they are
+ready for implementation.
 
 - `fluxion explain -c config.yaml --item git` to show why an item will run or skip.
 - `fluxion graph` to output a phase DAG in DOT/Mermaid.
