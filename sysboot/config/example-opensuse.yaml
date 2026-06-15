@@ -75,7 +75,7 @@ jobs:
       - system-foundation
     restartPolicy:
       type: prompt-logout
-      message: "Default shell changed to zsh. Log out and back in, then re-run sysboot."
+      message: "Default shell changed to zsh. Log out and back in, then re-run fluxion."
     continueOnModuleError: false
     steps:
       - type: default-shell

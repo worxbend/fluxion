@@ -21,6 +21,11 @@ class PackageManagerExecutorRegistryTest {
         }
 
         @Override
+        public List<String> installCommand(PackageName packageName) {
+          return List.of("sudo", "dnf", "install", "-y", packageName.value());
+        }
+
+        @Override
         public StepResult install(PackageName packageName) {
           return new StepResult.Success(packageName.value(), Duration.ZERO);
         }
@@ -31,6 +36,11 @@ class PackageManagerExecutorRegistryTest {
         @Override
         public boolean supports(PackageManagerKind kind) {
           return kind == PackageManagerKind.PACMAN;
+        }
+
+        @Override
+        public List<String> installCommand(PackageName packageName) {
+          return List.of("sudo", "pacman", "-S", "--noconfirm", packageName.value());
         }
 
         @Override

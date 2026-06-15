@@ -3,6 +3,8 @@ package dev.sysboot.executor;
 import dev.sysboot.core.InstallationStatus;
 import dev.sysboot.core.InstalledProbe;
 import dev.sysboot.core.ItemType;
+import dev.sysboot.core.ModuleItem;
+import dev.sysboot.core.PackageManagerKind;
 import dev.sysboot.core.ShellRunner;
 import java.time.Duration;
 import java.util.List;
@@ -22,6 +24,12 @@ public final class ZypperPackageProbe implements InstalledProbe {
   @Override
   public boolean supports(ItemType itemType) {
     return itemType == ItemType.PACKAGE;
+  }
+
+  @Override
+  public boolean supports(ModuleItem item) {
+    return item.itemType() == ItemType.PACKAGE
+        && item.packageManager().map(pm -> pm == PackageManagerKind.ZYPPER).orElse(false);
   }
 
   @Override

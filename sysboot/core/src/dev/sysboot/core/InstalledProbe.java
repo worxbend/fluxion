@@ -7,5 +7,9 @@ package dev.sysboot.core;
 public interface InstalledProbe {
   boolean supports(ItemType itemType);
 
+  default boolean supports(ModuleItem item) {
+    return supports(item.itemType());
+  }
+
   InstallationStatus probe(String itemKey);
 }

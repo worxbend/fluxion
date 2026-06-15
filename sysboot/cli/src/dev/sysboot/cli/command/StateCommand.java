@@ -6,11 +6,15 @@ import dev.sysboot.cli.error.ExitCode;
 import dev.sysboot.cli.option.GlobalOptions;
 import dev.sysboot.core.BootstrapState;
 import dev.sysboot.executor.JsonStateRepository;
+import java.io.IOException;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import picocli.CommandLine.Command;
 import picocli.CommandLine.Mixin;
 import picocli.CommandLine.Option;
 import picocli.CommandLine.Parameters;
+import picocli.CommandLine.Spec;
+import picocli.CommandLine.Model.CommandSpec;
 
 /** Commands for inspecting and pruning fluxion's per-profile state files. */
 @Command(
@@ -79,6 +83,8 @@ public final class StateCommand implements Runnable {
   @Command(name = "reset", description = "Delete the entire state file for a profile")
   public static final class ResetSubcommand implements Runnable {
 
+    @Spec private CommandSpec spec;
+
     @Parameters(index = "0", description = "Profile name", defaultValue = "default")
     private String profile;
 
@@ -89,12 +95,11 @@ public final class StateCommand implements Runnable {
 
     @Override
     public void run() {
-      Path stateFile =
-          Path.of(System.getProperty("user.home"))
-              .resolve(".local/share/fluxion")
-              .resolve(profile + ".state.json");
-      if (!stateFile.toFile().exists()) {
-        System.out.println("No state file found for profile: " + profile);
+      var repo = new JsonStateRepository(new ObjectMapper());
+      Path stateFile = repo.path(profile);
+      Path legacyStateFile = repo.legacyPath(profile);
+      if (!Files.exists(stateFile) && !Files.exists(legacyStateFile)) {
+        spec.commandLine().getOut().println("No state file found for profile: " + profile);
         return;
       }
       if (!force) {
@@ -105,10 +110,17 @@ public final class StateCommand implements Runnable {
           return;
         }
       }
-      if (!stateFile.toFile().delete()) {
-        throw new CliFailureException(ExitCode.IO_ERROR, "Failed to delete: " + stateFile);
+      deleteIfExists(stateFile);
+      deleteIfExists(legacyStateFile);
+      spec.commandLine().getOut().println("State reset for profile: " + profile);
+    }
+
+    private void deleteIfExists(Path stateFile) {
+      try {
+        Files.deleteIfExists(stateFile);
+      } catch (IOException e) {
+        throw new CliFailureException(ExitCode.IO_ERROR, "Failed to delete: " + stateFile, e);
       }
-      System.out.println("State reset for profile: " + profile);
     }
   }
 
@@ -175,16 +187,15 @@ public final class StateCommand implements Runnable {
   @Command(name = "path", description = "Print path to the state file")
   public static final class PathSubcommand implements Runnable {
 
+    @Spec private CommandSpec spec;
+
     @Parameters(index = "0", description = "Profile name", defaultValue = "default")
     private String profile;
 
     @Override
     public void run() {
-      Path stateFile =
-          Path.of(System.getProperty("user.home"))
-              .resolve(".local/share/fluxion")
-              .resolve(profile + ".state.json");
-      System.out.println(stateFile.toAbsolutePath());
+      var repo = new JsonStateRepository(new ObjectMapper());
+      spec.commandLine().getOut().println(repo.path(profile).toAbsolutePath());
     }
   }
 }

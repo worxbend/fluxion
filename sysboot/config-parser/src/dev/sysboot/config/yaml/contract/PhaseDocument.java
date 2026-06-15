@@ -1,9 +1,9 @@
-package dev.sysboot.config.dto;
+package dev.sysboot.config.yaml.contract;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
 import java.util.List;
 
-public final class PhaseDto {
+public final class PhaseDocument {
 
   @JsonProperty("name")
   public String name;
@@ -15,14 +15,14 @@ public final class PhaseDto {
   public List<String> dependsOn;
 
   @JsonProperty("restartPolicy")
-  public RestartPolicyDto restartPolicy;
+  public RestartPolicyDocument restartPolicy;
 
   @JsonProperty("continueOnModuleError")
   public boolean continueOnModuleError = true;
 
   @JsonProperty("modules")
-  public List<ModuleDto> modules;
+  public List<ModuleDocument> modules;
 
   @JsonProperty("steps")
-  public List<ModuleDto> steps;
+  public List<ModuleDocument> steps;
 }

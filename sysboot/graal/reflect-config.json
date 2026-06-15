@@ -90,145 +90,145 @@
     "allDeclaredConstructors": true
   },
   {
-    "name": "dev.sysboot.config.dto.ConfigDto",
+    "name": "dev.sysboot.config.yaml.contract.ConfigDocument",
     "allDeclaredFields": true,
     "allDeclaredMethods": true,
     "allDeclaredConstructors": true
   },
   {
-    "name": "dev.sysboot.config.dto.OsDto",
+    "name": "dev.sysboot.config.yaml.contract.OsDocument",
     "allDeclaredFields": true,
     "allDeclaredMethods": true,
     "allDeclaredConstructors": true
   },
   {
-    "name": "dev.sysboot.config.dto.PhaseDto",
+    "name": "dev.sysboot.config.yaml.contract.PhaseDocument",
     "allDeclaredFields": true,
     "allDeclaredMethods": true,
     "allDeclaredConstructors": true
   },
   {
-    "name": "dev.sysboot.config.dto.ModuleDto",
+    "name": "dev.sysboot.config.yaml.contract.ModuleDocument",
     "allDeclaredFields": true,
     "allDeclaredMethods": true,
     "allDeclaredConstructors": true
   },
   {
-    "name": "dev.sysboot.config.dto.PackagesModuleDto",
+    "name": "dev.sysboot.config.yaml.contract.PackagesModuleDocument",
     "allDeclaredFields": true,
     "allDeclaredMethods": true,
     "allDeclaredConstructors": true
   },
   {
-    "name": "dev.sysboot.config.dto.FlatpakModuleDto",
+    "name": "dev.sysboot.config.yaml.contract.FlatpakModuleDocument",
     "allDeclaredFields": true,
     "allDeclaredMethods": true,
     "allDeclaredConstructors": true
   },
   {
-    "name": "dev.sysboot.config.dto.ShellScriptModuleDto",
+    "name": "dev.sysboot.config.yaml.contract.ShellScriptModuleDocument",
     "allDeclaredFields": true,
     "allDeclaredMethods": true,
     "allDeclaredConstructors": true
   },
   {
-    "name": "dev.sysboot.config.dto.CompiledBinaryModuleDto",
+    "name": "dev.sysboot.config.yaml.contract.CompiledBinaryModuleDocument",
     "allDeclaredFields": true,
     "allDeclaredMethods": true,
     "allDeclaredConstructors": true
   },
   {
-    "name": "dev.sysboot.config.dto.ChecksumDto",
+    "name": "dev.sysboot.config.yaml.contract.ChecksumDocument",
     "allDeclaredFields": true,
     "allDeclaredMethods": true,
     "allDeclaredConstructors": true
   },
   {
-    "name": "dev.sysboot.config.dto.DotbotModuleDto",
+    "name": "dev.sysboot.config.yaml.contract.DotbotModuleDocument",
     "allDeclaredFields": true,
     "allDeclaredMethods": true,
     "allDeclaredConstructors": true
   },
   {
-    "name": "dev.sysboot.config.dto.DefaultShellModuleDto",
+    "name": "dev.sysboot.config.yaml.contract.DefaultShellModuleDocument",
     "allDeclaredFields": true,
     "allDeclaredMethods": true,
     "allDeclaredConstructors": true
   },
   {
-    "name": "dev.sysboot.config.dto.OhMyZshModuleDto",
+    "name": "dev.sysboot.config.yaml.contract.OhMyZshModuleDocument",
     "allDeclaredFields": true,
     "allDeclaredMethods": true,
     "allDeclaredConstructors": true
   },
   {
-    "name": "dev.sysboot.config.dto.ToolchainModuleDto",
+    "name": "dev.sysboot.config.yaml.contract.ToolchainModuleDocument",
     "allDeclaredFields": true,
     "allDeclaredMethods": true,
     "allDeclaredConstructors": true
   },
   {
-    "name": "dev.sysboot.config.dto.NerdFontModuleDto",
+    "name": "dev.sysboot.config.yaml.contract.NerdFontModuleDocument",
     "allDeclaredFields": true,
     "allDeclaredMethods": true,
     "allDeclaredConstructors": true
   },
   {
-    "name": "dev.sysboot.config.dto.NerdFontConfigDto",
+    "name": "dev.sysboot.config.yaml.contract.NerdFontConfigDocument",
     "allDeclaredFields": true,
     "allDeclaredMethods": true,
     "allDeclaredConstructors": true
   },
   {
-    "name": "dev.sysboot.config.dto.ShellReloadModuleDto",
+    "name": "dev.sysboot.config.yaml.contract.ShellReloadModuleDocument",
     "allDeclaredFields": true,
     "allDeclaredMethods": true,
     "allDeclaredConstructors": true
   },
   {
-    "name": "dev.sysboot.config.dto.ShellCommandModuleDto",
+    "name": "dev.sysboot.config.yaml.contract.ShellCommandModuleDocument",
     "allDeclaredFields": true,
     "allDeclaredMethods": true,
     "allDeclaredConstructors": true
   },
   {
-    "name": "dev.sysboot.config.dto.RestartPolicyDto",
+    "name": "dev.sysboot.config.yaml.contract.RestartPolicyDocument",
     "allDeclaredFields": true,
     "allDeclaredMethods": true,
     "allDeclaredConstructors": true
   },
   {
-    "name": "dev.sysboot.config.dto.RestartPolicyDto$NoneDto",
+    "name": "dev.sysboot.config.yaml.contract.RestartPolicyDocument$NoneDocument",
     "allDeclaredFields": true,
     "allDeclaredMethods": true,
     "allDeclaredConstructors": true
   },
   {
-    "name": "dev.sysboot.config.dto.RestartPolicyDto$PromptLogoutDto",
+    "name": "dev.sysboot.config.yaml.contract.RestartPolicyDocument$PromptLogoutDocument",
     "allDeclaredFields": true,
     "allDeclaredMethods": true,
     "allDeclaredConstructors": true
   },
   {
-    "name": "dev.sysboot.config.dto.RestartPolicyDto$RequiresNewShellDto",
+    "name": "dev.sysboot.config.yaml.contract.RestartPolicyDocument$RequiresNewShellDocument",
     "allDeclaredFields": true,
     "allDeclaredMethods": true,
     "allDeclaredConstructors": true
   },
   {
-    "name": "dev.sysboot.executor.dto.BootstrapStateDto",
+    "name": "dev.sysboot.executor.state.record.BootstrapStateRecord",
     "allDeclaredFields": true,
     "allDeclaredMethods": true,
     "allDeclaredConstructors": true
   },
   {
-    "name": "dev.sysboot.executor.dto.StateEntryDto",
+    "name": "dev.sysboot.executor.state.record.StateEntryRecord",
     "allDeclaredFields": true,
     "allDeclaredMethods": true,
     "allDeclaredConstructors": true
   },
   {
-    "name": "dev.sysboot.executor.dto.PhaseStateEntryDto",
+    "name": "dev.sysboot.executor.state.record.PhaseStateEntryRecord",
     "allDeclaredFields": true,
     "allDeclaredMethods": true,
     "allDeclaredConstructors": true

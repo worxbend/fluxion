@@ -61,7 +61,7 @@ jobs:
       - system-foundation
     restartPolicy:
       type: prompt-logout
-      message: "Default shell changed to zsh. Please log out and back in, then re-run sysboot."
+      message: "Default shell changed to zsh. Please log out and back in, then re-run fluxion."
     continueOnModuleError: false
     steps:
       - type: packages
@@ -254,8 +254,8 @@ jobs:
         commands:
           - "sudo dnf swap -y ffmpeg-free ffmpeg --allowerasing || true"
           - "test -d \"$HOME/.tmux/plugins/tpm\" || git clone https://github.com/tmux-plugins/tpm \"$HOME/.tmux/plugins/tpm\""
-          - "git config --global user.email 'balyszyn@gmail.com'"
-          - "git config --global user.name 'w0rxbend'"
+          - "git config --global user.email 'you@example.com'"
+          - "git config --global user.name 'Your Name'"
           - "git config --global pull.rebase true"
           - "git config --global init.defaultBranch main"
           - "git config --global core.autocrlf input"
@@ -337,7 +337,7 @@ jobs:
         probeCommand: "test -f ~/.cargo/bin/eza && test -f ~/.cargo/bin/bottom"
 
   - name: binaries
-    description: "Install pre-built binaries represented by current sysboot compiled-binary support"
+    description: "Install pre-built binaries represented by current Fluxion compiled-binary support"
     dependsOn:
       - toolchains
     restartPolicy:

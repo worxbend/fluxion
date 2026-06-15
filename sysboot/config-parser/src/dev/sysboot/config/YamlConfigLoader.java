@@ -2,7 +2,7 @@ package dev.sysboot.config;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.dataformat.yaml.YAMLFactory;
-import dev.sysboot.config.dto.ConfigDto;
+import dev.sysboot.config.yaml.contract.ConfigDocument;
 import dev.sysboot.core.BootstrapConfig;
 import dev.sysboot.core.ConfigLoader;
 import java.io.IOException;
@@ -29,7 +29,7 @@ public final class YamlConfigLoader implements ConfigLoader {
       throw new ConfigLoadException(configFile, "File is not readable");
     }
     try {
-      ConfigDto dto = objectMapper.readValue(configFile.toFile(), ConfigDto.class);
+      ConfigDocument dto = objectMapper.readValue(configFile.toFile(), ConfigDocument.class);
       return configMapper.map(dto, configFile.toAbsolutePath());
     } catch (IOException e) {
       throw new ConfigLoadException(configFile, "YAML parse error: " + e.getMessage(), e);

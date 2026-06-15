@@ -1,10 +1,10 @@
-package dev.sysboot.config.dto;
+package dev.sysboot.config.yaml.contract;
 
 import com.fasterxml.jackson.annotation.JsonAlias;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import java.util.List;
 
-public final class NerdFontConfigDto {
+public final class NerdFontConfigDocument {
 
   @JsonProperty("release")
   public String release = "latest";

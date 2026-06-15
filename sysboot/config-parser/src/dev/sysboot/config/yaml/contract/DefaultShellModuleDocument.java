@@ -1,8 +1,8 @@
-package dev.sysboot.config.dto;
+package dev.sysboot.config.yaml.contract;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
 
-public final class DefaultShellModuleDto extends ModuleDto {
+public final class DefaultShellModuleDocument extends ModuleDocument {
 
   @JsonProperty("shell")
   public String shell;

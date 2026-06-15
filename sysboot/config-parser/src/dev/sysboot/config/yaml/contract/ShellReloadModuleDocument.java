@@ -1,8 +1,8 @@
-package dev.sysboot.config.dto;
+package dev.sysboot.config.yaml.contract;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
 
-public final class ShellReloadModuleDto extends ModuleDto {
+public final class ShellReloadModuleDocument extends ModuleDocument {
 
   @JsonProperty("shell")
   public String shell = "zsh";

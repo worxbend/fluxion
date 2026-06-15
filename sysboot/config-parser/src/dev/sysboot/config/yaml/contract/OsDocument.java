@@ -1,8 +1,8 @@
-package dev.sysboot.config.dto;
+package dev.sysboot.config.yaml.contract;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
 
-public final class OsDto {
+public final class OsDocument {
 
   @JsonProperty("type")
   public String type;

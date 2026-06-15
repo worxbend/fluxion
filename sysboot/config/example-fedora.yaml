@@ -60,7 +60,7 @@ jobs:
       - system-foundation
     restartPolicy:
       type: prompt-logout
-      message: "Default shell changed to zsh. Log out and back in, then re-run sysboot."
+      message: "Default shell changed to zsh. Log out and back in, then re-run fluxion."
     continueOnModuleError: false
     steps:
       - type: packages
@@ -141,8 +141,8 @@ jobs:
       - type: shell-command
         name: git-and-zsh-plugins
         commands:
-          - "git config --global user.email 'balyszyn@gmail.com'"
-          - "git config --global user.name 'w0rxbend'"
+          - "git config --global user.email 'you@example.com'"
+          - "git config --global user.name 'Your Name'"
           - "git config --global pull.rebase true"
           - "git config --global init.defaultBranch main"
           - "plugin_dir=\"${ZSH_CUSTOM:-$HOME/.oh-my-zsh/custom}/plugins\"; mkdir -p \"$plugin_dir\"; test -d \"$plugin_dir/zsh-syntax-highlighting/.git\" || git clone https://github.com/zsh-users/zsh-syntax-highlighting.git \"$plugin_dir/zsh-syntax-highlighting\""
@@ -198,7 +198,7 @@ jobs:
         continueOnError: true
 
   - name: fonts
-    description: "Install Nerd Fonts with the pinned sysboot installer"
+    description: "Install Nerd Fonts with the pinned Fluxion installer"
     dependsOn:
       - development
     restartPolicy:

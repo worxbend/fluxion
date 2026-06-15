@@ -1,9 +1,9 @@
-package dev.sysboot.config.dto;
+package dev.sysboot.config.yaml.contract;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
 import java.util.List;
 
-public final class FlatpakModuleDto extends ModuleDto {
+public final class FlatpakModuleDocument extends ModuleDocument {
 
   @JsonProperty("remote")
   public String remote = "flathub";

@@ -1,22 +1,22 @@
 package dev.sysboot.config;
 
-import dev.sysboot.config.dto.ChecksumDto;
-import dev.sysboot.config.dto.CompiledBinaryModuleDto;
-import dev.sysboot.config.dto.ConfigDto;
-import dev.sysboot.config.dto.DefaultShellModuleDto;
-import dev.sysboot.config.dto.DotbotModuleDto;
-import dev.sysboot.config.dto.FlatpakModuleDto;
-import dev.sysboot.config.dto.ModuleDto;
-import dev.sysboot.config.dto.NerdFontModuleDto;
-import dev.sysboot.config.dto.OhMyZshModuleDto;
-import dev.sysboot.config.dto.OsDto;
-import dev.sysboot.config.dto.PackagesModuleDto;
-import dev.sysboot.config.dto.PhaseDto;
-import dev.sysboot.config.dto.RestartPolicyDto;
-import dev.sysboot.config.dto.ShellCommandModuleDto;
-import dev.sysboot.config.dto.ShellReloadModuleDto;
-import dev.sysboot.config.dto.ShellScriptModuleDto;
-import dev.sysboot.config.dto.ToolchainModuleDto;
+import dev.sysboot.config.yaml.contract.ChecksumDocument;
+import dev.sysboot.config.yaml.contract.CompiledBinaryModuleDocument;
+import dev.sysboot.config.yaml.contract.ConfigDocument;
+import dev.sysboot.config.yaml.contract.DefaultShellModuleDocument;
+import dev.sysboot.config.yaml.contract.DotbotModuleDocument;
+import dev.sysboot.config.yaml.contract.FlatpakModuleDocument;
+import dev.sysboot.config.yaml.contract.ModuleDocument;
+import dev.sysboot.config.yaml.contract.NerdFontModuleDocument;
+import dev.sysboot.config.yaml.contract.OhMyZshModuleDocument;
+import dev.sysboot.config.yaml.contract.OsDocument;
+import dev.sysboot.config.yaml.contract.PackagesModuleDocument;
+import dev.sysboot.config.yaml.contract.PhaseDocument;
+import dev.sysboot.config.yaml.contract.RestartPolicyDocument;
+import dev.sysboot.config.yaml.contract.ShellCommandModuleDocument;
+import dev.sysboot.config.yaml.contract.ShellReloadModuleDocument;
+import dev.sysboot.config.yaml.contract.ShellScriptModuleDocument;
+import dev.sysboot.config.yaml.contract.ToolchainModuleDocument;
 import dev.sysboot.core.BinaryUrl;
 import dev.sysboot.core.BootstrapConfig;
 import dev.sysboot.core.BootstrapModule;
@@ -52,44 +52,44 @@ import java.util.Optional;
 
 final class ConfigMapper {
 
-  BootstrapConfig map(ConfigDto dto, Path configFile) {
+  BootstrapConfig map(ConfigDocument dto, Path configFile) {
     validateSchemaVersion(dto.schemaVersion);
     var builder =
         BootstrapConfig.builder()
             .profileName(new ProfileName(requireField(dto.profile, "profile")))
             .target(mapOs(requireField(dto.os, "os")));
 
-    List<PhaseDto> phaseDtos = phaseDtos(dto);
-    if (!phaseDtos.isEmpty()) {
-      for (PhaseDto phaseDto : phaseDtos) {
-        builder.addPhase(mapPhase(phaseDto, configFile));
+    List<PhaseDocument> phaseDocuments = phaseDocuments(dto);
+    if (!phaseDocuments.isEmpty()) {
+      for (PhaseDocument phaseDocument : phaseDocuments) {
+        builder.addPhase(mapPhase(phaseDocument, configFile));
       }
     } else {
-      List<ModuleDto> moduleDtos = dto.modules != null ? dto.modules : List.of();
-      for (ModuleDto moduleDto : moduleDtos) {
-        builder.addModule(mapModule(moduleDto, configFile));
+      List<ModuleDocument> moduleDocuments = dto.modules != null ? dto.modules : List.of();
+      for (ModuleDocument moduleDocument : moduleDocuments) {
+        builder.addModule(mapModule(moduleDocument, configFile));
       }
     }
 
     return builder.build();
   }
 
-  private List<PhaseDto> phaseDtos(ConfigDto dto) {
+  private List<PhaseDocument> phaseDocuments(ConfigDocument dto) {
     if (dto.jobs != null && !dto.jobs.isEmpty()) {
       return dto.jobs;
     }
     return dto.phases != null ? dto.phases : List.of();
   }
 
-  private Phase mapPhase(PhaseDto dto, Path configFile) {
+  private Phase mapPhase(PhaseDocument dto, Path configFile) {
     String name = requireField(dto.name, "phase.name");
     List<PhaseName> deps =
         dto.dependsOn != null ? dto.dependsOn.stream().map(PhaseName::new).toList() : List.of();
     RestartPolicy policy =
         dto.restartPolicy != null ? mapRestartPolicy(dto.restartPolicy) : new RestartPolicy.None();
     List<BootstrapModule> modules = new ArrayList<>();
-    for (ModuleDto moduleDto : stepDtos(dto)) {
-      modules.add(mapModule(moduleDto, configFile));
+    for (ModuleDocument moduleDocument : stepDocuments(dto)) {
+      modules.add(mapModule(moduleDocument, configFile));
     }
     return new Phase(
         new PhaseName(name),
@@ -100,19 +100,19 @@ final class ConfigMapper {
         dto.continueOnModuleError);
   }
 
-  private List<ModuleDto> stepDtos(PhaseDto dto) {
+  private List<ModuleDocument> stepDocuments(PhaseDocument dto) {
     if (dto.steps != null && !dto.steps.isEmpty()) {
       return dto.steps;
     }
     return dto.modules != null ? dto.modules : List.of();
   }
 
-  private RestartPolicy mapRestartPolicy(RestartPolicyDto dto) {
+  private RestartPolicy mapRestartPolicy(RestartPolicyDocument dto) {
     return switch (dto) {
-      case RestartPolicyDto.NoneDto ignored -> new RestartPolicy.None();
-      case RestartPolicyDto.PromptLogoutDto pr ->
+      case RestartPolicyDocument.NoneDocument ignored -> new RestartPolicy.None();
+      case RestartPolicyDocument.PromptLogoutDocument pr ->
           new RestartPolicy.PromptLogout(pr.message != null ? pr.message : "");
-      case RestartPolicyDto.RequiresNewShellDto rns ->
+      case RestartPolicyDocument.RequiresNewShellDocument rns ->
           new RestartPolicy.RequiresNewShell(mapShellKind(rns.shell));
     };
   }
@@ -126,7 +126,7 @@ final class ConfigMapper {
     };
   }
 
-  private OsTarget mapOs(OsDto dto) {
+  private OsTarget mapOs(OsDocument dto) {
     String type = requireField(dto.type, "os.type").toLowerCase();
     return switch (type) {
       case "fedora" -> new OsTarget.FedoraTarget(dto.release != null ? dto.release : "");
@@ -137,23 +137,23 @@ final class ConfigMapper {
     };
   }
 
-  private BootstrapModule mapModule(ModuleDto dto, Path configFile) {
+  private BootstrapModule mapModule(ModuleDocument dto, Path configFile) {
     return switch (dto) {
-      case PackagesModuleDto pm -> mapPackagesModule(pm);
-      case FlatpakModuleDto fm -> mapFlatpakModule(fm);
-      case ShellScriptModuleDto sm -> mapShellScriptModule(sm, configFile);
-      case CompiledBinaryModuleDto bm -> mapCompiledBinaryModule(bm);
-      case DotbotModuleDto db -> mapDotbotModule(db, configFile);
-      case DefaultShellModuleDto ds -> mapDefaultShellModule(ds);
-      case OhMyZshModuleDto omz -> mapOhMyZshModule(omz);
-      case ToolchainModuleDto tc -> mapToolchainModule(tc);
-      case NerdFontModuleDto nf -> mapNerdFontModule(nf);
-      case ShellReloadModuleDto sr -> mapShellReloadModule(sr);
-      case ShellCommandModuleDto sc -> mapShellCommandModule(sc);
+      case PackagesModuleDocument pm -> mapPackagesModule(pm);
+      case FlatpakModuleDocument fm -> mapFlatpakModule(fm);
+      case ShellScriptModuleDocument sm -> mapShellScriptModule(sm, configFile);
+      case CompiledBinaryModuleDocument bm -> mapCompiledBinaryModule(bm);
+      case DotbotModuleDocument db -> mapDotbotModule(db, configFile);
+      case DefaultShellModuleDocument ds -> mapDefaultShellModule(ds);
+      case OhMyZshModuleDocument omz -> mapOhMyZshModule(omz);
+      case ToolchainModuleDocument tc -> mapToolchainModule(tc);
+      case NerdFontModuleDocument nf -> mapNerdFontModule(nf);
+      case ShellReloadModuleDocument sr -> mapShellReloadModule(sr);
+      case ShellCommandModuleDocument sc -> mapShellCommandModule(sc);
     };
   }
 
-  private PackageModule mapPackagesModule(PackagesModuleDto dto) {
+  private PackageModule mapPackagesModule(PackagesModuleDocument dto) {
     var kind =
         PackageManagerKind.valueOf(
             requireField(dto.packageManager, "packageManager").toUpperCase());
@@ -165,13 +165,13 @@ final class ConfigMapper {
         new ModuleName(requireField(dto.name, "name")), kind, packages, dto.continueOnError);
   }
 
-  private FlatpakModule mapFlatpakModule(FlatpakModuleDto dto) {
+  private FlatpakModule mapFlatpakModule(FlatpakModuleDocument dto) {
     String remote = dto.remote != null ? dto.remote : "flathub";
     return new FlatpakModule(
         new ModuleName(requireField(dto.name, "name")), remote, requireField(dto.appIds, "appIds"));
   }
 
-  private ShellScriptModule mapShellScriptModule(ShellScriptModuleDto dto, Path configFile) {
+  private ShellScriptModule mapShellScriptModule(ShellScriptModuleDocument dto, Path configFile) {
     var scriptPath =
         new ScriptPath(Path.of(requireField(dto.script, "script"))).resolve(configFile.getParent());
     var args = dto.args != null ? dto.args : List.<String>of();
@@ -186,7 +186,7 @@ final class ConfigMapper {
         Optional.ofNullable(dto.probeCommand));
   }
 
-  private CompiledBinaryModule mapCompiledBinaryModule(CompiledBinaryModuleDto dto) {
+  private CompiledBinaryModule mapCompiledBinaryModule(CompiledBinaryModuleDocument dto) {
     var url = new BinaryUrl(URI.create(requireField(dto.url, "url")));
     var installPath = absolutePath(requireField(dto.installPath, "installPath"), "installPath");
     return new CompiledBinaryModule(
@@ -200,7 +200,7 @@ final class ConfigMapper {
         Optional.ofNullable(dto.expectedVersion));
   }
 
-  private DotbotModule mapDotbotModule(DotbotModuleDto dto, Path configFile) {
+  private DotbotModule mapDotbotModule(DotbotModuleDocument dto, Path configFile) {
     String rawConfig = requireField(dto.config, "dotbot.config");
     Path configPath = Path.of(rawConfig.replace("~", System.getProperty("user.home")));
     return new DotbotModule(
@@ -211,7 +211,7 @@ final class ConfigMapper {
         Optional.ofNullable(dto.probeCommand));
   }
 
-  private DefaultShellModule mapDefaultShellModule(DefaultShellModuleDto dto) {
+  private DefaultShellModule mapDefaultShellModule(DefaultShellModuleDocument dto) {
     String shell = dto.shell != null ? dto.shell : dto.shellPath;
     return new DefaultShellModule(
         new ModuleName(requireField(dto.name, "name")),
@@ -219,7 +219,7 @@ final class ConfigMapper {
         Optional.ofNullable(dto.probeCommand));
   }
 
-  private OhMyZshModule mapOhMyZshModule(OhMyZshModuleDto dto) {
+  private OhMyZshModule mapOhMyZshModule(OhMyZshModuleDocument dto) {
     String dir = dto.installDir != null ? dto.installDir : "~/.oh-my-zsh";
     return new OhMyZshModule(
         new ModuleName(requireField(dto.name, "name")),
@@ -227,7 +227,7 @@ final class ConfigMapper {
         Optional.ofNullable(dto.probeCommand));
   }
 
-  private ToolchainModule mapToolchainModule(ToolchainModuleDto dto) {
+  private ToolchainModule mapToolchainModule(ToolchainModuleDocument dto) {
     var kind = ToolchainKind.valueOf(requireField(dto.kind, "toolchain.kind").toUpperCase());
     String installScript = dto.installScriptUrl != null ? dto.installScriptUrl : dto.installScript;
     return new ToolchainModule(
@@ -240,18 +240,18 @@ final class ConfigMapper {
         dto.continueOnError);
   }
 
-  private NerdFontModule mapNerdFontModule(NerdFontModuleDto dto) {
-    var cfgDto = requireField(dto.config, "nerd-fonts.config");
+  private NerdFontModule mapNerdFontModule(NerdFontModuleDocument dto) {
+    var configDocument = requireField(dto.config, "nerd-fonts.config");
     var dest =
-        cfgDto.destination != null
-            ? Path.of(cfgDto.destination.replace("~", System.getProperty("user.home")))
+        configDocument.destination != null
+            ? Path.of(configDocument.destination.replace("~", System.getProperty("user.home")))
             : Path.of(System.getProperty("user.home"), ".local/share/fonts/NerdFonts");
     var config =
         new NerdFontConfig(
-            cfgDto.release != null ? cfgDto.release : "latest",
+            configDocument.release != null ? configDocument.release : "latest",
             dest,
-            cfgDto.refreshFontCache,
-            cfgDto.families != null ? cfgDto.families : List.of());
+            configDocument.refreshFontCache,
+            configDocument.families != null ? configDocument.families : List.of());
     return new NerdFontModule(
         new ModuleName(requireField(dto.name, "name")),
         requireField(dto.installerVersion, "nerd-fonts.installerVersion"),
@@ -260,14 +260,14 @@ final class ConfigMapper {
         Optional.ofNullable(dto.probeCommand));
   }
 
-  private ShellReloadModule mapShellReloadModule(ShellReloadModuleDto dto) {
+  private ShellReloadModule mapShellReloadModule(ShellReloadModuleDocument dto) {
     return new ShellReloadModule(
         new ModuleName(requireField(dto.name, "name")),
         mapShellKind(dto.shell),
         dto.description != null ? dto.description : "");
   }
 
-  private ShellCommandModule mapShellCommandModule(ShellCommandModuleDto dto) {
+  private ShellCommandModule mapShellCommandModule(ShellCommandModuleDocument dto) {
     var workingDir =
         dto.workingDir != null ? Optional.of(Path.of(dto.workingDir)) : Optional.<Path>empty();
     return new ShellCommandModule(
@@ -279,7 +279,7 @@ final class ConfigMapper {
         Optional.ofNullable(dto.probeCommand));
   }
 
-  private Optional<Checksum> mapChecksum(ChecksumDto dto) {
+  private Optional<Checksum> mapChecksum(ChecksumDocument dto) {
     if (dto == null) return Optional.empty();
     return Optional.of(
         new Checksum(

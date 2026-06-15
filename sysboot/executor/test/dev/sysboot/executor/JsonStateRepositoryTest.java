@@ -1,11 +1,13 @@
 package dev.sysboot.executor;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import dev.sysboot.core.BootstrapState;
 import dev.sysboot.core.ItemType;
 import dev.sysboot.core.StateEntry;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Instant;
 import java.util.Optional;
@@ -24,6 +26,45 @@ class JsonStateRepositoryTest {
   void load_whenNoFile_returnsEmpty() {
     Optional<BootstrapState> result = newRepo().load("test-profile");
     assertThat(result).isEmpty();
+  }
+
+  @Test
+  void path_returnsFluxionStatePath() {
+    Path stateFile = newRepo().path("test-profile");
+    assertThat(stateFile).isEqualTo(tempDir.resolve("test-profile.state.json"));
+  }
+
+  @Test
+  void load_whenLegacyFileExists_readsLegacyState() throws Exception {
+    Path currentDir = tempDir.resolve("current");
+    Path legacyDir = tempDir.resolve("legacy");
+    var repo = new JsonStateRepository(new StatePaths(currentDir, legacyDir), new ObjectMapper());
+    Files.createDirectories(legacyDir);
+    Files.writeString(
+        legacyDir.resolve("test-profile.state.json"),
+        """
+        {
+          "schemaVersion": 2,
+          "profileName": "test-profile",
+          "entries": [],
+          "phaseEntries": []
+        }
+        """);
+
+    Optional<BootstrapState> result = repo.load("test-profile");
+
+    assertThat(result).isPresent();
+    assertThat(result.get().profileName()).isEqualTo("test-profile");
+  }
+
+  @Test
+  void load_whenStateFileIsCorrupt_throwsStateReadException() throws Exception {
+    Files.createDirectories(tempDir);
+    Files.writeString(tempDir.resolve("test-profile.state.json"), "{ not-json");
+
+    assertThatThrownBy(() -> newRepo().load("test-profile"))
+        .isInstanceOf(StateReadException.class)
+        .hasMessageContaining("test-profile.state.json");
   }
 
   @Test

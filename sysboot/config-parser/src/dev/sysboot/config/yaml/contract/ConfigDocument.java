@@ -1,9 +1,9 @@
-package dev.sysboot.config.dto;
+package dev.sysboot.config.yaml.contract;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
 import java.util.List;
 
-public final class ConfigDto {
+public final class ConfigDocument {
 
   @JsonProperty("schemaVersion")
   public Integer schemaVersion;
@@ -12,17 +12,17 @@ public final class ConfigDto {
   public String profile;
 
   @JsonProperty("os")
-  public OsDto os;
+  public OsDocument os;
 
   /** Legacy flat list — still supported for backward compat. */
   @JsonProperty("modules")
-  public List<ModuleDto> modules;
+  public List<ModuleDocument> modules;
 
   /** Primary workflow-style structure. */
   @JsonProperty("jobs")
-  public List<PhaseDto> jobs;
+  public List<PhaseDocument> jobs;
 
   /** Legacy alias for jobs. */
   @JsonProperty("phases")
-  public List<PhaseDto> phases;
+  public List<PhaseDocument> phases;
 }

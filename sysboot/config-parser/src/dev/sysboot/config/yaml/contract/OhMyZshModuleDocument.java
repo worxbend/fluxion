@@ -1,8 +1,8 @@
-package dev.sysboot.config.dto;
+package dev.sysboot.config.yaml.contract;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
 
-public final class OhMyZshModuleDto extends ModuleDto {
+public final class OhMyZshModuleDocument extends ModuleDocument {
 
   @JsonProperty("installDir")
   public String installDir;

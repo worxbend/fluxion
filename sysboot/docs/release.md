@@ -14,7 +14,7 @@ Use this checklist for Linux binary releases.
    ```
 
 5. Record the Java, GraalVM, Mill, and host distribution versions.
-6. Package `out/cli/nativeImage.dest/native-executable` as `sysboot` with README and example configs.
+6. Package `out/cli/nativeImage.dest/native-executable` as `fluxion` with README and example configs.
 
 The current native binary is dynamically linked against the build host's Linux C library. Build on
 the oldest supported target distribution when broad glibc compatibility matters.

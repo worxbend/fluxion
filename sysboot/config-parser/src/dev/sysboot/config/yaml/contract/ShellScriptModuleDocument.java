@@ -1,15 +1,15 @@
-package dev.sysboot.config.dto;
+package dev.sysboot.config.yaml.contract;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
 import java.util.List;
 
-public final class ShellCommandModuleDto extends ModuleDto {
+public final class ShellScriptModuleDocument extends ModuleDocument {
 
-  @JsonProperty("commands")
-  public List<String> commands;
+  @JsonProperty("script")
+  public String script;
 
-  @JsonProperty("shell")
-  public String shell = "/bin/bash";
+  @JsonProperty("args")
+  public List<String> args;
 
   @JsonProperty("workingDir")
   public String workingDir;

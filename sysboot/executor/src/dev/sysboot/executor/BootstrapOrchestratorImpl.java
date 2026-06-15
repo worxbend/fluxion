@@ -10,6 +10,7 @@ import dev.sysboot.core.ExecutionEvent;
 import dev.sysboot.core.ExecutionEventListener;
 import dev.sysboot.core.FlatpakModule;
 import dev.sysboot.core.ItemType;
+import dev.sysboot.core.ModuleItem;
 import dev.sysboot.core.ModuleName;
 import dev.sysboot.core.NerdFontModule;
 import dev.sysboot.core.OhMyZshModule;
@@ -248,7 +249,9 @@ public final class BootstrapOrchestratorImpl implements BootstrapOrchestrator {
     boolean anyFailed = false;
     for (PackageName packageName : module.packages()) {
       listener.onEvent(ExecutionEvent.itemStarted(module.name(), packageName.value()));
-      SkipDecision decision = skipEvaluator.evaluate(packageName.value(), ItemType.PACKAGE);
+      ModuleItem item =
+          ModuleItem.packageItem(module.name(), packageName.value(), module.packageManager());
+      SkipDecision decision = skipEvaluator.evaluate(item);
       if (decision instanceof SkipDecision.Skip skip) {
         listener.onEvent(
             ExecutionEvent.itemCompleted(
@@ -347,20 +350,7 @@ public final class BootstrapOrchestratorImpl implements BootstrapOrchestrator {
 
   private void dryRunModule(BootstrapModule module, ExecutionEventListener listener) {
     switch (module) {
-      case PackageModule pm ->
-          pm.packages()
-              .forEach(
-                  pkg ->
-                      emitDryRun(
-                          pm.name(),
-                          pkg.value(),
-                          List.of(
-                              "sudo",
-                              pm.packageManager().name().toLowerCase(),
-                              "install",
-                              "-y",
-                              pkg.value()),
-                          listener));
+      case PackageModule pm -> dryRunPackageModule(pm, listener);
       case FlatpakModule fm ->
           fm.appIds()
               .forEach(
@@ -375,15 +365,7 @@ public final class BootstrapOrchestratorImpl implements BootstrapOrchestrator {
       case CompiledBinaryModule bm ->
           emitDryRun(
               bm.name(), bm.binaryName(), List.of("download", bm.url().toString()), listener);
-      case ZypperModule zm ->
-          zm.packages()
-              .forEach(
-                  pkg ->
-                      emitDryRun(
-                          zm.name(),
-                          pkg.value(),
-                          List.of("sudo", "zypper", "install", "-y", pkg.value()),
-                          listener));
+      case ZypperModule zm -> dryRunPackageModule(zm.asPackageModule(), listener);
       case DotbotModule dm ->
           emitDryRun(
               dm.name(),
@@ -417,6 +399,13 @@ public final class BootstrapOrchestratorImpl implements BootstrapOrchestrator {
           emitDryRun(
               sc.name(), "shell-command", List.of(sc.shell(), "-lc", "<commands>"), listener);
     }
+  }
+
+  private void dryRunPackageModule(PackageModule module, ExecutionEventListener listener) {
+    var executor = executorRegistry.forKind(module.packageManager());
+    module.packages()
+        .forEach(
+            pkg -> emitDryRun(module.name(), pkg.value(), executor.installCommand(pkg), listener));
   }
 
   private void emitDryRun(

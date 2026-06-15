@@ -3,6 +3,7 @@ package dev.sysboot.executor;
 import dev.sysboot.core.BootstrapState;
 import dev.sysboot.core.InstallationStatus;
 import dev.sysboot.core.ItemType;
+import dev.sysboot.core.ModuleItem;
 import dev.sysboot.core.SkipDecision;
 import dev.sysboot.core.StateEntry;
 import java.util.Optional;
@@ -33,27 +34,31 @@ public final class SkipEvaluator {
   }
 
   public SkipDecision evaluate(String itemKey, ItemType itemType) {
+    return evaluate(new ModuleItem(new dev.sysboot.core.ModuleName("unknown"), itemKey, itemType));
+  }
+
+  public SkipDecision evaluate(ModuleItem item) {
     if (!skipAlreadyInstalled) {
-      return new SkipDecision.Run(itemKey);
+      return new SkipDecision.Run(item.key());
     }
 
     if (!reProbe) {
-      Optional<StateEntry> stateEntry = state.flatMap(s -> s.findEntry(itemKey, itemType));
+      Optional<StateEntry> stateEntry = state.flatMap(s -> s.findEntry(item.key(), item.itemType()));
       if (stateEntry.isPresent()) {
         StateEntry entry = stateEntry.get();
         return new SkipDecision.Skip(
-            itemKey,
+            item.key(),
             new InstallationStatus.InstalledFromState(
-                itemKey, entry.completedAt(), entry.version()));
+                item.key(), entry.completedAt(), entry.version()));
       }
     }
 
-    InstallationStatus probeResult = probeRegistry.probe(itemKey, itemType);
+    InstallationStatus probeResult = probeRegistry.probe(item);
     return switch (probeResult) {
-      case InstallationStatus.InstalledByProbe p -> new SkipDecision.Skip(itemKey, p);
-      case InstallationStatus.InstalledFromState s -> new SkipDecision.Skip(itemKey, s);
-      case InstallationStatus.NotInstalled ignored -> new SkipDecision.Run(itemKey);
-      case InstallationStatus.Unknown ignored -> new SkipDecision.Run(itemKey);
+      case InstallationStatus.InstalledByProbe p -> new SkipDecision.Skip(item.key(), p);
+      case InstallationStatus.InstalledFromState s -> new SkipDecision.Skip(item.key(), s);
+      case InstallationStatus.NotInstalled ignored -> new SkipDecision.Run(item.key());
+      case InstallationStatus.Unknown ignored -> new SkipDecision.Run(item.key());
     };
   }
 

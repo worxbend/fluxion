@@ -31,8 +31,13 @@ abstract sealed class AbstractPackageInstaller implements PackageManagerExecutor
   protected abstract List<String> buildInstallCommand(PackageName packageName);
 
   @Override
+  public List<String> installCommand(PackageName packageName) {
+    return buildInstallCommand(packageName);
+  }
+
+  @Override
   public StepResult install(PackageName packageName) {
-    List<String> command = buildInstallCommand(packageName);
+    List<String> command = installCommand(packageName);
     ProcessResult result = shellRunner.run(command, Map.of(), INSTALL_TIMEOUT);
     if (result.isSuccess()) {
       return new StepResult.Success(packageName.value(), result.elapsed());

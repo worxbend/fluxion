@@ -1,6 +1,7 @@
 package dev.sysboot.cli.error;
 
 import dev.sysboot.config.ConfigLoadException;
+import dev.sysboot.executor.StateReadException;
 import dev.sysboot.executor.ShellExecutionException;
 import dev.sysboot.executor.UnsupportedPackageManagerException;
 import java.io.IOException;
@@ -50,7 +51,9 @@ public final class CliExceptionHandler
         || exception instanceof InvalidPathException) {
       return ExitCode.INVALID_INPUT;
     }
-    if (exception instanceof IOException || exception instanceof UncheckedIOException) {
+    if (exception instanceof IOException
+        || exception instanceof UncheckedIOException
+        || exception instanceof StateReadException) {
       return ExitCode.IO_ERROR;
     }
     if (exception instanceof ShellExecutionException

@@ -1,9 +1,9 @@
-package dev.sysboot.config.dto;
+package dev.sysboot.config.yaml.contract;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
 import java.util.List;
 
-public final class ToolchainModuleDto extends ModuleDto {
+public final class ToolchainModuleDocument extends ModuleDocument {
 
   @JsonProperty("kind")
   public String kind;

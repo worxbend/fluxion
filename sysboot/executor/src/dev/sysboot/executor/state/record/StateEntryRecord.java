@@ -1,8 +1,8 @@
-package dev.sysboot.executor.dto;
+package dev.sysboot.executor.state.record;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
 
-public final class StateEntryDto {
+public final class StateEntryRecord {
 
   @JsonProperty("profileName")
   public String profileName;
@@ -25,9 +25,9 @@ public final class StateEntryDto {
   @JsonProperty("checksum")
   public String checksum;
 
-  public StateEntryDto() {}
+  public StateEntryRecord() {}
 
-  public StateEntryDto(
+  public StateEntryRecord(
       String profileName,
       String moduleName,
       String itemKey,

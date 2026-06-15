@@ -5,7 +5,7 @@ import dev.sysboot.cli.error.CliExceptionHandler;
 import picocli.CommandLine;
 
 /**
- * Native-image-friendly entry point for the sysboot command-line application.
+ * Native-image-friendly entry point for the Fluxion command-line application.
  *
  * <p>The entry point creates all Picocli metadata explicitly and uses custom exception handlers so
  * user-facing failures return deterministic exit codes without stack traces.
@@ -22,7 +22,7 @@ public final class Main {
   /**
    * Creates the configured Picocli command line.
    *
-   * @return command line configured with sysboot commands and error mapping
+   * @return command line configured with Fluxion commands and error mapping
    */
   public static CommandLine commandLine() {
     configureLoggingProvider();

@@ -1,11 +1,13 @@
 package dev.sysboot.executor;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.when;
 
 import dev.sysboot.core.BootstrapState;
 import dev.sysboot.core.InstallationStatus;
 import dev.sysboot.core.ItemType;
+import dev.sysboot.core.ModuleItem;
 import dev.sysboot.core.SkipDecision;
 import dev.sysboot.core.StateEntry;
 import java.time.Instant;
@@ -48,7 +50,7 @@ class SkipEvaluatorTest {
         new StateEntry("profile", "core", "git", ItemType.PACKAGE, Instant.now(), "2.45.1", null);
     var state = new BootstrapState("profile", Instant.now(), "1.0.0", List.of(entry));
 
-    when(probeRegistry.probe("git", ItemType.PACKAGE))
+    when(probeRegistry.probe(any(ModuleItem.class)))
         .thenReturn(new InstallationStatus.NotInstalled("git"));
 
     var evaluator = new SkipEvaluator(Optional.of(state), probeRegistry, true, true);
@@ -59,7 +61,7 @@ class SkipEvaluatorTest {
 
   @Test
   void evaluate_whenProbeReturnsInstalled_returnsSkip() {
-    when(probeRegistry.probe("git", ItemType.PACKAGE))
+    when(probeRegistry.probe(any(ModuleItem.class)))
         .thenReturn(new InstallationStatus.InstalledByProbe("git", "2.45.1"));
 
     var evaluator = new SkipEvaluator(Optional.empty(), probeRegistry, true, false);
@@ -70,7 +72,7 @@ class SkipEvaluatorTest {
 
   @Test
   void evaluate_whenProbeReturnsUnknown_returnRunFailSafe() {
-    when(probeRegistry.probe("git", ItemType.PACKAGE))
+    when(probeRegistry.probe(any(ModuleItem.class)))
         .thenReturn(new InstallationStatus.Unknown("git", "probe error"));
 
     var evaluator = new SkipEvaluator(Optional.empty(), probeRegistry, true, false);

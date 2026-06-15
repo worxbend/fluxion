@@ -55,6 +55,9 @@ class BootstrapOrchestratorImplTest {
     lenient()
         .when(dnfExecutor.install(any()))
         .thenReturn(new StepResult.Success("pkg", Duration.ofMillis(100)));
+    lenient()
+        .when(dnfExecutor.installCommand(any()))
+        .thenAnswer(invocation -> dnfInstallCommand(invocation.getArgument(0)));
 
     var registry = new PackageManagerExecutorRegistry(List.of(dnfExecutor));
     orchestrator =
@@ -247,6 +250,12 @@ class BootstrapOrchestratorImplTest {
     var completedEvent =
         events.stream().filter(e -> e.kind() == EventKind.ITEM_COMPLETED).findFirst().orElseThrow();
     assertThat(completedEvent.result().orElseThrow()).isInstanceOf(StepResult.DryRun.class);
+    var dryRun = (StepResult.DryRun) completedEvent.result().orElseThrow();
+    assertThat(dryRun.wouldExecute()).containsExactly("sudo", "dnf", "install", "-y", "git");
+  }
+
+  private static List<String> dnfInstallCommand(PackageName packageName) {
+    return List.of("sudo", "dnf", "install", "-y", packageName.value());
   }
 
   private static BootstrapConfig buildConfig(List<dev.sysboot.core.BootstrapModule> modules) {

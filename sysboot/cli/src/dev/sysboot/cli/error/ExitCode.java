@@ -1,7 +1,7 @@
 package dev.sysboot.cli.error;
 
 /**
- * Process exit codes returned by the sysboot command-line interface.
+ * Process exit codes returned by the Fluxion command-line interface.
  *
  * <p>The values are intentionally small and stable so shell scripts can branch on them without
  * parsing human-readable output.

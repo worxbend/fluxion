@@ -1,6 +1,8 @@
 package dev.sysboot.cli.command;
 
 import dev.sysboot.app.ApplicationContext;
+import dev.sysboot.cli.error.CliFailureException;
+import dev.sysboot.cli.error.ExitCode;
 import dev.sysboot.cli.output.StdoutExecutionEventListener;
 import dev.sysboot.cli.option.GlobalOptions;
 import dev.sysboot.core.BootstrapConfig;
@@ -113,14 +115,15 @@ public final class RunCommand implements Runnable {
           Arrays.stream(phaseFilter.split(","))
               .map(String::strip)
               .collect(Collectors.toUnmodifiableSet());
+      validatePhaseFilter(allowed, config);
       phases = phases.stream().filter(p -> allowed.contains(p.name().value())).toList();
     } else if (fromPhase != null && !fromPhase.isBlank()) {
       List<Phase> ordered;
       try {
         ordered = new PhaseExecutionPlanner().plan(phases);
       } catch (dev.sysboot.executor.CyclicDependencyException e) {
-        System.err.println("Cycle in phase graph: " + e.getMessage());
-        return config;
+        throw new CliFailureException(
+            ExitCode.CONFIGURATION_ERROR, "Cycle in phase graph: " + e.getMessage(), e);
       }
       int startIdx = -1;
       for (int i = 0; i < ordered.size(); i++) {
@@ -129,14 +132,39 @@ public final class RunCommand implements Runnable {
           break;
         }
       }
-      phases = startIdx >= 0 ? ordered.subList(startIdx, ordered.size()) : phases;
+      if (startIdx < 0) {
+        throw unknownPhase(fromPhase, config);
+      }
+      phases = ordered.subList(startIdx, ordered.size());
     }
 
+    if (phases.isEmpty()) {
+      throw unknownPhase(phaseFilter, config);
+    }
     if (phases == config.phases()) return config;
 
     var builder =
         BootstrapConfig.builder().profileName(config.profileName()).target(config.target());
     phases.forEach(builder::addPhase);
     return builder.build();
+  }
+
+  private void validatePhaseFilter(Set<String> allowed, BootstrapConfig config) {
+    Set<String> valid =
+        config.phases().stream()
+            .map(phase -> phase.name().value())
+            .collect(Collectors.toUnmodifiableSet());
+    var unknown = allowed.stream().filter(phase -> !valid.contains(phase)).findFirst();
+    unknown.ifPresent(phase -> { throw unknownPhase(phase, config); });
+  }
+
+  private CliFailureException unknownPhase(String phaseName, BootstrapConfig config) {
+    String validPhases =
+        config.phases().stream()
+            .map(phase -> phase.name().value())
+            .collect(Collectors.joining(", "));
+    return new CliFailureException(
+        ExitCode.CONFIGURATION_ERROR,
+        "Unknown phase '" + phaseName + "'. Valid phases: " + validPhases);
   }
 }

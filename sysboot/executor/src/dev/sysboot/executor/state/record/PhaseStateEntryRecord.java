@@ -1,8 +1,8 @@
-package dev.sysboot.executor.dto;
+package dev.sysboot.executor.state.record;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
 
-public final class PhaseStateEntryDto {
+public final class PhaseStateEntryRecord {
 
   @JsonProperty("phaseName")
   public String phaseName;
@@ -13,9 +13,9 @@ public final class PhaseStateEntryDto {
   @JsonProperty("completedAt")
   public String completedAt;
 
-  public PhaseStateEntryDto() {}
+  public PhaseStateEntryRecord() {}
 
-  public PhaseStateEntryDto(String phaseName, String status, String completedAt) {
+  public PhaseStateEntryRecord(String phaseName, String status, String completedAt) {
     this.phaseName = phaseName;
     this.status = status;
     this.completedAt = completedAt;

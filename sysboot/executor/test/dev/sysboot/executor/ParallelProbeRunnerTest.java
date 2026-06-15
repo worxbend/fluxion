@@ -7,6 +7,7 @@ import static org.mockito.Mockito.when;
 
 import dev.sysboot.core.InstallationStatus;
 import dev.sysboot.core.ItemType;
+import dev.sysboot.core.ModuleItem;
 import dev.sysboot.core.ModuleName;
 import dev.sysboot.core.PackageManagerKind;
 import dev.sysboot.core.PackageModule;
@@ -33,8 +34,12 @@ class ParallelProbeRunnerTest {
 
   @Test
   void probeAll_withPackages_probesEachPackage() {
-    when(probeRegistry.probe(any(), eq(ItemType.PACKAGE)))
-        .thenAnswer(inv -> new InstallationStatus.InstalledByProbe(inv.getArgument(0), null));
+    when(probeRegistry.probe(any(ModuleItem.class)))
+        .thenAnswer(
+            inv -> {
+              ModuleItem item = inv.getArgument(0);
+              return new InstallationStatus.InstalledByProbe(item.key(), null);
+            });
 
     var module =
         new PackageModule(
@@ -52,7 +57,8 @@ class ParallelProbeRunnerTest {
 
   @Test
   void probeAll_progressCallbackIsCalledForEachItem() {
-    when(probeRegistry.probe(any(), any())).thenReturn(new InstallationStatus.NotInstalled("x"));
+    when(probeRegistry.probe(any(ModuleItem.class)))
+        .thenReturn(new InstallationStatus.NotInstalled("x"));
 
     var module =
         new PackageModule(

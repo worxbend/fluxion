@@ -7,9 +7,11 @@ import dev.sysboot.core.DotbotModule;
 import dev.sysboot.core.FlatpakModule;
 import dev.sysboot.core.InstallationStatus;
 import dev.sysboot.core.ItemType;
+import dev.sysboot.core.ModuleItem;
 import dev.sysboot.core.NerdFontModule;
 import dev.sysboot.core.OhMyZshModule;
 import dev.sysboot.core.PackageModule;
+import dev.sysboot.core.PackageManagerKind;
 import dev.sysboot.core.ShellCommandModule;
 import dev.sysboot.core.ShellReloadModule;
 import dev.sysboot.core.ShellScriptModule;
@@ -40,18 +42,17 @@ public final class ParallelProbeRunner {
       List<BootstrapModule> modules, Consumer<String> progressCallback) {
 
     var results = new ConcurrentHashMap<String, InstallationStatus>();
-    List<ProbeTarget> targets = collectProbeTargets(modules);
+    List<ModuleItem> targets = collectProbeTargets(modules);
 
     try (ExecutorService executor = Executors.newVirtualThreadPerTaskExecutor()) {
       List<Future<?>> futures = new ArrayList<>();
-      for (ProbeTarget target : targets) {
+      for (ModuleItem target : targets) {
         futures.add(
             executor.submit(
                 () -> {
-                  InstallationStatus status =
-                      probeRegistry.probe(target.itemKey(), target.itemType());
-                  results.put(target.itemKey(), status);
-                  progressCallback.accept(target.itemKey());
+                  InstallationStatus status = probeRegistry.probe(target);
+                  results.put(target.key(), status);
+                  progressCallback.accept(target.key());
                 }));
       }
 
@@ -72,8 +73,8 @@ public final class ParallelProbeRunner {
     return Collections.unmodifiableMap(results);
   }
 
-  private List<ProbeTarget> collectProbeTargets(List<BootstrapModule> modules) {
-    List<ProbeTarget> targets = new ArrayList<>();
+  private List<ModuleItem> collectProbeTargets(List<BootstrapModule> modules) {
+    List<ModuleItem> targets = new ArrayList<>();
     for (BootstrapModule module : modules) {
       switch (module) {
         case PackageModule pm ->
@@ -81,55 +82,52 @@ public final class ParallelProbeRunner {
                 .forEach(
                     pkg ->
                         targets.add(
-                            new ProbeTarget(pkg.value(), ItemType.PACKAGE, pm.name().value())));
+                            ModuleItem.packageItem(
+                                pm.name(), pkg.value(), pm.packageManager())));
         case ZypperModule zm ->
             zm.packages()
                 .forEach(
                     pkg ->
                         targets.add(
-                            new ProbeTarget(pkg.value(), ItemType.PACKAGE, zm.name().value())));
+                            ModuleItem.packageItem(
+                                zm.name(), pkg.value(), PackageManagerKind.ZYPPER)));
         case FlatpakModule fm ->
             fm.appIds()
                 .forEach(
                     appId ->
-                        targets.add(new ProbeTarget(appId, ItemType.FLATPAK, fm.name().value())));
+                        targets.add(new ModuleItem(fm.name(), appId, ItemType.FLATPAK)));
         case ShellScriptModule sm ->
             targets.add(
-                new ProbeTarget(sm.script().toString(), ItemType.SHELL_SCRIPT, sm.name().value()));
+                new ModuleItem(sm.name(), sm.script().toString(), ItemType.SHELL_SCRIPT));
         case CompiledBinaryModule bm ->
             targets.add(
-                new ProbeTarget(
-                    bm.installPath().toString(), ItemType.COMPILED_BINARY, bm.name().value()));
+                new ModuleItem(bm.name(), bm.installPath().toString(), ItemType.COMPILED_BINARY));
         case DotbotModule dm ->
             targets.add(
-                new ProbeTarget(dm.config().toString(), ItemType.DOTBOT, dm.name().value()));
+                new ModuleItem(dm.name(), dm.config().toString(), ItemType.DOTBOT));
         case DefaultShellModule dsm ->
             targets.add(
-                new ProbeTarget(
-                    dsm.shellPath().toString(), ItemType.DEFAULT_SHELL, dsm.name().value()));
+                new ModuleItem(dsm.name(), dsm.shellPath().toString(), ItemType.DEFAULT_SHELL));
         case OhMyZshModule omz ->
             targets.add(
-                new ProbeTarget(
-                    omz.installDir().toString(), ItemType.OH_MY_ZSH, omz.name().value()));
+                new ModuleItem(omz.name(), omz.installDir().toString(), ItemType.OH_MY_ZSH));
         case ToolchainModule tm ->
             targets.add(
-                new ProbeTarget(
-                    tm.kind().name().toLowerCase(), ItemType.TOOLCHAIN, tm.name().value()));
+                new ModuleItem(tm.name(), tm.kind().name().toLowerCase(), ItemType.TOOLCHAIN));
         case NerdFontModule nfm ->
             targets.add(
-                new ProbeTarget(
+                new ModuleItem(
+                    nfm.name(),
                     nfm.config().families().isEmpty()
                         ? nfm.name().value()
                         : nfm.config().families().get(0),
-                    ItemType.NERD_FONT,
-                    nfm.name().value()));
+                    ItemType.NERD_FONT));
         case ShellReloadModule srm ->
             targets.add(
-                new ProbeTarget(
-                    srm.shell().binaryName(), ItemType.SHELL_RELOAD, srm.name().value()));
+                new ModuleItem(srm.name(), srm.shell().binaryName(), ItemType.SHELL_RELOAD));
         case ShellCommandModule sc ->
             targets.add(
-                new ProbeTarget(sc.name().value(), ItemType.SHELL_COMMAND, sc.name().value()));
+                new ModuleItem(sc.name(), sc.name().value(), ItemType.SHELL_COMMAND));
       }
     }
     return List.copyOf(targets);

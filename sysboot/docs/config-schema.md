@@ -1,6 +1,6 @@
 # Config Schema Reference
 
-All config files are YAML. Place them in `~/.config/sysboot/` or pass with `-c`.
+All config files are YAML. Place them in `~/.config/fluxion/` or pass with `-c`.
 
 ---
 
@@ -39,7 +39,7 @@ jobs:
     continueOnModuleError: true   # default: true
     restartPolicy:
       type: prompt-logout
-      message: "Log out and back in, then re-run sysboot."
+      message: "Log out and back in, then re-run fluxion."
     steps:
       - type: packages
         name: shell-tools
@@ -64,7 +64,7 @@ restartPolicy:
 ```yaml
 restartPolicy:
   type: prompt-logout
-  message: "Log out and back in, then re-run sysboot."
+  message: "Log out and back in, then re-run fluxion."
 ```
 
 ```yaml
@@ -143,7 +143,7 @@ The interpreter is detected from the shebang line; falls back to `/bin/bash`. Th
 Supported archive formats: `.tar.gz`, `.tgz`. Plain binaries (no extension) are also supported.
 
 The binary is copied to `installPath`. If the parent directory is root-owned, `sudo cp` is used.
-When `checksum` is omitted, sysboot logs an explicit warning and installs from the HTTPS source
+When `checksum` is omitted, Fluxion logs an explicit warning and installs from the HTTPS source
 without integrity verification. Use SHA-256 checksums for downloaded binaries whenever possible.
 
 ---
@@ -184,7 +184,7 @@ extracts the configured binary entry, and runs it with `--config`.
 Use `shell-command` for setup work that is naturally imperative: adding repositories or keys,
 changing global user configuration, cloning plugins, installing SDKMAN candidates, running rustup,
 pnpm, nvm, or similar upstream installers. Keep package-manager installs in typed `packages`
-steps so sysboot can still isolate and report individual packages.
+steps so Fluxion can still isolate and report individual packages.
 
 ---
 

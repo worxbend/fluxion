@@ -1,8 +1,8 @@
-package dev.sysboot.config.dto;
+package dev.sysboot.config.yaml.contract;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
 
-public final class DotbotModuleDto extends ModuleDto {
+public final class DotbotModuleDocument extends ModuleDocument {
 
   @JsonProperty("installerVersion")
   public String installerVersion = "v0.2.1";

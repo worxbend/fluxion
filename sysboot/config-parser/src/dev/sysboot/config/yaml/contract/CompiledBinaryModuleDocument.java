@@ -1,8 +1,8 @@
-package dev.sysboot.config.dto;
+package dev.sysboot.config.yaml.contract;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
 
-public final class CompiledBinaryModuleDto extends ModuleDto {
+public final class CompiledBinaryModuleDocument extends ModuleDocument {
 
   @JsonProperty("binaryName")
   public String binaryName;
@@ -11,7 +11,7 @@ public final class CompiledBinaryModuleDto extends ModuleDto {
   public String url;
 
   @JsonProperty("checksum")
-  public ChecksumDto checksum;
+  public ChecksumDocument checksum;
 
   @JsonProperty("installPath")
   public String installPath;
