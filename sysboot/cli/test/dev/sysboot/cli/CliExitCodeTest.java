@@ -140,6 +140,47 @@ class CliExitCodeTest {
     assertThat(result.stderr()).isEmpty();
   }
 
+  @Test
+  void generate_writesValidStarterConfig() throws Exception {
+    Path generated = tempDir.resolve("generated.yaml");
+
+    CliResult generate =
+        execute(
+            "generate",
+            "--os",
+            "fedora",
+            "--profile",
+            "generated",
+            "--preset",
+            "developer",
+            "--output",
+            generated.toString());
+
+    assertThat(generate.exitCode()).isEqualTo(ExitCode.SUCCESS.value());
+    assertThat(generate.stdout()).contains("Generated config:");
+    assertThat(generated).exists();
+    assertThat(Files.readString(generated))
+        .contains("profile: generated")
+        .contains("packageManager: dnf")
+        .doesNotContain("you@example.com")
+        .doesNotContain("Your Name");
+
+    CliResult validate = execute("validate", "--no-tui", "-c", generated.toString());
+    assertThat(validate.exitCode()).isEqualTo(ExitCode.SUCCESS.value());
+  }
+
+  @Test
+  void generate_whenOutputExistsWithoutForce_returnsInvalidInput() throws Exception {
+    Path generated = tempDir.resolve("generated.yaml");
+    Files.writeString(generated, "existing");
+
+    CliResult result =
+        execute("generate", "--os", "fedora", "--output", generated.toString());
+
+    assertThat(result.exitCode()).isEqualTo(ExitCode.INVALID_INPUT.value());
+    assertThat(result.stderr()).contains("Output file already exists");
+  }
+
   private CliResult execute(String... args) {
     CommandLine commandLine = Main.commandLine();
     var stdout = new StringWriter();

@@ -41,6 +41,7 @@ The native binary lands at:
 
 ```bash
 fluxion validate -c ~/.config/fluxion/fedora.yaml
+fluxion generate --os auto --profile starter --preset developer --output ~/.config/fluxion/starter.yaml
 fluxion list -c ~/.config/fluxion/fedora.yaml
 fluxion dry-run -c ~/.config/fluxion/fedora.yaml
 fluxion run -c ~/.config/fluxion/fedora.yaml
@@ -78,8 +79,9 @@ Commands:
   validate   check the YAML
   list       print modules
   plan       show job order
-  status     show last run status
+  status     show last run status, or `--resume-command`
   state      show/reset/forget saved state
+  generate   create a starter YAML profile
 ```
 
 State moves:

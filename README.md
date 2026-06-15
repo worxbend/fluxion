@@ -44,6 +44,7 @@ From the repo:
 cd sysboot
 java -jar out/cli/assembly.dest/out.jar validate -c config/example-fedora.yaml --no-tui
 java -jar out/cli/assembly.dest/out.jar plan -c config/example-fedora.yaml --no-tui
+java -jar out/cli/assembly.dest/out.jar generate --os fedora --profile starter --output /tmp/starter.yaml
 java -jar out/cli/assembly.dest/out.jar run -c config/example-fedora.yaml --no-tui
 ```
 
@@ -65,6 +66,7 @@ list       list configured modules
 plan       show phase order and planned work
 status     show current status
 state      show/reset/forget/path persisted state
+generate   create a starter YAML profile
 ```
 
 ## Config
