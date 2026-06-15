@@ -1,10 +1,12 @@
 package dev.sysboot.tui;
 
+import dev.sysboot.core.AssertModule;
 import dev.sysboot.core.BootstrapModule;
 import dev.sysboot.core.CompiledBinaryModule;
 import dev.sysboot.core.DefaultShellModule;
 import dev.sysboot.core.DotbotModule;
 import dev.sysboot.core.FlatpakModule;
+import dev.sysboot.core.ManualModule;
 import dev.sysboot.core.NerdFontModule;
 import dev.sysboot.core.OhMyZshModule;
 import dev.sysboot.core.PackageModule;
@@ -37,6 +39,8 @@ final class SelectionEntryCatalog {
       case ToolchainModule toolchainModule -> List.of(toolchainModule.kind().name().toLowerCase());
       case ShellReloadModule shellReloadModule ->
           List.of(shellReloadModule.shell().name().toLowerCase());
+      case AssertModule assertModule -> List.of(assertModule.name().value());
+      case ManualModule manualModule -> List.of(manualModule.name().value());
     };
   }
 }

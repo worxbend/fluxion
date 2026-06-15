@@ -12,7 +12,9 @@ public sealed interface BootstrapModule
         ToolchainModule,
         NerdFontModule,
         ShellReloadModule,
-        ShellCommandModule {
+        ShellCommandModule,
+        AssertModule,
+        ManualModule {
 
   ModuleName name();
 }

@@ -2,7 +2,10 @@ package dev.sysboot.executor;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import dev.sysboot.core.AssertModule;
 import dev.sysboot.core.BootstrapConfig;
+import dev.sysboot.core.ItemType;
+import dev.sysboot.core.ManualModule;
 import dev.sysboot.core.ModuleName;
 import dev.sysboot.core.OsTarget;
 import dev.sysboot.core.PackageManagerExecutor;
@@ -16,6 +19,7 @@ import dev.sysboot.core.RestartPolicy;
 import dev.sysboot.core.StepResult;
 import java.time.Duration;
 import java.util.List;
+import java.util.Optional;
 import org.junit.jupiter.api.Test;
 
 class ExecutionPlanBuilderTest {
@@ -86,6 +90,39 @@ class ExecutionPlanBuilderTest {
 
     assertThat(shellPhase.dependsOn()).containsExactly("base");
     assertThat(shellPhase.restartEffect()).isEqualTo(ExecutionPlan.RestartEffect.PROMPT_LOGOUT);
+  }
+
+  @Test
+  void build_checkpointModules_includesAssertAndManualItems() {
+    var builder = new ExecutionPlanBuilder(new PackageManagerExecutorRegistry(List.of(dnf())));
+    var phase =
+        new Phase(
+            new PhaseName("checks"),
+            "",
+            List.of(
+                new AssertModule(
+                    new ModuleName("secure-boot"),
+                    "mokutil --sb-state",
+                    "Secure Boot must be disabled",
+                    "/bin/bash",
+                    Optional.empty()),
+                new ManualModule(
+                    new ModuleName("github-login"),
+                    "Run gh auth login",
+                    Optional.of("gh auth status"))),
+            List.of(),
+            new RestartPolicy.None(),
+            false);
+
+    ExecutionPlan plan = builder.build(config(List.of(phase)));
+
+    assertThat(plan.phases().getFirst().modules())
+        .extracting(ExecutionPlan.Module::type)
+        .containsExactly("assert", "manual");
+    assertThat(plan.phases().getFirst().modules().get(0).items().getFirst().item().itemType())
+        .isEqualTo(ItemType.ASSERT);
+    assertThat(plan.phases().getFirst().modules().get(1).items().getFirst().item().itemType())
+        .isEqualTo(ItemType.MANUAL);
   }
 
   private static BootstrapConfig config(List<Phase> phases) {

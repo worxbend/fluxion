@@ -274,6 +274,38 @@ steps so Fluxion can still isolate and report individual packages.
 
 ---
 
+### `assert` — require a host condition before continuing
+
+```yaml
+- type: assert
+  name: secure-boot-disabled
+  command: "mokutil --sb-state | grep -qi disabled"
+  message: "Disable Secure Boot before installing this graphics stack."
+  shell: /bin/bash              # optional, default: /bin/bash
+  workingDir: /tmp              # optional
+```
+
+The command runs with `<shell> -lc`. Exit code `0` passes the assertion. Any nonzero exit code
+fails the step and stops the job unless the job has `continueOnModuleError: true`.
+
+---
+
+### `manual` — model a human checkpoint
+
+```yaml
+- type: manual
+  name: github-login
+  message: "Run `gh auth login`, then continue."
+  probeCommand: "gh auth status" # optional but recommended
+```
+
+Manual steps print the configured message in plain CLI output. When `probeCommand` is present,
+Fluxion runs it with `/bin/bash -lc`; exit code `0` marks the checkpoint complete and persists it
+in state. Without a successful probe, the step fails with the message so the user can complete the
+manual work and resume.
+
+---
+
 ## Validation rules
 
 - `profile` must not be blank.
@@ -327,6 +359,11 @@ jobs:
         name: git-defaults
         commands:
           - "git config --global init.defaultBranch main"
+
+      - type: manual
+        name: github-login
+        message: "Run `gh auth login`, then continue."
+        probeCommand: "gh auth status"
 
   - name: desktop-apps
     dependsOn:

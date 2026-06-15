@@ -11,5 +11,7 @@ public enum ItemType {
   TOOLCHAIN,
   NERD_FONT,
   SHELL_RELOAD,
-  SHELL_COMMAND
+  SHELL_COMMAND,
+  ASSERT,
+  MANUAL
 }

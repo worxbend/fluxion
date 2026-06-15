@@ -1,11 +1,13 @@
 package dev.sysboot.tui;
 
+import dev.sysboot.core.AssertModule;
 import dev.sysboot.core.BootstrapConfig;
 import dev.sysboot.core.BootstrapModule;
 import dev.sysboot.core.CompiledBinaryModule;
 import dev.sysboot.core.DefaultShellModule;
 import dev.sysboot.core.DotbotModule;
 import dev.sysboot.core.FlatpakModule;
+import dev.sysboot.core.ManualModule;
 import dev.sysboot.core.NerdFontConfig;
 import dev.sysboot.core.NerdFontModule;
 import dev.sysboot.core.OhMyZshModule;
@@ -85,6 +87,8 @@ final class BootstrapConfigSelectionFilter {
       case OhMyZshModule ohMyZshModule -> Optional.of(ohMyZshModule);
       case ToolchainModule toolchainModule -> Optional.of(toolchainModule);
       case ShellReloadModule shellReloadModule -> Optional.of(shellReloadModule);
+      case AssertModule assertModule -> Optional.of(assertModule);
+      case ManualModule manualModule -> Optional.of(manualModule);
     };
   }
 

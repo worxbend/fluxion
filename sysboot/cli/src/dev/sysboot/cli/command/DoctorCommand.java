@@ -6,6 +6,7 @@ import dev.sysboot.cli.error.CliFailureException;
 import dev.sysboot.cli.error.ExitCode;
 import dev.sysboot.cli.option.GlobalOptions;
 import dev.sysboot.config.ConfigLoadException;
+import dev.sysboot.core.AssertModule;
 import dev.sysboot.core.BootstrapConfig;
 import dev.sysboot.core.BootstrapModule;
 import dev.sysboot.core.CompiledBinaryModule;
@@ -204,6 +205,7 @@ public final class DoctorCommand implements Runnable {
       case FlatpakModule fm -> addFlatpakChecks(fm, checks);
       case DefaultShellModule dsm -> checks.add(checkShellPath(dsm.shellPath()));
       case ShellCommandModule scm -> checks.add(checkRequiredCommand(scm.shell(), "shell"));
+      case AssertModule am -> checks.add(checkRequiredCommand(am.shell(), "assert shell"));
       case CompiledBinaryModule cbm -> addNetworkCheck(cbm, checks);
       default -> {}
     }

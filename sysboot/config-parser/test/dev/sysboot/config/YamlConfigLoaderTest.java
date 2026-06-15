@@ -3,9 +3,11 @@ package dev.sysboot.config;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import dev.sysboot.core.AssertModule;
 import dev.sysboot.core.BootstrapConfig;
 import dev.sysboot.core.CompiledBinaryModule;
 import dev.sysboot.core.FlatpakModule;
+import dev.sysboot.core.ManualModule;
 import dev.sysboot.core.OsTarget;
 import dev.sysboot.core.PackageManagerKind;
 import dev.sysboot.core.PackageModule;
@@ -185,6 +187,38 @@ class YamlConfigLoaderTest {
     BootstrapConfig result = loader.load(config);
 
     assertThat(result.modules().getFirst()).isInstanceOf(ShellScriptModule.class);
+  }
+
+  @Test
+  void load_whenAssertAndManualSteps_parsesCorrectly(@TempDir Path tmpDir) throws IOException {
+    Path config =
+        writeConfig(
+            tmpDir,
+            """
+            profile: checkpoints
+            os:
+              type: fedora
+              release: "44"
+            jobs:
+              - name: prerequisites
+                steps:
+                  - type: assert
+                    name: secure-boot-disabled
+                    command: "mokutil --sb-state | grep -qi disabled"
+                    message: "Disable Secure Boot before continuing."
+                  - type: manual
+                    name: github-login
+                    message: "Run gh auth login, then continue."
+                    probeCommand: "gh auth status"
+            """);
+
+    BootstrapConfig result = loader.load(config);
+
+    assertThat(result.phases()).hasSize(1);
+    assertThat(result.phases().getFirst().modules().get(0)).isInstanceOf(AssertModule.class);
+    var manual = (ManualModule) result.phases().getFirst().modules().get(1);
+    assertThat(manual.message()).contains("gh auth login");
+    assertThat(manual.probeCommand()).contains("gh auth status");
   }
 
   @Test

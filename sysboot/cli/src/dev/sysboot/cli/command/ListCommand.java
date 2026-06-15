@@ -4,12 +4,14 @@ import dev.sysboot.app.ApplicationContext;
 import dev.sysboot.cli.option.GlobalOptions;
 import dev.sysboot.cli.output.JsonOutput;
 import dev.sysboot.cli.output.OutputFormat;
+import dev.sysboot.core.AssertModule;
 import dev.sysboot.core.BootstrapConfig;
 import dev.sysboot.core.BootstrapModule;
 import dev.sysboot.core.CompiledBinaryModule;
 import dev.sysboot.core.DefaultShellModule;
 import dev.sysboot.core.DotbotModule;
 import dev.sysboot.core.FlatpakModule;
+import dev.sysboot.core.ManualModule;
 import dev.sysboot.core.NerdFontModule;
 import dev.sysboot.core.OhMyZshModule;
 import dev.sysboot.core.PackageModule;
@@ -91,6 +93,8 @@ public final class ListCommand implements Runnable {
       case NerdFontModule ignored -> "🔤 nerd-font";
       case ShellReloadModule ignored -> "🔄 reload";
       case ShellCommandModule ignored -> "📜 command";
+      case AssertModule ignored -> "✓ assert";
+      case ManualModule ignored -> "☐ manual";
     };
   }
 
@@ -108,6 +112,8 @@ public final class ListCommand implements Runnable {
       case NerdFontModule ignored -> "nerd-font";
       case ShellReloadModule ignored -> "shell-reload";
       case ShellCommandModule ignored -> "shell-command";
+      case AssertModule ignored -> "assert";
+      case ManualModule ignored -> "manual";
     };
   }
 
@@ -125,6 +131,8 @@ public final class ListCommand implements Runnable {
       case NerdFontModule nfm -> nfm.config().families().size() + " families";
       case ShellReloadModule srm -> srm.shell().binaryName();
       case ShellCommandModule sc -> sc.commands().size() + " commands";
+      case AssertModule am -> am.command();
+      case ManualModule mm -> mm.message();
     };
   }
 

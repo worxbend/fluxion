@@ -1,5 +1,6 @@
 package dev.sysboot.executor;
 
+import dev.sysboot.core.AssertModule;
 import dev.sysboot.core.BootstrapConfig;
 import dev.sysboot.core.BootstrapModule;
 import dev.sysboot.core.BootstrapOrchestrator;
@@ -10,6 +11,7 @@ import dev.sysboot.core.ExecutionEvent;
 import dev.sysboot.core.ExecutionEventListener;
 import dev.sysboot.core.FlatpakModule;
 import dev.sysboot.core.ItemType;
+import dev.sysboot.core.ManualModule;
 import dev.sysboot.core.ModuleName;
 import dev.sysboot.core.NerdFontModule;
 import dev.sysboot.core.OhMyZshModule;
@@ -18,6 +20,7 @@ import dev.sysboot.core.Phase;
 import dev.sysboot.core.PhaseName;
 import dev.sysboot.core.PhaseStateEntry;
 import dev.sysboot.core.PhaseStatus;
+import dev.sysboot.core.ProcessResult;
 import dev.sysboot.core.RestartPolicy;
 import dev.sysboot.core.ShellCommandModule;
 import dev.sysboot.core.ShellReloadModule;
@@ -29,9 +32,11 @@ import dev.sysboot.core.StateRepository;
 import dev.sysboot.core.StepResult;
 import dev.sysboot.core.ToolchainModule;
 import dev.sysboot.core.ZypperModule;
+import java.time.Duration;
 import java.time.Instant;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 
@@ -55,6 +60,7 @@ public final class BootstrapOrchestratorImpl implements BootstrapOrchestrator {
   private final PhaseFingerprintCalculator fingerprintCalculator;
   private final ShellRunner primaryRunner;
   private final DefaultShellRunner baseRunner;
+  private static final Duration CHECK_TIMEOUT = Duration.ofMinutes(5);
 
   public BootstrapOrchestratorImpl(
       PackageManagerExecutorRegistry executorRegistry,
@@ -260,9 +266,62 @@ public final class BootstrapOrchestratorImpl implements BootstrapOrchestrator {
               ItemType.SHELL_COMMAND,
               () -> new ShellCommandExecutor(phaseRunner).execute(sc),
               listener);
+      case AssertModule am -> executeAssert(am, listener, phaseRunner);
+      case ManualModule mm -> executeManual(mm, listener, phaseRunner);
       case PackageModule ignored -> throw new IllegalStateException("Package executor missing");
       case ZypperModule ignored -> throw new IllegalStateException("Zypper executor missing");
     };
+  }
+
+  private boolean executeAssert(
+      AssertModule module, ExecutionEventListener listener, ShellRunner phaseRunner) {
+    listener.onEvent(ExecutionEvent.itemStarted(module.name(), module.name().value()));
+    ProcessResult result =
+        runCheck(module.shell(), module.command(), module.workingDir(), phaseRunner);
+    StepResult stepResult =
+        result.isSuccess()
+            ? new StepResult.Success(module.name().value(), result.elapsed())
+            : new StepResult.Failure(
+                module.name().value(), module.message(), result.exitCode(), result.elapsed());
+    listener.onEvent(
+        ExecutionEvent.itemCompleted(module.name(), module.name().value(), stepResult));
+    recordSuccess(module.name(), module.name().value(), ItemType.ASSERT, stepResult);
+    return stepResult instanceof StepResult.Failure;
+  }
+
+  private boolean executeManual(
+      ManualModule module, ExecutionEventListener listener, ShellRunner phaseRunner) {
+    listener.onEvent(ExecutionEvent.itemStarted(module.name(), module.name().value()));
+    SkipDecision decision = skipEvaluator.evaluate(module.name().value(), ItemType.MANUAL);
+    if (decision instanceof SkipDecision.Skip skip) {
+      emitSkipped(module.name(), module.name().value(), skip, listener);
+      return false;
+    }
+    StepResult result = manualResult(module, phaseRunner);
+    listener.onEvent(ExecutionEvent.itemCompleted(module.name(), module.name().value(), result));
+    recordSuccess(module.name(), module.name().value(), ItemType.MANUAL, result);
+    return result instanceof StepResult.Failure;
+  }
+
+  private StepResult manualResult(ManualModule module, ShellRunner phaseRunner) {
+    if (module.probeCommand().isEmpty()) {
+      return new StepResult.Failure(
+          module.name().value(), "Manual step required: " + module.message(), 2, Duration.ZERO);
+    }
+    ProcessResult result =
+        runCheck("/bin/bash", module.probeCommand().orElseThrow(), Optional.empty(), phaseRunner);
+    if (result.isSuccess()) {
+      return new StepResult.Success(module.name().value(), result.elapsed());
+    }
+    return new StepResult.Failure(
+        module.name().value(), module.message(), result.exitCode(), result.elapsed());
+  }
+
+  private ProcessResult runCheck(
+      String shell, String command, Optional<java.nio.file.Path> workingDir, ShellRunner runner) {
+    Map<String, String> env =
+        workingDir.map(path -> Map.of("PWD", path.toString())).orElse(Map.of());
+    return runner.run(List.of(shell, "-lc", command), env, CHECK_TIMEOUT);
   }
 
   private boolean executeFlatpakModule(FlatpakModule module, ExecutionEventListener listener) {
@@ -395,9 +454,24 @@ public final class BootstrapOrchestratorImpl implements BootstrapOrchestrator {
       case ShellCommandModule sc ->
           emitDryRun(
               sc.name(), "shell-command", List.of(sc.shell(), "-lc", "<commands>"), listener);
+      case AssertModule am ->
+          emitDryRun(
+              am.name(), am.name().value(), List.of(am.shell(), "-lc", am.command()), listener);
+      case ManualModule mm ->
+          emitDryRun(mm.name(), mm.name().value(), List.of("manual", mm.message()), listener);
       case PackageModule ignored -> throw new IllegalStateException("Package executor missing");
       case ZypperModule ignored -> throw new IllegalStateException("Zypper executor missing");
     }
+  }
+
+  private void emitSkipped(
+      ModuleName moduleName,
+      String itemKey,
+      SkipDecision.Skip skip,
+      ExecutionEventListener listener) {
+    listener.onEvent(
+        ExecutionEvent.itemCompleted(
+            moduleName, itemKey, new StepResult.Skipped(itemKey, skip.reason().toString())));
   }
 
   private void emitDryRun(

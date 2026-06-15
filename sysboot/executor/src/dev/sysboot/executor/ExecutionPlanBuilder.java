@@ -1,5 +1,6 @@
 package dev.sysboot.executor;
 
+import dev.sysboot.core.AssertModule;
 import dev.sysboot.core.BootstrapConfig;
 import dev.sysboot.core.BootstrapModule;
 import dev.sysboot.core.CompiledBinaryModule;
@@ -7,6 +8,7 @@ import dev.sysboot.core.DefaultShellModule;
 import dev.sysboot.core.DotbotModule;
 import dev.sysboot.core.FlatpakModule;
 import dev.sysboot.core.ItemType;
+import dev.sysboot.core.ManualModule;
 import dev.sysboot.core.ModuleItem;
 import dev.sysboot.core.NerdFontModule;
 import dev.sysboot.core.OhMyZshModule;
@@ -95,6 +97,10 @@ public final class ExecutionPlanBuilder {
           List.of(new ModuleItem(srm.name(), srm.shell().binaryName(), ItemType.SHELL_RELOAD));
       case ShellCommandModule sc ->
           List.of(new ModuleItem(sc.name(), sc.name().value(), ItemType.SHELL_COMMAND));
+      case AssertModule am ->
+          List.of(new ModuleItem(am.name(), am.name().value(), ItemType.ASSERT));
+      case ManualModule mm ->
+          List.of(new ModuleItem(mm.name(), mm.name().value(), ItemType.MANUAL));
       case PackageModule ignored -> throw new IllegalStateException("Package executor missing");
       case ZypperModule ignored -> throw new IllegalStateException("Zypper executor missing");
     };
@@ -122,6 +128,8 @@ public final class ExecutionPlanBuilder {
       case NerdFontModule ignored -> "nerd-font";
       case ShellReloadModule ignored -> "shell-reload";
       case ShellCommandModule ignored -> "shell-command";
+      case AssertModule ignored -> "assert";
+      case ManualModule ignored -> "manual";
     };
   }
 }

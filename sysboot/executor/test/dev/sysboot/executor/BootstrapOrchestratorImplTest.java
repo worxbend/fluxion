@@ -8,10 +8,12 @@ import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import dev.sysboot.core.AssertModule;
 import dev.sysboot.core.BootstrapConfig;
 import dev.sysboot.core.BootstrapState;
 import dev.sysboot.core.EventKind;
 import dev.sysboot.core.ExecutionEvent;
+import dev.sysboot.core.ManualModule;
 import dev.sysboot.core.ModuleName;
 import dev.sysboot.core.OsTarget;
 import dev.sysboot.core.PackageManagerExecutor;
@@ -22,8 +24,10 @@ import dev.sysboot.core.Phase;
 import dev.sysboot.core.PhaseName;
 import dev.sysboot.core.PhaseStateEntry;
 import dev.sysboot.core.PhaseStatus;
+import dev.sysboot.core.ProcessResult;
 import dev.sysboot.core.ProfileName;
 import dev.sysboot.core.RestartPolicy;
+import dev.sysboot.core.ShellRunner;
 import dev.sysboot.core.StateEntry;
 import dev.sysboot.core.StateRepository;
 import dev.sysboot.core.StepResult;
@@ -31,6 +35,7 @@ import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -355,6 +360,76 @@ class BootstrapOrchestratorImplTest {
     assertThat(stateRepository.state().entries()).hasSize(1);
   }
 
+  @Test
+  void execute_whenAssertCommandSucceeds_completesPhase() {
+    orchestrator = orchestratorWithRunner(result(0));
+    var config =
+        buildConfig(
+            List.of(
+                new AssertModule(
+                    new ModuleName("secure-boot"),
+                    "mokutil --sb-state",
+                    "Secure Boot must be disabled",
+                    "/bin/bash",
+                    Optional.empty())));
+
+    List<ExecutionEvent> events = new ArrayList<>();
+    orchestrator.execute(config, events::add);
+
+    assertThat(events).extracting(ExecutionEvent::kind).contains(EventKind.PHASE_COMPLETED);
+    assertThat(events).extracting(ExecutionEvent::kind).doesNotContain(EventKind.PHASE_FAILED);
+  }
+
+  @Test
+  void execute_whenAssertCommandFails_failsPhaseWithConfiguredMessage() {
+    orchestrator = orchestratorWithRunner(result(1));
+    var config =
+        buildPhasedConfig(
+            List.of(
+                phase(
+                    "checks",
+                    false,
+                    List.of(),
+                    new AssertModule(
+                        new ModuleName("secure-boot"),
+                        "mokutil --sb-state",
+                        "Disable Secure Boot before continuing.",
+                        "/bin/bash",
+                        Optional.empty()))));
+
+    List<ExecutionEvent> events = new ArrayList<>();
+    orchestrator.execute(config, events::add);
+
+    assertThat(events).extracting(ExecutionEvent::kind).contains(EventKind.PHASE_FAILED);
+    var failure =
+        events.stream()
+            .flatMap(event -> event.result().stream())
+            .filter(StepResult.Failure.class::isInstance)
+            .map(StepResult.Failure.class::cast)
+            .findFirst()
+            .orElseThrow();
+    assertThat(failure.errorMessage()).isEqualTo("Disable Secure Boot before continuing.");
+  }
+
+  @Test
+  void execute_whenManualProbeSucceeds_recordsSuccess() {
+    var stateRepository = new InMemoryStateRepository(BootstrapState.empty("test", "1.0.0"));
+    orchestrator = orchestratorWithRunner(result(0), Optional.of(stateRepository));
+    var config =
+        buildConfig(
+            List.of(
+                new ManualModule(
+                    new ModuleName("github-login"),
+                    "Run gh auth login",
+                    Optional.of("gh auth status"))));
+
+    orchestrator.execute(config, ignored -> {});
+
+    assertThat(stateRepository.state().entries())
+        .extracting(StateEntry::itemKey)
+        .containsExactly("github-login");
+  }
+
   private BootstrapOrchestratorImpl orchestrator(
       SkipEvaluator skipEvaluator, Optional<StateRepository> stateRepository) {
     return new BootstrapOrchestratorImpl(
@@ -365,6 +440,35 @@ class BootstrapOrchestratorImplTest {
         skipEvaluator,
         stateRepository,
         "test");
+  }
+
+  private BootstrapOrchestratorImpl orchestratorWithRunner(ProcessResult result) {
+    return orchestratorWithRunner(result, Optional.empty());
+  }
+
+  private BootstrapOrchestratorImpl orchestratorWithRunner(
+      ProcessResult result, Optional<StateRepository> stateRepository) {
+    var runner = new FixedShellRunner(result);
+    return new BootstrapOrchestratorImpl(
+        new PackageManagerExecutorRegistry(List.of(dnfExecutor)),
+        shellScriptExecutor,
+        binaryInstaller,
+        flatpakInstaller,
+        new DotbotExecutor(runner),
+        new DefaultShellExecutor(runner),
+        new OhMyZshExecutor(runner),
+        new ToolchainExecutor(runner),
+        new NerdFontExecutor(runner),
+        new ShellReloadExecutor(runner),
+        alwaysRun(),
+        stateRepository,
+        "test",
+        runner,
+        new DefaultShellRunner());
+  }
+
+  private static ProcessResult result(int exitCode) {
+    return new ProcessResult(exitCode, "", "", Duration.ofMillis(10));
   }
 
   private static List<String> dnfInstallCommand(PackageName packageName) {
@@ -450,6 +554,15 @@ class BootstrapOrchestratorImplTest {
       Optional<BootstrapState> current = load(profileName);
       current.map(existing -> existing.withoutPhase(phaseName)).ifPresent(this::save);
       return load(profileName);
+    }
+  }
+
+  private record FixedShellRunner(ProcessResult result) implements ShellRunner {
+
+    @Override
+    public ProcessResult run(
+        List<String> command, Map<String, String> environment, Duration timeout) {
+      return result;
     }
   }
 }

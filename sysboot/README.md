@@ -163,6 +163,8 @@ Supported step types:
 - `toolchain`
 - `default-shell`
 - `shell-reload`
+- `assert`
+- `manual`
 
 Full schema lives in `docs/config-schema.md`.
 

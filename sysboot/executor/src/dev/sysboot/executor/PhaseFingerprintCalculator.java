@@ -1,10 +1,12 @@
 package dev.sysboot.executor;
 
+import dev.sysboot.core.AssertModule;
 import dev.sysboot.core.BootstrapModule;
 import dev.sysboot.core.CompiledBinaryModule;
 import dev.sysboot.core.DefaultShellModule;
 import dev.sysboot.core.DotbotModule;
 import dev.sysboot.core.FlatpakModule;
+import dev.sysboot.core.ManualModule;
 import dev.sysboot.core.NerdFontModule;
 import dev.sysboot.core.OhMyZshModule;
 import dev.sysboot.core.PackageModule;
@@ -98,6 +100,18 @@ final class PhaseFingerprintCalculator {
         append(builder, "workingDir", scm.workingDir().map(Object::toString));
         append(builder, "continueOnError", scm.continueOnError());
         append(builder, "probe", scm.probeCommand());
+      }
+      case AssertModule am -> {
+        append(builder, "type", "assert");
+        append(builder, "command", am.command());
+        append(builder, "message", am.message());
+        append(builder, "shell", am.shell());
+        append(builder, "workingDir", am.workingDir().map(Object::toString));
+      }
+      case ManualModule mm -> {
+        append(builder, "type", "manual");
+        append(builder, "message", mm.message());
+        append(builder, "probe", mm.probeCommand());
       }
     }
   }

@@ -1,5 +1,6 @@
 package dev.sysboot.executor;
 
+import dev.sysboot.core.AssertModule;
 import dev.sysboot.core.BootstrapModule;
 import dev.sysboot.core.CompiledBinaryModule;
 import dev.sysboot.core.DefaultShellModule;
@@ -7,6 +8,7 @@ import dev.sysboot.core.DotbotModule;
 import dev.sysboot.core.FlatpakModule;
 import dev.sysboot.core.InstallationStatus;
 import dev.sysboot.core.ItemType;
+import dev.sysboot.core.ManualModule;
 import dev.sysboot.core.ModuleItem;
 import dev.sysboot.core.NerdFontModule;
 import dev.sysboot.core.OhMyZshModule;
@@ -122,6 +124,10 @@ public final class ParallelProbeRunner {
                 new ModuleItem(srm.name(), srm.shell().binaryName(), ItemType.SHELL_RELOAD));
         case ShellCommandModule sc ->
             targets.add(new ModuleItem(sc.name(), sc.name().value(), ItemType.SHELL_COMMAND));
+        case AssertModule am ->
+            targets.add(new ModuleItem(am.name(), am.name().value(), ItemType.ASSERT));
+        case ManualModule mm ->
+            targets.add(new ModuleItem(mm.name(), mm.name().value(), ItemType.MANUAL));
       }
     }
     return List.copyOf(targets);

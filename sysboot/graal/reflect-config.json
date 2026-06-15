@@ -276,6 +276,18 @@
     "allDeclaredConstructors": true
   },
   {
+    "name": "dev.sysboot.config.yaml.contract.AssertModuleDocument",
+    "allDeclaredFields": true,
+    "allDeclaredMethods": true,
+    "allDeclaredConstructors": true
+  },
+  {
+    "name": "dev.sysboot.config.yaml.contract.ManualModuleDocument",
+    "allDeclaredFields": true,
+    "allDeclaredMethods": true,
+    "allDeclaredConstructors": true
+  },
+  {
     "name": "dev.sysboot.config.yaml.contract.RestartPolicyDocument",
     "allDeclaredFields": true,
     "allDeclaredMethods": true,

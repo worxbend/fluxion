@@ -16,7 +16,9 @@ import com.fasterxml.jackson.annotation.JsonTypeInfo;
   @JsonSubTypes.Type(value = ToolchainModuleDocument.class, name = "toolchain"),
   @JsonSubTypes.Type(value = NerdFontModuleDocument.class, name = "nerd-fonts"),
   @JsonSubTypes.Type(value = ShellReloadModuleDocument.class, name = "shell-reload"),
-  @JsonSubTypes.Type(value = ShellCommandModuleDocument.class, name = "shell-command")
+  @JsonSubTypes.Type(value = ShellCommandModuleDocument.class, name = "shell-command"),
+  @JsonSubTypes.Type(value = AssertModuleDocument.class, name = "assert"),
+  @JsonSubTypes.Type(value = ManualModuleDocument.class, name = "manual")
 })
 public abstract sealed class ModuleDocument
     permits PackagesModuleDocument,
@@ -29,7 +31,9 @@ public abstract sealed class ModuleDocument
         ToolchainModuleDocument,
         NerdFontModuleDocument,
         ShellReloadModuleDocument,
-        ShellCommandModuleDocument {
+        ShellCommandModuleDocument,
+        AssertModuleDocument,
+        ManualModuleDocument {
 
   @JsonProperty("name")
   public String name;

@@ -1,11 +1,13 @@
 package dev.sysboot.config;
 
+import dev.sysboot.config.yaml.contract.AssertModuleDocument;
 import dev.sysboot.config.yaml.contract.ChecksumDocument;
 import dev.sysboot.config.yaml.contract.CompiledBinaryModuleDocument;
 import dev.sysboot.config.yaml.contract.ConfigDocument;
 import dev.sysboot.config.yaml.contract.DefaultShellModuleDocument;
 import dev.sysboot.config.yaml.contract.DotbotModuleDocument;
 import dev.sysboot.config.yaml.contract.FlatpakModuleDocument;
+import dev.sysboot.config.yaml.contract.ManualModuleDocument;
 import dev.sysboot.config.yaml.contract.ModuleDocument;
 import dev.sysboot.config.yaml.contract.NerdFontModuleDocument;
 import dev.sysboot.config.yaml.contract.OhMyZshModuleDocument;
@@ -17,6 +19,7 @@ import dev.sysboot.config.yaml.contract.ShellCommandModuleDocument;
 import dev.sysboot.config.yaml.contract.ShellReloadModuleDocument;
 import dev.sysboot.config.yaml.contract.ShellScriptModuleDocument;
 import dev.sysboot.config.yaml.contract.ToolchainModuleDocument;
+import dev.sysboot.core.AssertModule;
 import dev.sysboot.core.BinaryUrl;
 import dev.sysboot.core.BootstrapConfig;
 import dev.sysboot.core.BootstrapModule;
@@ -25,6 +28,7 @@ import dev.sysboot.core.CompiledBinaryModule;
 import dev.sysboot.core.DefaultShellModule;
 import dev.sysboot.core.DotbotModule;
 import dev.sysboot.core.FlatpakModule;
+import dev.sysboot.core.ManualModule;
 import dev.sysboot.core.ModuleName;
 import dev.sysboot.core.NerdFontConfig;
 import dev.sysboot.core.NerdFontModule;
@@ -150,6 +154,8 @@ final class ConfigMapper {
       case NerdFontModuleDocument nf -> mapNerdFontModule(nf);
       case ShellReloadModuleDocument sr -> mapShellReloadModule(sr);
       case ShellCommandModuleDocument sc -> mapShellCommandModule(sc);
+      case AssertModuleDocument am -> mapAssertModule(am);
+      case ManualModuleDocument mm -> mapManualModule(mm);
     };
   }
 
@@ -277,6 +283,24 @@ final class ConfigMapper {
         dto.shell != null ? dto.shell : "/bin/bash",
         workingDir,
         dto.continueOnError,
+        Optional.ofNullable(dto.probeCommand));
+  }
+
+  private AssertModule mapAssertModule(AssertModuleDocument dto) {
+    var workingDir =
+        dto.workingDir != null ? Optional.of(Path.of(dto.workingDir)) : Optional.<Path>empty();
+    return new AssertModule(
+        new ModuleName(requireField(dto.name, "name")),
+        requireField(dto.command, "assert.command"),
+        dto.message != null ? dto.message : "Assertion failed: " + dto.name,
+        dto.shell != null ? dto.shell : "/bin/bash",
+        workingDir);
+  }
+
+  private ManualModule mapManualModule(ManualModuleDocument dto) {
+    return new ManualModule(
+        new ModuleName(requireField(dto.name, "name")),
+        requireField(dto.message, "manual.message"),
         Optional.ofNullable(dto.probeCommand));
   }
 
