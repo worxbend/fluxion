@@ -4,6 +4,7 @@ public sealed interface BootstrapModule
     permits PackageModule,
         AptRepositoryModule,
         RpmRepositoryModule,
+        PacmanRepositoryModule,
         FlatpakModule,
         FlatpakRemoteModule,
         ShellScriptModule,

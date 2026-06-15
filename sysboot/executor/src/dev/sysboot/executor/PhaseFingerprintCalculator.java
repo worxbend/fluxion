@@ -12,6 +12,7 @@ import dev.sysboot.core.ManualModule;
 import dev.sysboot.core.NerdFontModule;
 import dev.sysboot.core.OhMyZshModule;
 import dev.sysboot.core.PackageModule;
+import dev.sysboot.core.PacmanRepositoryModule;
 import dev.sysboot.core.Phase;
 import dev.sysboot.core.RestartPolicy;
 import dev.sysboot.core.RpmRepositoryModule;
@@ -60,6 +61,7 @@ final class PhaseFingerprintCalculator {
       case ZypperModule zm -> appendPackageModule(builder, zm.asPackageModule());
       case AptRepositoryModule arm -> appendAptRepository(builder, arm);
       case RpmRepositoryModule rrm -> appendRpmRepository(builder, rrm);
+      case PacmanRepositoryModule prm -> appendPacmanRepository(builder, prm);
       case FlatpakModule fm -> {
         append(builder, "type", "flatpak");
         append(builder, "remote", fm.remote());
@@ -150,6 +152,16 @@ final class PhaseFingerprintCalculator {
     append(builder, "gpgKeyUrl", module.gpgKeyUrl().map(Object::toString));
     append(builder, "enabled", module.enabled());
     append(builder, "gpgCheck", module.gpgCheck());
+  }
+
+  private void appendPacmanRepository(StringBuilder builder, PacmanRepositoryModule module) {
+    append(builder, "type", "pacman-repository");
+    append(builder, "repository", module.repositoryName());
+    append(builder, "server", module.server().toString());
+    append(builder, "config", module.configPath().toString());
+    append(builder, "sigLevel", module.sigLevel());
+    append(builder, "include", module.include().map(Object::toString));
+    append(builder, "enabled", module.enabled());
   }
 
   private void appendCompiledBinary(StringBuilder builder, CompiledBinaryModule module) {

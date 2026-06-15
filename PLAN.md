@@ -803,13 +803,15 @@ Behavior:
 
 ### 29. Add package repository modules
 
-Status: first slices implemented for `flatpak-remote`, `apt-repository`, and `rpm-repository`.
+Status: first slices implemented for `flatpak-remote`, `apt-repository`, `rpm-repository`, and
+`pacman-repository`.
 Profiles can declare a Flatpak remote with remote name, URL, and system/user scope. Debian/Ubuntu
 profiles can declare an APT source list entry with optional signing key URL/keyring path. Fedora
 profiles can declare a DNF `.repo` file with base URL, optional GPG key URL, enabled state, and
-GPG checking. These participate in YAML parsing, validation, plan/dry-run command previews,
-execution, skip/probe/status/diff/explain flows, TUI selection, native metadata, and focused tests.
-Pacman repository modules remain open.
+GPG checking. Arch profiles can declare a Pacman repository block with server, optional `SigLevel`,
+optional `Include`, and enabled state. These participate in YAML parsing, validation,
+plan/dry-run command previews, execution, skip/probe/status/diff/explain flows, TUI selection,
+native metadata, and focused tests.
 
 Current examples use `shell-command` for repository setup. That works, but it is exactly where
 bootstrap scripts become hard to audit. Repositories should become first-class, OS-specific modules.

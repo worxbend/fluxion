@@ -33,6 +33,8 @@ import dev.sysboot.executor.OhMyZshExecutor;
 import dev.sysboot.executor.PackageManagerExecutorRegistry;
 import dev.sysboot.executor.PacmanPackageInstaller;
 import dev.sysboot.executor.PacmanPackageProbe;
+import dev.sysboot.executor.PacmanRepositoryInstaller;
+import dev.sysboot.executor.PacmanRepositoryProbe;
 import dev.sysboot.executor.ParallelProbeRunner;
 import dev.sysboot.executor.ParuPackageInstaller;
 import dev.sysboot.executor.PtyShellRunner;
@@ -168,6 +170,7 @@ public final class ApplicationContext {
         new CompiledBinaryInstaller(baseRunner),
         new AptRepositoryInstaller(baseRunner),
         new RpmRepositoryInstaller(baseRunner),
+        new PacmanRepositoryInstaller(baseRunner),
         new FlatpakInstaller(baseRunner),
         new FlatpakRemoteInstaller(baseRunner),
         new DotbotExecutor(baseRunner),
@@ -191,6 +194,7 @@ public final class ApplicationContext {
             new AptPackageProbe(runner),
             new AptRepositoryProbe(runner),
             new RpmRepositoryProbe(runner),
+            new PacmanRepositoryProbe(runner),
             new ZypperPackageProbe(runner),
             new FlatpakProbe(runner),
             new FlatpakRemoteProbe(runner),

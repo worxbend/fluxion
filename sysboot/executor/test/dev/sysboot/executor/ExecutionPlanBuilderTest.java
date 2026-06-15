@@ -14,6 +14,7 @@ import dev.sysboot.core.PackageManagerExecutor;
 import dev.sysboot.core.PackageManagerKind;
 import dev.sysboot.core.PackageModule;
 import dev.sysboot.core.PackageName;
+import dev.sysboot.core.PacmanRepositoryModule;
 import dev.sysboot.core.Phase;
 import dev.sysboot.core.PhaseName;
 import dev.sysboot.core.ProfileName;
@@ -228,6 +229,41 @@ class ExecutionPlanBuilderTest {
                 + "gpgcheck=0\n"
                 + "' | sudo tee '/etc/yum.repos.d/docker.repo' >/dev/null && sudo dnf makecache"
                 + " --refresh");
+  }
+
+  @Test
+  void build_pacmanRepositoryModule_includesCommandPreview() {
+    var builder = new ExecutionPlanBuilder(new PackageManagerExecutorRegistry(List.of(dnf())));
+    var phase =
+        new Phase(
+            new PhaseName("repositories"),
+            "",
+            List.of(
+                new PacmanRepositoryModule(
+                    new ModuleName("chaotic-aur"),
+                    "chaotic-aur",
+                    URI.create("https://cdn-mirror.chaotic.cx/$repo/$arch"),
+                    Path.of("/etc/pacman.conf"),
+                    Optional.of("Required DatabaseOptional"),
+                    Optional.empty(),
+                    true)),
+            List.of(),
+            new RestartPolicy.None(),
+            false);
+
+    ExecutionPlan plan = builder.build(config(List.of(phase)));
+
+    ExecutionPlan.Item item = plan.phases().getFirst().modules().getFirst().items().getFirst();
+    assertThat(item.item().itemType()).isEqualTo(ItemType.PACMAN_REPOSITORY);
+    assertThat(item.commandPreview().orElseThrow())
+        .containsExactly(
+            "/bin/bash",
+            "-lc",
+            "grep -Eq '^\\[chaotic-aur\\]$' '/etc/pacman.conf' || printf %s '\n"
+                + "[chaotic-aur]\n"
+                + "Server = https://cdn-mirror.chaotic.cx/$repo/$arch\n"
+                + "SigLevel = Required DatabaseOptional\n"
+                + "' | sudo tee -a '/etc/pacman.conf' >/dev/null; sudo pacman -Sy");
   }
 
   private static BootstrapConfig config(List<Phase> phases) {

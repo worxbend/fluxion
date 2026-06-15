@@ -120,6 +120,9 @@ commands.
 Use `rpm-repository` for Fedora DNF repository files that would otherwise be hidden in shell setup
 commands.
 
+Use `pacman-repository` for Arch Pacman repository blocks that would otherwise be hidden in shell
+setup commands.
+
 ---
 
 ### `apt-repository` — add an APT source
@@ -157,6 +160,26 @@ Execution writes an auditable `.repo` file with `sudo tee` and refreshes metadat
 `sudo dnf makecache --refresh`. `plan --show-commands`, `dry-run`, `status`, `diff`, and `explain`
 use the repo file path as the item key. Validation fails when the target OS is not Fedora and warns
 when URLs are not HTTPS or when `gpgCheck` is enabled without a `gpgKeyUrl`.
+
+---
+
+### `pacman-repository` — add an Arch Pacman repository
+
+```yaml
+- type: pacman-repository
+  name: chaotic-aur
+  repository: chaotic-aur                  # default: name
+  server: https://cdn-mirror.chaotic.cx/$repo/$arch
+  config: /etc/pacman.conf                 # default: /etc/pacman.conf
+  sigLevel: Required DatabaseOptional
+  include: /etc/pacman.d/chaotic-mirrorlist
+  enabled: true                            # default: true
+```
+
+Execution appends a repository block with `sudo tee -a` when the repository is not already present
+and refreshes package databases with `sudo pacman -Sy`. `plan --show-commands`, `dry-run`,
+`status`, `diff`, and `explain` use the repository name as the item key. Validation fails when the
+target OS is not Arch and warns when the server is not HTTPS or `sigLevel` is omitted.
 
 ---
 

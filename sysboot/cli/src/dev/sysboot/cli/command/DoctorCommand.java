@@ -16,6 +16,7 @@ import dev.sysboot.core.FlatpakModule;
 import dev.sysboot.core.FlatpakRemoteModule;
 import dev.sysboot.core.PackageManagerKind;
 import dev.sysboot.core.PackageModule;
+import dev.sysboot.core.PacmanRepositoryModule;
 import dev.sysboot.core.RpmRepositoryModule;
 import dev.sysboot.core.ShellCommandModule;
 import dev.sysboot.core.ZypperModule;
@@ -180,6 +181,7 @@ public final class DoctorCommand implements Runnable {
         case PackageModule pm -> managers.add(pm.packageManager());
         case AptRepositoryModule ignored -> managers.add(PackageManagerKind.APT);
         case RpmRepositoryModule ignored -> managers.add(PackageManagerKind.DNF);
+        case PacmanRepositoryModule ignored -> managers.add(PackageManagerKind.PACMAN);
         case ZypperModule ignored -> managers.add(PackageManagerKind.ZYPPER);
         default -> {}
       }
@@ -210,6 +212,7 @@ public final class DoctorCommand implements Runnable {
       case FlatpakModule fm -> addFlatpakChecks(fm, checks);
       case AptRepositoryModule arm -> addAptRepositoryChecks(arm, checks);
       case RpmRepositoryModule rrm -> addRpmRepositoryChecks(rrm, checks);
+      case PacmanRepositoryModule prm -> addPacmanRepositoryChecks(prm, checks);
       case FlatpakRemoteModule frm -> addFlatpakRemoteChecks(frm, checks);
       case DefaultShellModule dsm -> checks.add(checkShellPath(dsm.shellPath()));
       case ShellCommandModule scm -> checks.add(checkRequiredCommand(scm.shell(), "shell"));
@@ -236,6 +239,11 @@ public final class DoctorCommand implements Runnable {
     checks.add(checkRequiredCommand("dnf", "dnf command"));
     checks.add(checkUrl("rpm repository", module.baseUrl()));
     module.gpgKeyUrl().ifPresent(url -> checks.add(checkUrl("rpm gpg key", url)));
+  }
+
+  private void addPacmanRepositoryChecks(PacmanRepositoryModule module, List<Check> checks) {
+    checks.add(checkRequiredCommand("pacman", "pacman command"));
+    checks.add(checkUrl("pacman repository", module.server()));
   }
 
   private void addFlatpakRemoteChecks(FlatpakRemoteModule module, List<Check> checks) {

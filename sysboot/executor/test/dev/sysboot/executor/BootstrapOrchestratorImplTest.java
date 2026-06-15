@@ -22,6 +22,7 @@ import dev.sysboot.core.PackageManagerExecutor;
 import dev.sysboot.core.PackageManagerKind;
 import dev.sysboot.core.PackageModule;
 import dev.sysboot.core.PackageName;
+import dev.sysboot.core.PacmanRepositoryModule;
 import dev.sysboot.core.Phase;
 import dev.sysboot.core.PhaseName;
 import dev.sysboot.core.PhaseStateEntry;
@@ -60,6 +61,8 @@ class BootstrapOrchestratorImplTest {
   @Mock private AptRepositoryInstaller aptRepositoryInstaller;
 
   @Mock private RpmRepositoryInstaller rpmRepositoryInstaller;
+
+  @Mock private PacmanRepositoryInstaller pacmanRepositoryInstaller;
 
   @Mock private FlatpakInstaller flatpakInstaller;
 
@@ -486,6 +489,22 @@ class BootstrapOrchestratorImplTest {
   }
 
   @Test
+  void execute_whenPacmanRepositoryConfigured_addsRepositoryAndRecordsSuccess() {
+    var stateRepository = new InMemoryStateRepository(BootstrapState.empty("test", "1.0.0"));
+    when(pacmanRepositoryInstaller.add(any()))
+        .thenReturn(new StepResult.Success("chaotic-aur", Duration.ZERO));
+    orchestrator = orchestrator(alwaysRun(), Optional.of(stateRepository));
+    var module = pacmanRepositoryModule();
+
+    orchestrator.execute(buildConfig(List.of(module)), ignored -> {});
+
+    verify(pacmanRepositoryInstaller).add(module);
+    assertThat(stateRepository.state().entries())
+        .extracting(StateEntry::itemType)
+        .containsExactly(dev.sysboot.core.ItemType.PACMAN_REPOSITORY);
+  }
+
+  @Test
   void dryRun_whenFlatpakRemoteConfigured_emitsRemoteAddCommand() {
     var module =
         new FlatpakRemoteModule(
@@ -562,6 +581,25 @@ class BootstrapOrchestratorImplTest {
         .containsExactly("/bin/bash", "-lc", "sudo dnf makecache --refresh");
   }
 
+  @Test
+  void dryRun_whenPacmanRepositoryConfigured_emitsRepositoryCommand() {
+    var module = pacmanRepositoryModule();
+    when(pacmanRepositoryInstaller.addCommand(module))
+        .thenReturn(List.of("/bin/bash", "-lc", "sudo pacman -Sy"));
+
+    List<ExecutionEvent> events = new ArrayList<>();
+    orchestrator.dryRun(buildConfig(List.of(module)), events::add);
+
+    var dryRun =
+        (StepResult.DryRun)
+            events.stream()
+                .flatMap(event -> event.result().stream())
+                .filter(StepResult.DryRun.class::isInstance)
+                .findFirst()
+                .orElseThrow();
+    assertThat(dryRun.wouldExecute()).containsExactly("/bin/bash", "-lc", "sudo pacman -Sy");
+  }
+
   private BootstrapOrchestratorImpl orchestrator(
       SkipEvaluator skipEvaluator, Optional<StateRepository> stateRepository) {
     return new BootstrapOrchestratorImpl(
@@ -570,6 +608,7 @@ class BootstrapOrchestratorImplTest {
         binaryInstaller,
         aptRepositoryInstaller,
         rpmRepositoryInstaller,
+        pacmanRepositoryInstaller,
         flatpakInstaller,
         flatpakRemoteInstaller,
         new DotbotExecutor(new DefaultShellRunner()),
@@ -598,6 +637,7 @@ class BootstrapOrchestratorImplTest {
         binaryInstaller,
         new AptRepositoryInstaller(runner),
         new RpmRepositoryInstaller(runner),
+        new PacmanRepositoryInstaller(runner),
         flatpakInstaller,
         new FlatpakRemoteInstaller(runner),
         new DotbotExecutor(runner),
@@ -639,6 +679,17 @@ class BootstrapOrchestratorImplTest {
         Path.of("/etc/yum.repos.d/docker.repo"),
         Optional.of(URI.create("https://download.docker.com/linux/fedora/gpg")),
         true,
+        true);
+  }
+
+  private static PacmanRepositoryModule pacmanRepositoryModule() {
+    return new PacmanRepositoryModule(
+        new ModuleName("chaotic-aur"),
+        "chaotic-aur",
+        URI.create("https://cdn-mirror.chaotic.cx/$repo/$arch"),
+        Path.of("/etc/pacman.conf"),
+        Optional.of("Required DatabaseOptional"),
+        Optional.empty(),
         true);
   }
 

@@ -13,6 +13,7 @@ import dev.sysboot.core.ManualModule;
 import dev.sysboot.core.OsTarget;
 import dev.sysboot.core.PackageManagerKind;
 import dev.sysboot.core.PackageModule;
+import dev.sysboot.core.PacmanRepositoryModule;
 import dev.sysboot.core.RestartPolicy;
 import dev.sysboot.core.RpmRepositoryModule;
 import dev.sysboot.core.ShellCommandModule;
@@ -152,6 +153,34 @@ class YamlConfigLoaderTest {
             uri -> assertThat(uri).hasToString("https://download.docker.com/linux/fedora/gpg"));
     assertThat(module.enabled()).isTrue();
     assertThat(module.gpgCheck()).isTrue();
+  }
+
+  @Test
+  void load_whenPacmanRepositoryStep_parsesRepositoryConfiguration(@TempDir Path tmpDir)
+      throws IOException {
+    Path config =
+        writeConfig(
+            tmpDir,
+            """
+            profile: arch-test
+            os:
+              type: arch
+            jobs:
+              - name: repositories
+                steps:
+                  - type: pacman-repository
+                    name: chaotic-aur
+                    server: https://cdn-mirror.chaotic.cx/$repo/$arch
+                    sigLevel: Required DatabaseOptional
+            """);
+
+    BootstrapConfig result = loader.load(config);
+
+    var module = (PacmanRepositoryModule) result.phases().getFirst().modules().getFirst();
+    assertThat(module.repositoryName()).isEqualTo("chaotic-aur");
+    assertThat(module.configPath()).isEqualTo(Path.of("/etc/pacman.conf"));
+    assertThat(module.sigLevel()).hasValue("Required DatabaseOptional");
+    assertThat(module.enabled()).isTrue();
   }
 
   @Test

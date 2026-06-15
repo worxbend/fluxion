@@ -8,6 +8,7 @@ import dev.sysboot.core.FlatpakRemoteModule;
 import dev.sysboot.core.OsTarget;
 import dev.sysboot.core.PackageManagerKind;
 import dev.sysboot.core.PackageModule;
+import dev.sysboot.core.PacmanRepositoryModule;
 import dev.sysboot.core.Phase;
 import dev.sysboot.core.RpmRepositoryModule;
 import dev.sysboot.core.ZypperModule;
@@ -73,6 +74,8 @@ public final class ConfigValidator {
           validateAptRepository(config, aptRepositoryModule, path, issues);
       case RpmRepositoryModule rpmRepositoryModule ->
           validateRpmRepository(config, rpmRepositoryModule, path, issues);
+      case PacmanRepositoryModule pacmanRepositoryModule ->
+          validatePacmanRepository(config, pacmanRepositoryModule, path, issues);
       case FlatpakRemoteModule flatpakRemoteModule ->
           validateFlatpakRemote(flatpakRemoteModule, path, issues);
       case CompiledBinaryModule binaryModule -> validateCompiledBinary(binaryModule, path, issues);
@@ -132,6 +135,25 @@ public final class ConfigValidator {
           path + ".gpgKeyUrl",
           "RPM repository '%s' has gpgCheck enabled but no GPG key URL"
               .formatted(module.name().value()));
+    }
+  }
+
+  private void validatePacmanRepository(
+      BootstrapConfig config,
+      PacmanRepositoryModule module,
+      String path,
+      List<ValidationIssue> issues) {
+    if (!(config.target() instanceof OsTarget.ArchTarget)) {
+      addError(issues, path + ".type", "Pacman repositories are only valid for arch targets");
+    }
+    if (!"https".equalsIgnoreCase(module.server().getScheme())) {
+      addWarning(issues, path + ".server", "Pacman repository server should use HTTPS");
+    }
+    if (module.sigLevel().isEmpty()) {
+      addWarning(
+          issues,
+          path + ".sigLevel",
+          "Pacman repository '%s' has no sigLevel".formatted(module.name().value()));
     }
   }
 

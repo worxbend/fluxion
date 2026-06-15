@@ -12,6 +12,7 @@ import dev.sysboot.core.ManualModule;
 import dev.sysboot.core.NerdFontModule;
 import dev.sysboot.core.OhMyZshModule;
 import dev.sysboot.core.PackageModule;
+import dev.sysboot.core.PacmanRepositoryModule;
 import dev.sysboot.core.RpmRepositoryModule;
 import dev.sysboot.core.ShellCommandModule;
 import dev.sysboot.core.ShellReloadModule;
@@ -34,6 +35,8 @@ final class SelectionEntryCatalog {
           List.of(aptRepositoryModule.sourceListPath().toString());
       case RpmRepositoryModule rpmRepositoryModule ->
           List.of(rpmRepositoryModule.repoFilePath().toString());
+      case PacmanRepositoryModule pacmanRepositoryModule ->
+          List.of(pacmanRepositoryModule.repositoryName());
       case FlatpakModule flatpakModule -> flatpakModule.appIds();
       case FlatpakRemoteModule flatpakRemoteModule -> List.of(flatpakRemoteModule.remote());
       case ShellCommandModule shellCommandModule -> shellCommandModule.commands();

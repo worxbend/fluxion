@@ -15,6 +15,7 @@ import dev.sysboot.config.yaml.contract.NerdFontModuleDocument;
 import dev.sysboot.config.yaml.contract.OhMyZshModuleDocument;
 import dev.sysboot.config.yaml.contract.OsDocument;
 import dev.sysboot.config.yaml.contract.PackagesModuleDocument;
+import dev.sysboot.config.yaml.contract.PacmanRepositoryModuleDocument;
 import dev.sysboot.config.yaml.contract.PhaseDocument;
 import dev.sysboot.config.yaml.contract.RestartPolicyDocument;
 import dev.sysboot.config.yaml.contract.RpmRepositoryModuleDocument;
@@ -42,6 +43,7 @@ import dev.sysboot.core.OsTarget;
 import dev.sysboot.core.PackageManagerKind;
 import dev.sysboot.core.PackageModule;
 import dev.sysboot.core.PackageName;
+import dev.sysboot.core.PacmanRepositoryModule;
 import dev.sysboot.core.Phase;
 import dev.sysboot.core.PhaseName;
 import dev.sysboot.core.ProfileName;
@@ -152,6 +154,7 @@ final class ConfigMapper {
       case PackagesModuleDocument pm -> mapPackagesModule(pm);
       case AptRepositoryModuleDocument arm -> mapAptRepositoryModule(arm);
       case RpmRepositoryModuleDocument rrm -> mapRpmRepositoryModule(rrm);
+      case PacmanRepositoryModuleDocument prm -> mapPacmanRepositoryModule(prm);
       case FlatpakModuleDocument fm -> mapFlatpakModule(fm);
       case FlatpakRemoteModuleDocument frm -> mapFlatpakRemoteModule(frm);
       case ShellScriptModuleDocument sm -> mapShellScriptModule(sm, configFile);
@@ -206,6 +209,18 @@ final class ConfigMapper {
         mapUri(dto.gpgKeyUrl),
         dto.enabled == null || dto.enabled,
         dto.gpgCheck == null || dto.gpgCheck);
+  }
+
+  private PacmanRepositoryModule mapPacmanRepositoryModule(PacmanRepositoryModuleDocument dto) {
+    String name = requireField(dto.name, "pacman-repository.name");
+    return new PacmanRepositoryModule(
+        new ModuleName(name),
+        dto.repository != null ? dto.repository : name,
+        URI.create(requireField(dto.server, "pacman-repository.server")),
+        Path.of(dto.config != null ? dto.config : "/etc/pacman.conf"),
+        Optional.ofNullable(dto.sigLevel),
+        Optional.ofNullable(dto.include).map(Path::of),
+        dto.enabled == null || dto.enabled);
   }
 
   private FlatpakModule mapFlatpakModule(FlatpakModuleDocument dto) {

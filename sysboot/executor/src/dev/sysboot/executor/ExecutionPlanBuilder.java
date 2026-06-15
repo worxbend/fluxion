@@ -15,6 +15,7 @@ import dev.sysboot.core.ModuleItem;
 import dev.sysboot.core.NerdFontModule;
 import dev.sysboot.core.OhMyZshModule;
 import dev.sysboot.core.PackageModule;
+import dev.sysboot.core.PacmanRepositoryModule;
 import dev.sysboot.core.Phase;
 import dev.sysboot.core.RestartPolicy;
 import dev.sysboot.core.RpmRepositoryModule;
@@ -87,6 +88,11 @@ public final class ExecutionPlanBuilder {
       return Optional.of(
           new RpmRepositoryInstaller(new DefaultShellRunner()).addCommand(rpmRepositoryModule));
     }
+    if (module instanceof PacmanRepositoryModule pacmanRepositoryModule) {
+      return Optional.of(
+          new PacmanRepositoryInstaller(new DefaultShellRunner())
+              .addCommand(pacmanRepositoryModule));
+    }
     return item.packageManager()
         .map(
             kind ->
@@ -117,6 +123,8 @@ public final class ExecutionPlanBuilder {
       case RpmRepositoryModule rrm ->
           List.of(
               new ModuleItem(rrm.name(), rrm.repoFilePath().toString(), ItemType.RPM_REPOSITORY));
+      case PacmanRepositoryModule prm ->
+          List.of(new ModuleItem(prm.name(), prm.repositoryName(), ItemType.PACMAN_REPOSITORY));
       case FlatpakModule fm ->
           fm.appIds().stream()
               .map(app -> new ModuleItem(fm.name(), app, ItemType.FLATPAK))
@@ -163,6 +171,7 @@ public final class ExecutionPlanBuilder {
       case PackageModule ignored -> "packages";
       case AptRepositoryModule ignored -> "apt-repository";
       case RpmRepositoryModule ignored -> "rpm-repository";
+      case PacmanRepositoryModule ignored -> "pacman-repository";
       case FlatpakModule ignored -> "flatpak";
       case FlatpakRemoteModule ignored -> "flatpak-remote";
       case ShellScriptModule ignored -> "shell-script";

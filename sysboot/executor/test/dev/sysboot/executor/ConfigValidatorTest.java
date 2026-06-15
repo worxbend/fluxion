@@ -13,6 +13,7 @@ import dev.sysboot.core.OsTarget;
 import dev.sysboot.core.PackageManagerKind;
 import dev.sysboot.core.PackageModule;
 import dev.sysboot.core.PackageName;
+import dev.sysboot.core.PacmanRepositoryModule;
 import dev.sysboot.core.Phase;
 import dev.sysboot.core.PhaseName;
 import dev.sysboot.core.ProfileName;
@@ -294,6 +295,48 @@ class ConfigValidatorTest {
               assertThat(issue.severity()).isEqualTo(ValidationIssue.Severity.WARNING);
               assertThat(issue.path()).isEqualTo("jobs[0].steps[0].gpgKeyUrl");
               assertThat(issue.message()).contains("no GPG key URL");
+            });
+  }
+
+  @Test
+  void validate_whenPacmanRepositoryOnArchWithSigLevel_reportsNoIssues() {
+    var module =
+        new PacmanRepositoryModule(
+            new ModuleName("chaotic-aur"),
+            "chaotic-aur",
+            URI.create("https://cdn-mirror.chaotic.cx/$repo/$arch"),
+            Path.of("/etc/pacman.conf"),
+            Optional.of("Required DatabaseOptional"),
+            Optional.empty(),
+            true);
+
+    ValidationReport report =
+        validator.validate(config(new OsTarget.ArchTarget(), phase("repos", List.of(module))));
+
+    assertThat(report.issues()).isEmpty();
+  }
+
+  @Test
+  void validate_whenPacmanRepositoryOnFedora_reportsError() {
+    var module =
+        new PacmanRepositoryModule(
+            new ModuleName("chaotic-aur"),
+            "chaotic-aur",
+            URI.create("https://cdn-mirror.chaotic.cx/$repo/$arch"),
+            Path.of("/etc/pacman.conf"),
+            Optional.of("Required DatabaseOptional"),
+            Optional.empty(),
+            true);
+
+    ValidationReport report = validator.validate(config(phase("repos", List.of(module))));
+
+    assertThat(report.hasErrors()).isTrue();
+    assertThat(report.issues())
+        .anySatisfy(
+            issue -> {
+              assertThat(issue.severity()).isEqualTo(ValidationIssue.Severity.ERROR);
+              assertThat(issue.path()).isEqualTo("jobs[0].steps[0].type");
+              assertThat(issue.message()).contains("Pacman repositories");
             });
   }
 

@@ -14,6 +14,7 @@ import dev.sysboot.core.NerdFontConfig;
 import dev.sysboot.core.NerdFontModule;
 import dev.sysboot.core.OhMyZshModule;
 import dev.sysboot.core.PackageModule;
+import dev.sysboot.core.PacmanRepositoryModule;
 import dev.sysboot.core.Phase;
 import dev.sysboot.core.PhaseName;
 import dev.sysboot.core.RpmRepositoryModule;
@@ -81,6 +82,7 @@ final class BootstrapConfigSelectionFilter {
       case ZypperModule zypperModule -> filterZypperModule(zypperModule, entries);
       case AptRepositoryModule aptRepositoryModule -> Optional.of(aptRepositoryModule);
       case RpmRepositoryModule rpmRepositoryModule -> Optional.of(rpmRepositoryModule);
+      case PacmanRepositoryModule pacmanRepositoryModule -> Optional.of(pacmanRepositoryModule);
       case FlatpakModule flatpakModule -> filterFlatpakModule(flatpakModule, entries);
       case FlatpakRemoteModule flatpakRemoteModule -> Optional.of(flatpakRemoteModule);
       case ShellCommandModule shellCommandModule ->
