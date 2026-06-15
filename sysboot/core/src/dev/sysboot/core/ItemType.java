@@ -3,6 +3,7 @@ package dev.sysboot.core;
 public enum ItemType {
   PACKAGE,
   FLATPAK,
+  FLATPAK_REMOTE,
   SHELL_SCRIPT,
   COMPILED_BINARY,
   DOTBOT,

@@ -210,6 +210,12 @@
     "allDeclaredConstructors": true
   },
   {
+    "name": "dev.sysboot.config.yaml.contract.FlatpakRemoteModuleDocument",
+    "allDeclaredFields": true,
+    "allDeclaredMethods": true,
+    "allDeclaredConstructors": true
+  },
+  {
     "name": "dev.sysboot.config.yaml.contract.ShellScriptModuleDocument",
     "allDeclaredFields": true,
     "allDeclaredMethods": true,

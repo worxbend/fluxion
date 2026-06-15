@@ -3,6 +3,7 @@ package dev.sysboot.executor;
 import dev.sysboot.core.BootstrapConfig;
 import dev.sysboot.core.BootstrapModule;
 import dev.sysboot.core.CompiledBinaryModule;
+import dev.sysboot.core.FlatpakRemoteModule;
 import dev.sysboot.core.OsTarget;
 import dev.sysboot.core.PackageManagerKind;
 import dev.sysboot.core.PackageModule;
@@ -66,8 +67,20 @@ public final class ConfigValidator {
           validatePackageModule(config, packageModule, path, issues);
       case ZypperModule zypperModule ->
           validatePackageModule(config, zypperModule.asPackageModule(), path, issues);
+      case FlatpakRemoteModule flatpakRemoteModule ->
+          validateFlatpakRemote(flatpakRemoteModule, path, issues);
       case CompiledBinaryModule binaryModule -> validateCompiledBinary(binaryModule, path, issues);
       default -> {}
+    }
+  }
+
+  private void validateFlatpakRemote(
+      FlatpakRemoteModule module, String path, List<ValidationIssue> issues) {
+    if (!"https".equalsIgnoreCase(module.url().getScheme())) {
+      addWarning(
+          issues,
+          path + ".url",
+          "Flatpak remote '%s' should use an HTTPS repository URL".formatted(module.remote()));
     }
   }
 

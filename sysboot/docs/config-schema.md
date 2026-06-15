@@ -111,6 +111,25 @@ Fedora uses `dnf`, Arch uses `pacman`, `paru`, or `yay`, Debian uses `apt`, and 
     - org.telegram.desktop
 ```
 
+Use `flatpak-remote` when the remote itself should be declared and audited instead of hidden in a
+shell command.
+
+---
+
+### `flatpak-remote` — add a Flatpak remote
+
+```yaml
+- type: flatpak-remote
+  name: flathub                 # required
+  remote: flathub               # required
+  url: https://flathub.org/repo/flathub.flatpakrepo # required
+  system: true                  # default: true; false adds the user remote
+```
+
+Execution runs `flatpak remote-add --if-not-exists <remote> <url>`. When `system` is `false`,
+Fluxion adds `--user`. `plan --show-commands`, `dry-run`, `status`, `diff`, and `explain` use the
+remote name as the item key. Validation warns when the URL is not HTTPS.
+
 ---
 
 ### `shell-script` — run a shell script

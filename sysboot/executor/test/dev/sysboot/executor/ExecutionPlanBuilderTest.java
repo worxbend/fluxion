@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import dev.sysboot.core.AssertModule;
 import dev.sysboot.core.BootstrapConfig;
+import dev.sysboot.core.FlatpakRemoteModule;
 import dev.sysboot.core.ItemType;
 import dev.sysboot.core.ManualModule;
 import dev.sysboot.core.ModuleName;
@@ -17,6 +18,7 @@ import dev.sysboot.core.PhaseName;
 import dev.sysboot.core.ProfileName;
 import dev.sysboot.core.RestartPolicy;
 import dev.sysboot.core.StepResult;
+import java.net.URI;
 import java.time.Duration;
 import java.util.List;
 import java.util.Optional;
@@ -123,6 +125,38 @@ class ExecutionPlanBuilderTest {
         .isEqualTo(ItemType.ASSERT);
     assertThat(plan.phases().getFirst().modules().get(1).items().getFirst().item().itemType())
         .isEqualTo(ItemType.MANUAL);
+  }
+
+  @Test
+  void build_flatpakRemoteModule_includesCommandPreview() {
+    var builder = new ExecutionPlanBuilder(new PackageManagerExecutorRegistry(List.of(dnf())));
+    var phase =
+        new Phase(
+            new PhaseName("desktop"),
+            "",
+            List.of(
+                new FlatpakRemoteModule(
+                    new ModuleName("flathub"),
+                    "flathub",
+                    URI.create("https://flathub.org/repo/flathub.flatpakrepo"),
+                    false)),
+            List.of(),
+            new RestartPolicy.None(),
+            false);
+
+    ExecutionPlan plan = builder.build(config(List.of(phase)));
+
+    ExecutionPlan.Item item = plan.phases().getFirst().modules().getFirst().items().getFirst();
+    assertThat(item.item().itemType()).isEqualTo(ItemType.FLATPAK_REMOTE);
+    assertThat(item.commandPreview())
+        .contains(
+            List.of(
+                "flatpak",
+                "--user",
+                "remote-add",
+                "--if-not-exists",
+                "flathub",
+                "https://flathub.org/repo/flathub.flatpakrepo"));
   }
 
   private static BootstrapConfig config(List<Phase> phases) {

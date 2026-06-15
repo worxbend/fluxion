@@ -154,6 +154,7 @@ Supported step types:
 
 - `packages`
 - `flatpak`
+- `flatpak-remote`
 - `shell-script`
 - `shell-command`
 - `compiled-binary`

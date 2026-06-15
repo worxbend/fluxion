@@ -7,6 +7,7 @@ import dev.sysboot.config.yaml.contract.ConfigDocument;
 import dev.sysboot.config.yaml.contract.DefaultShellModuleDocument;
 import dev.sysboot.config.yaml.contract.DotbotModuleDocument;
 import dev.sysboot.config.yaml.contract.FlatpakModuleDocument;
+import dev.sysboot.config.yaml.contract.FlatpakRemoteModuleDocument;
 import dev.sysboot.config.yaml.contract.ManualModuleDocument;
 import dev.sysboot.config.yaml.contract.ModuleDocument;
 import dev.sysboot.config.yaml.contract.NerdFontModuleDocument;
@@ -28,6 +29,7 @@ import dev.sysboot.core.CompiledBinaryModule;
 import dev.sysboot.core.DefaultShellModule;
 import dev.sysboot.core.DotbotModule;
 import dev.sysboot.core.FlatpakModule;
+import dev.sysboot.core.FlatpakRemoteModule;
 import dev.sysboot.core.ManualModule;
 import dev.sysboot.core.ModuleName;
 import dev.sysboot.core.NerdFontConfig;
@@ -145,6 +147,7 @@ final class ConfigMapper {
     return switch (dto) {
       case PackagesModuleDocument pm -> mapPackagesModule(pm);
       case FlatpakModuleDocument fm -> mapFlatpakModule(fm);
+      case FlatpakRemoteModuleDocument frm -> mapFlatpakRemoteModule(frm);
       case ShellScriptModuleDocument sm -> mapShellScriptModule(sm, configFile);
       case CompiledBinaryModuleDocument bm -> mapCompiledBinaryModule(bm);
       case DotbotModuleDocument db -> mapDotbotModule(db, configFile);
@@ -175,6 +178,15 @@ final class ConfigMapper {
     String remote = dto.remote != null ? dto.remote : "flathub";
     return new FlatpakModule(
         new ModuleName(requireField(dto.name, "name")), remote, requireField(dto.appIds, "appIds"));
+  }
+
+  private FlatpakRemoteModule mapFlatpakRemoteModule(FlatpakRemoteModuleDocument dto) {
+    boolean system = dto.system == null || dto.system;
+    return new FlatpakRemoteModule(
+        new ModuleName(requireField(dto.name, "name")),
+        requireField(dto.remote, "flatpak-remote.remote"),
+        URI.create(requireField(dto.url, "flatpak-remote.url")),
+        system);
   }
 
   private ShellScriptModule mapShellScriptModule(ShellScriptModuleDocument dto, Path configFile) {

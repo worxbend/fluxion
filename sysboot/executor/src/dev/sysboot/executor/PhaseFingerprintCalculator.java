@@ -6,6 +6,7 @@ import dev.sysboot.core.CompiledBinaryModule;
 import dev.sysboot.core.DefaultShellModule;
 import dev.sysboot.core.DotbotModule;
 import dev.sysboot.core.FlatpakModule;
+import dev.sysboot.core.FlatpakRemoteModule;
 import dev.sysboot.core.ManualModule;
 import dev.sysboot.core.NerdFontModule;
 import dev.sysboot.core.OhMyZshModule;
@@ -59,6 +60,12 @@ final class PhaseFingerprintCalculator {
         append(builder, "type", "flatpak");
         append(builder, "remote", fm.remote());
         fm.appIds().forEach(app -> append(builder, "appId", app));
+      }
+      case FlatpakRemoteModule frm -> {
+        append(builder, "type", "flatpak-remote");
+        append(builder, "remote", frm.remote());
+        append(builder, "url", frm.url().toString());
+        append(builder, "system", frm.system());
       }
       case ShellScriptModule sm -> {
         append(builder, "type", "shell-script");

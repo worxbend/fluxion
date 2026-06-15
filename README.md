@@ -1,8 +1,8 @@
 # Fluxion
 
-Fluxion is a YAML-driven Linux workstation bootstrapper. It installs packages, Flatpaks,
-scripts, dotfiles, shell tooling, Nerd Fonts, and prebuilt binaries from one declarative profile,
-then records state so reruns can skip work safely.
+Fluxion is a YAML-driven Linux workstation bootstrapper. It installs packages, Flatpaks and their
+remotes, scripts, dotfiles, shell tooling, Nerd Fonts, and prebuilt binaries from one declarative
+profile, then records state so reruns can skip work safely.
 
 The active codebase lives in `sysboot/` and uses Java 25 with Mill 1.1.6.
 

@@ -10,6 +10,7 @@ import dev.sysboot.core.DotbotModule;
 import dev.sysboot.core.ExecutionEvent;
 import dev.sysboot.core.ExecutionEventListener;
 import dev.sysboot.core.FlatpakModule;
+import dev.sysboot.core.FlatpakRemoteModule;
 import dev.sysboot.core.ItemType;
 import dev.sysboot.core.ManualModule;
 import dev.sysboot.core.ModuleName;
@@ -47,6 +48,7 @@ public final class BootstrapOrchestratorImpl implements BootstrapOrchestrator {
   private final ShellScriptExecutor shellScriptExecutor;
   private final CompiledBinaryInstaller binaryInstaller;
   private final FlatpakInstaller flatpakInstaller;
+  private final FlatpakRemoteInstaller flatpakRemoteInstaller;
   private final DotbotExecutor dotbotExecutor;
   private final DefaultShellExecutor defaultShellExecutor;
   private final OhMyZshExecutor ohMyZshExecutor;
@@ -67,6 +69,7 @@ public final class BootstrapOrchestratorImpl implements BootstrapOrchestrator {
       ShellScriptExecutor shellScriptExecutor,
       CompiledBinaryInstaller binaryInstaller,
       FlatpakInstaller flatpakInstaller,
+      FlatpakRemoteInstaller flatpakRemoteInstaller,
       DotbotExecutor dotbotExecutor,
       DefaultShellExecutor defaultShellExecutor,
       OhMyZshExecutor ohMyZshExecutor,
@@ -84,6 +87,7 @@ public final class BootstrapOrchestratorImpl implements BootstrapOrchestrator {
     this.shellScriptExecutor = shellScriptExecutor;
     this.binaryInstaller = binaryInstaller;
     this.flatpakInstaller = flatpakInstaller;
+    this.flatpakRemoteInstaller = flatpakRemoteInstaller;
     this.dotbotExecutor = dotbotExecutor;
     this.defaultShellExecutor = defaultShellExecutor;
     this.ohMyZshExecutor = ohMyZshExecutor;
@@ -113,6 +117,7 @@ public final class BootstrapOrchestratorImpl implements BootstrapOrchestrator {
         shellScriptExecutor,
         binaryInstaller,
         flatpakInstaller,
+        new FlatpakRemoteInstaller(new DefaultShellRunner()),
         new DotbotExecutor(new DefaultShellRunner()),
         new DefaultShellExecutor(new DefaultShellRunner()),
         new OhMyZshExecutor(new DefaultShellRunner()),
@@ -215,6 +220,7 @@ public final class BootstrapOrchestratorImpl implements BootstrapOrchestrator {
     }
     return switch (module) {
       case FlatpakModule fm -> executeFlatpakModule(fm, listener);
+      case FlatpakRemoteModule frm -> executeFlatpakRemoteModule(frm, listener);
       case ShellScriptModule sm -> executeShellScript(sm, listener, phaseRunner);
       case CompiledBinaryModule bm -> executeBinaryInstall(bm, listener, phaseRunner);
       case DotbotModule dm ->
@@ -343,6 +349,16 @@ public final class BootstrapOrchestratorImpl implements BootstrapOrchestrator {
     return anyFailed;
   }
 
+  private boolean executeFlatpakRemoteModule(
+      FlatpakRemoteModule module, ExecutionEventListener listener) {
+    return executeItem(
+        module.name(),
+        module.remote(),
+        ItemType.FLATPAK_REMOTE,
+        () -> flatpakRemoteInstaller.add(module),
+        listener);
+  }
+
   private boolean executeShellScript(
       ShellScriptModule module, ExecutionEventListener listener, ShellRunner phaseRunner) {
     String scriptKey = module.script().toString();
@@ -417,6 +433,8 @@ public final class BootstrapOrchestratorImpl implements BootstrapOrchestrator {
                           appId,
                           List.of("flatpak", "install", "-y", fm.remote(), appId),
                           listener));
+      case FlatpakRemoteModule frm ->
+          emitDryRun(frm.name(), frm.remote(), flatpakRemoteInstaller.addCommand(frm), listener);
       case ShellScriptModule sm ->
           emitDryRun(sm.name(), sm.script().toString(), List.of(sm.script().toString()), listener);
       case CompiledBinaryModule bm ->

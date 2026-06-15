@@ -13,6 +13,7 @@ import dev.sysboot.core.BootstrapConfig;
 import dev.sysboot.core.BootstrapState;
 import dev.sysboot.core.EventKind;
 import dev.sysboot.core.ExecutionEvent;
+import dev.sysboot.core.FlatpakRemoteModule;
 import dev.sysboot.core.ManualModule;
 import dev.sysboot.core.ModuleName;
 import dev.sysboot.core.OsTarget;
@@ -31,6 +32,7 @@ import dev.sysboot.core.ShellRunner;
 import dev.sysboot.core.StateEntry;
 import dev.sysboot.core.StateRepository;
 import dev.sysboot.core.StepResult;
+import java.net.URI;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
@@ -54,6 +56,8 @@ class BootstrapOrchestratorImplTest {
 
   @Mock private FlatpakInstaller flatpakInstaller;
 
+  @Mock private FlatpakRemoteInstaller flatpakRemoteInstaller;
+
   private BootstrapOrchestratorImpl orchestrator;
 
   private SkipEvaluator alwaysRun() {
@@ -71,16 +75,7 @@ class BootstrapOrchestratorImplTest {
         .when(dnfExecutor.installCommand(any()))
         .thenAnswer(invocation -> dnfInstallCommand(invocation.getArgument(0)));
 
-    var registry = new PackageManagerExecutorRegistry(List.of(dnfExecutor));
-    orchestrator =
-        new BootstrapOrchestratorImpl(
-            registry,
-            shellScriptExecutor,
-            binaryInstaller,
-            flatpakInstaller,
-            alwaysRun(),
-            Optional.empty(),
-            "test");
+    orchestrator = orchestrator(alwaysRun(), Optional.empty());
   }
 
   @Test
@@ -430,6 +425,65 @@ class BootstrapOrchestratorImplTest {
         .containsExactly("github-login");
   }
 
+  @Test
+  void execute_whenFlatpakRemoteConfigured_addsRemoteAndRecordsSuccess() {
+    var stateRepository = new InMemoryStateRepository(BootstrapState.empty("test", "1.0.0"));
+    when(flatpakRemoteInstaller.add(any()))
+        .thenReturn(new StepResult.Success("flathub", Duration.ofMillis(25)));
+    orchestrator = orchestrator(alwaysRun(), Optional.of(stateRepository));
+    var module =
+        new FlatpakRemoteModule(
+            new ModuleName("flathub"),
+            "flathub",
+            URI.create("https://flathub.org/repo/flathub.flatpakrepo"),
+            true);
+
+    orchestrator.execute(buildConfig(List.of(module)), ignored -> {});
+
+    verify(flatpakRemoteInstaller).add(module);
+    assertThat(stateRepository.state().entries())
+        .extracting(StateEntry::itemType)
+        .containsExactly(dev.sysboot.core.ItemType.FLATPAK_REMOTE);
+  }
+
+  @Test
+  void dryRun_whenFlatpakRemoteConfigured_emitsRemoteAddCommand() {
+    var module =
+        new FlatpakRemoteModule(
+            new ModuleName("flathub"),
+            "flathub",
+            URI.create("https://flathub.org/repo/flathub.flatpakrepo"),
+            false);
+    when(flatpakRemoteInstaller.addCommand(module))
+        .thenReturn(
+            List.of(
+                "flatpak",
+                "--user",
+                "remote-add",
+                "--if-not-exists",
+                "flathub",
+                "https://flathub.org/repo/flathub.flatpakrepo"));
+
+    List<ExecutionEvent> events = new ArrayList<>();
+    orchestrator.dryRun(buildConfig(List.of(module)), events::add);
+
+    var dryRun =
+        (StepResult.DryRun)
+            events.stream()
+                .flatMap(event -> event.result().stream())
+                .filter(StepResult.DryRun.class::isInstance)
+                .findFirst()
+                .orElseThrow();
+    assertThat(dryRun.wouldExecute())
+        .containsExactly(
+            "flatpak",
+            "--user",
+            "remote-add",
+            "--if-not-exists",
+            "flathub",
+            "https://flathub.org/repo/flathub.flatpakrepo");
+  }
+
   private BootstrapOrchestratorImpl orchestrator(
       SkipEvaluator skipEvaluator, Optional<StateRepository> stateRepository) {
     return new BootstrapOrchestratorImpl(
@@ -437,9 +491,18 @@ class BootstrapOrchestratorImplTest {
         shellScriptExecutor,
         binaryInstaller,
         flatpakInstaller,
+        flatpakRemoteInstaller,
+        new DotbotExecutor(new DefaultShellRunner()),
+        new DefaultShellExecutor(new DefaultShellRunner()),
+        new OhMyZshExecutor(new DefaultShellRunner()),
+        new ToolchainExecutor(new DefaultShellRunner()),
+        new NerdFontExecutor(new DefaultShellRunner()),
+        new ShellReloadExecutor(new DefaultShellRunner()),
         skipEvaluator,
         stateRepository,
-        "test");
+        "test",
+        new DefaultShellRunner(),
+        new DefaultShellRunner());
   }
 
   private BootstrapOrchestratorImpl orchestratorWithRunner(ProcessResult result) {
@@ -454,6 +517,7 @@ class BootstrapOrchestratorImplTest {
         shellScriptExecutor,
         binaryInstaller,
         flatpakInstaller,
+        new FlatpakRemoteInstaller(runner),
         new DotbotExecutor(runner),
         new DefaultShellExecutor(runner),
         new OhMyZshExecutor(runner),

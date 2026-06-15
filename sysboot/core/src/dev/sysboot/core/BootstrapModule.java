@@ -3,6 +3,7 @@ package dev.sysboot.core;
 public sealed interface BootstrapModule
     permits PackageModule,
         FlatpakModule,
+        FlatpakRemoteModule,
         ShellScriptModule,
         CompiledBinaryModule,
         ZypperModule,

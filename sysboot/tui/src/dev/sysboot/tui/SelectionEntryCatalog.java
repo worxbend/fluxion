@@ -6,6 +6,7 @@ import dev.sysboot.core.CompiledBinaryModule;
 import dev.sysboot.core.DefaultShellModule;
 import dev.sysboot.core.DotbotModule;
 import dev.sysboot.core.FlatpakModule;
+import dev.sysboot.core.FlatpakRemoteModule;
 import dev.sysboot.core.ManualModule;
 import dev.sysboot.core.NerdFontModule;
 import dev.sysboot.core.OhMyZshModule;
@@ -28,6 +29,7 @@ final class SelectionEntryCatalog {
       case ZypperModule zypperModule ->
           zypperModule.packages().stream().map(packageName -> packageName.value()).toList();
       case FlatpakModule flatpakModule -> flatpakModule.appIds();
+      case FlatpakRemoteModule flatpakRemoteModule -> List.of(flatpakRemoteModule.remote());
       case ShellCommandModule shellCommandModule -> shellCommandModule.commands();
       case NerdFontModule nerdFontModule -> nerdFontModule.config().families();
       case CompiledBinaryModule compiledBinaryModule -> List.of(compiledBinaryModule.binaryName());

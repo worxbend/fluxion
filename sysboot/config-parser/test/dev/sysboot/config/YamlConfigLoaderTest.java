@@ -7,6 +7,7 @@ import dev.sysboot.core.AssertModule;
 import dev.sysboot.core.BootstrapConfig;
 import dev.sysboot.core.CompiledBinaryModule;
 import dev.sysboot.core.FlatpakModule;
+import dev.sysboot.core.FlatpakRemoteModule;
 import dev.sysboot.core.ManualModule;
 import dev.sysboot.core.OsTarget;
 import dev.sysboot.core.PackageManagerKind;
@@ -58,6 +59,35 @@ class YamlConfigLoaderTest {
     assertThat(result.modules()).hasSize(2);
     assertThat(result.modules().getFirst()).isInstanceOf(PackageModule.class);
     assertThat(result.modules().get(1)).isInstanceOf(FlatpakModule.class);
+  }
+
+  @Test
+  void load_whenFlatpakRemoteStep_parsesRemoteConfiguration(@TempDir Path tmpDir)
+      throws IOException {
+    Path config =
+        writeConfig(
+            tmpDir,
+            """
+            profile: desktop
+            os:
+              type: fedora
+              release: "44"
+            jobs:
+              - name: desktop
+                steps:
+                  - type: flatpak-remote
+                    name: flathub
+                    remote: flathub
+                    url: https://flathub.org/repo/flathub.flatpakrepo
+                    system: false
+            """);
+
+    BootstrapConfig result = loader.load(config);
+
+    var module = (FlatpakRemoteModule) result.phases().getFirst().modules().getFirst();
+    assertThat(module.remote()).isEqualTo("flathub");
+    assertThat(module.url().toString()).isEqualTo("https://flathub.org/repo/flathub.flatpakrepo");
+    assertThat(module.system()).isFalse();
   }
 
   @Test

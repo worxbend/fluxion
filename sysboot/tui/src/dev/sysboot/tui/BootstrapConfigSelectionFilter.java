@@ -7,6 +7,7 @@ import dev.sysboot.core.CompiledBinaryModule;
 import dev.sysboot.core.DefaultShellModule;
 import dev.sysboot.core.DotbotModule;
 import dev.sysboot.core.FlatpakModule;
+import dev.sysboot.core.FlatpakRemoteModule;
 import dev.sysboot.core.ManualModule;
 import dev.sysboot.core.NerdFontConfig;
 import dev.sysboot.core.NerdFontModule;
@@ -77,6 +78,7 @@ final class BootstrapConfigSelectionFilter {
       case PackageModule packageModule -> filterPackageModule(packageModule, entries);
       case ZypperModule zypperModule -> filterZypperModule(zypperModule, entries);
       case FlatpakModule flatpakModule -> filterFlatpakModule(flatpakModule, entries);
+      case FlatpakRemoteModule flatpakRemoteModule -> Optional.of(flatpakRemoteModule);
       case ShellCommandModule shellCommandModule ->
           filterShellCommandModule(shellCommandModule, entries);
       case NerdFontModule nerdFontModule -> filterNerdFontModule(nerdFontModule, entries);

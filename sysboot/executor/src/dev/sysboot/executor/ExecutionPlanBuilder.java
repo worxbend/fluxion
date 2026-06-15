@@ -7,6 +7,7 @@ import dev.sysboot.core.CompiledBinaryModule;
 import dev.sysboot.core.DefaultShellModule;
 import dev.sysboot.core.DotbotModule;
 import dev.sysboot.core.FlatpakModule;
+import dev.sysboot.core.FlatpakRemoteModule;
 import dev.sysboot.core.ItemType;
 import dev.sysboot.core.ManualModule;
 import dev.sysboot.core.ModuleItem;
@@ -52,7 +53,9 @@ public final class ExecutionPlanBuilder {
 
   private ExecutionPlan.Module module(BootstrapModule module) {
     return new ExecutionPlan.Module(
-        module.name().value(), moduleType(module), items(module).stream().map(this::item).toList());
+        module.name().value(),
+        moduleType(module),
+        items(module).stream().map(item -> item(module, item)).toList());
   }
 
   private List<ModuleItem> items(BootstrapModule module) {
@@ -62,15 +65,38 @@ public final class ExecutionPlanBuilder {
         .orElseGet(() -> fallbackItems(module));
   }
 
-  private ExecutionPlan.Item item(ModuleItem item) {
-    Optional<List<String>> commandPreview =
-        item.packageManager()
-            .map(
-                kind ->
-                    packageManagerRegistry
-                        .forKind(kind)
-                        .installCommand(new dev.sysboot.core.PackageName(item.key())));
+  private ExecutionPlan.Item item(BootstrapModule module, ModuleItem item) {
+    Optional<List<String>> commandPreview = commandPreview(module, item);
     return new ExecutionPlan.Item(item, commandPreview);
+  }
+
+  private Optional<List<String>> commandPreview(BootstrapModule module, ModuleItem item) {
+    if (module instanceof FlatpakModule flatpakModule) {
+      return Optional.of(List.of("flatpak", "install", "-y", flatpakModule.remote(), item.key()));
+    }
+    if (module instanceof FlatpakRemoteModule flatpakRemoteModule) {
+      return Optional.of(flatpakRemoteCommand(flatpakRemoteModule));
+    }
+    return item.packageManager()
+        .map(
+            kind ->
+                packageManagerRegistry
+                    .forKind(kind)
+                    .installCommand(new dev.sysboot.core.PackageName(item.key())));
+  }
+
+  private List<String> flatpakRemoteCommand(FlatpakRemoteModule module) {
+    if (module.system()) {
+      return List.of(
+          "flatpak", "remote-add", "--if-not-exists", module.remote(), module.url().toString());
+    }
+    return List.of(
+        "flatpak",
+        "--user",
+        "remote-add",
+        "--if-not-exists",
+        module.remote(),
+        module.url().toString());
   }
 
   private List<ModuleItem> fallbackItems(BootstrapModule module) {
@@ -79,6 +105,8 @@ public final class ExecutionPlanBuilder {
           fm.appIds().stream()
               .map(app -> new ModuleItem(fm.name(), app, ItemType.FLATPAK))
               .toList();
+      case FlatpakRemoteModule frm ->
+          List.of(new ModuleItem(frm.name(), frm.remote(), ItemType.FLATPAK_REMOTE));
       case ShellScriptModule sm ->
           List.of(new ModuleItem(sm.name(), sm.script().toString(), ItemType.SHELL_SCRIPT));
       case CompiledBinaryModule bm ->
@@ -118,6 +146,7 @@ public final class ExecutionPlanBuilder {
     return switch (module) {
       case PackageModule ignored -> "packages";
       case FlatpakModule ignored -> "flatpak";
+      case FlatpakRemoteModule ignored -> "flatpak-remote";
       case ShellScriptModule ignored -> "shell-script";
       case CompiledBinaryModule ignored -> "compiled-binary";
       case ZypperModule ignored -> "zypper";

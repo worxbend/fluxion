@@ -21,6 +21,8 @@ import dev.sysboot.executor.DotbotProbe;
 import dev.sysboot.executor.ExecutionPlanBuilder;
 import dev.sysboot.executor.FlatpakInstaller;
 import dev.sysboot.executor.FlatpakProbe;
+import dev.sysboot.executor.FlatpakRemoteInstaller;
+import dev.sysboot.executor.FlatpakRemoteProbe;
 import dev.sysboot.executor.InstalledProbeRegistry;
 import dev.sysboot.executor.JsonStateRepository;
 import dev.sysboot.executor.NerdFontExecutor;
@@ -161,6 +163,7 @@ public final class ApplicationContext {
         new ShellScriptExecutor(primaryRunner),
         new CompiledBinaryInstaller(baseRunner),
         new FlatpakInstaller(baseRunner),
+        new FlatpakRemoteInstaller(baseRunner),
         new DotbotExecutor(baseRunner),
         new DefaultShellExecutor(primaryRunner),
         new OhMyZshExecutor(primaryRunner),
@@ -182,6 +185,7 @@ public final class ApplicationContext {
             new AptPackageProbe(runner),
             new ZypperPackageProbe(runner),
             new FlatpakProbe(runner),
+            new FlatpakRemoteProbe(runner),
             new CompiledBinaryProbe(Optional.empty(), Optional.empty()),
             new ShellScriptProbe(runner, Map.of()),
             new DotbotProbe(runner, Map.of()),

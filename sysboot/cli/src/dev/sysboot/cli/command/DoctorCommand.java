@@ -12,6 +12,7 @@ import dev.sysboot.core.BootstrapModule;
 import dev.sysboot.core.CompiledBinaryModule;
 import dev.sysboot.core.DefaultShellModule;
 import dev.sysboot.core.FlatpakModule;
+import dev.sysboot.core.FlatpakRemoteModule;
 import dev.sysboot.core.PackageManagerKind;
 import dev.sysboot.core.PackageModule;
 import dev.sysboot.core.ShellCommandModule;
@@ -203,6 +204,7 @@ public final class DoctorCommand implements Runnable {
   private void addModuleChecks(BootstrapModule module, List<Check> checks) {
     switch (module) {
       case FlatpakModule fm -> addFlatpakChecks(fm, checks);
+      case FlatpakRemoteModule frm -> addFlatpakRemoteChecks(frm, checks);
       case DefaultShellModule dsm -> checks.add(checkShellPath(dsm.shellPath()));
       case ShellCommandModule scm -> checks.add(checkRequiredCommand(scm.shell(), "shell"));
       case AssertModule am -> checks.add(checkRequiredCommand(am.shell(), "assert shell"));
@@ -216,6 +218,11 @@ public final class DoctorCommand implements Runnable {
     if (module.remote().equals("flathub")) {
       checks.add(Check.warn("flatpak remote", "verify Flathub is configured before run"));
     }
+  }
+
+  private void addFlatpakRemoteChecks(FlatpakRemoteModule module, List<Check> checks) {
+    checks.add(checkRequiredCommand("flatpak", "flatpak command"));
+    checks.add(checkUrl("flatpak remote", module.url()));
   }
 
   private Check checkShellPath(Path shellPath) {

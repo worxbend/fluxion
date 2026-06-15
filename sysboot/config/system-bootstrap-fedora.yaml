@@ -488,6 +488,11 @@ jobs:
       type: none
     continueOnModuleError: true
     steps:
+      - type: flatpak-remote
+        name: flathub-remote
+        remote: flathub
+        url: https://flathub.org/repo/flathub.flatpakrepo
+
       - type: flatpak
         name: desktop-flatpaks
         remote: flathub

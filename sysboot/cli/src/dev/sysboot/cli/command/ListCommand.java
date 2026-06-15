@@ -11,6 +11,7 @@ import dev.sysboot.core.CompiledBinaryModule;
 import dev.sysboot.core.DefaultShellModule;
 import dev.sysboot.core.DotbotModule;
 import dev.sysboot.core.FlatpakModule;
+import dev.sysboot.core.FlatpakRemoteModule;
 import dev.sysboot.core.ManualModule;
 import dev.sysboot.core.NerdFontModule;
 import dev.sysboot.core.OhMyZshModule;
@@ -83,6 +84,7 @@ public final class ListCommand implements Runnable {
     return switch (module) {
       case PackageModule pm -> "📦 packages";
       case FlatpakModule ignored -> "🗃 flatpak";
+      case FlatpakRemoteModule ignored -> "🗃 remote";
       case ShellScriptModule ignored -> "📜 script";
       case CompiledBinaryModule ignored -> "⬇ binary";
       case ZypperModule ignored -> "📦 zypper";
@@ -102,6 +104,7 @@ public final class ListCommand implements Runnable {
     return switch (module) {
       case PackageModule ignored -> "packages";
       case FlatpakModule ignored -> "flatpak";
+      case FlatpakRemoteModule ignored -> "flatpak-remote";
       case ShellScriptModule ignored -> "shell-script";
       case CompiledBinaryModule ignored -> "compiled-binary";
       case ZypperModule ignored -> "zypper";
@@ -121,6 +124,7 @@ public final class ListCommand implements Runnable {
     return switch (module) {
       case PackageModule pm -> pm.packages().size() + " packages (" + pm.packageManager() + ")";
       case FlatpakModule fm -> fm.appIds().size() + " apps from " + fm.remote();
+      case FlatpakRemoteModule frm -> frm.remote() + " -> " + frm.url();
       case ShellScriptModule sm -> sm.script().toString();
       case CompiledBinaryModule bm -> bm.binaryName() + " from " + bm.url();
       case ZypperModule zm -> zm.packages().size() + " packages (zypper)";

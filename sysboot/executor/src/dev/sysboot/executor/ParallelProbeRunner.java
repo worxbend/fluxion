@@ -6,6 +6,7 @@ import dev.sysboot.core.CompiledBinaryModule;
 import dev.sysboot.core.DefaultShellModule;
 import dev.sysboot.core.DotbotModule;
 import dev.sysboot.core.FlatpakModule;
+import dev.sysboot.core.FlatpakRemoteModule;
 import dev.sysboot.core.InstallationStatus;
 import dev.sysboot.core.ItemType;
 import dev.sysboot.core.ManualModule;
@@ -95,6 +96,8 @@ public final class ParallelProbeRunner {
         case FlatpakModule fm ->
             fm.appIds()
                 .forEach(appId -> targets.add(new ModuleItem(fm.name(), appId, ItemType.FLATPAK)));
+        case FlatpakRemoteModule frm ->
+            targets.add(new ModuleItem(frm.name(), frm.remote(), ItemType.FLATPAK_REMOTE));
         case ShellScriptModule sm ->
             targets.add(new ModuleItem(sm.name(), sm.script().toString(), ItemType.SHELL_SCRIPT));
         case CompiledBinaryModule bm ->

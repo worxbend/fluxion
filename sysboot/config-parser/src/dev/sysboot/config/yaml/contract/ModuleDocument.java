@@ -8,6 +8,7 @@ import com.fasterxml.jackson.annotation.JsonTypeInfo;
 @JsonSubTypes({
   @JsonSubTypes.Type(value = PackagesModuleDocument.class, name = "packages"),
   @JsonSubTypes.Type(value = FlatpakModuleDocument.class, name = "flatpak"),
+  @JsonSubTypes.Type(value = FlatpakRemoteModuleDocument.class, name = "flatpak-remote"),
   @JsonSubTypes.Type(value = ShellScriptModuleDocument.class, name = "shell-script"),
   @JsonSubTypes.Type(value = CompiledBinaryModuleDocument.class, name = "compiled-binary"),
   @JsonSubTypes.Type(value = DotbotModuleDocument.class, name = "dotbot"),
@@ -23,6 +24,7 @@ import com.fasterxml.jackson.annotation.JsonTypeInfo;
 public abstract sealed class ModuleDocument
     permits PackagesModuleDocument,
         FlatpakModuleDocument,
+        FlatpakRemoteModuleDocument,
         ShellScriptModuleDocument,
         CompiledBinaryModuleDocument,
         DotbotModuleDocument,

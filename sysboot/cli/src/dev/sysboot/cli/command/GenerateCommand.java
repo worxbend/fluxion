@@ -187,6 +187,11 @@ public final class GenerateCommand implements Runnable {
                   type: none
                 continueOnModuleError: true
                 steps:
+                  - type: flatpak-remote
+                    name: flathub-remote
+                    remote: flathub
+                    url: https://flathub.org/repo/flathub.flatpakrepo
+
                   - type: flatpak
                     name: starter-flatpaks
                     remote: flathub
