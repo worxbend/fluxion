@@ -7,10 +7,12 @@ import dev.sysboot.cli.output.JsonOutput;
 import dev.sysboot.cli.output.OutputFormat;
 import dev.sysboot.core.BootstrapConfig;
 import dev.sysboot.core.BootstrapState;
-import dev.sysboot.core.InstallationStatus;
 import dev.sysboot.executor.JsonStateRepository;
 import dev.sysboot.executor.PhaseExecutionPlanner;
+import dev.sysboot.executor.StatusReport;
+import dev.sysboot.executor.StatusReportBuilder;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import picocli.CommandLine.Command;
@@ -44,89 +46,142 @@ public final class StatusCommand implements Runnable {
       description = "Output format: ${COMPLETION-CANDIDATES}")
   private OutputFormat format;
 
+  @Option(names = "--summary", description = "Print only aggregate status counts")
+  private boolean summary;
+
+  @Option(names = "--missing", description = "Show configured items that are missing")
+  private boolean missingOnly;
+
+  @Option(names = "--state-only", description = "Show state entries absent from the config")
+  private boolean stateOnly;
+
+  @Option(names = "--failed", description = "Show missing, unknown, and version-drift items")
+  private boolean failedOnly;
+
   @Override
   public void run() {
     var context = ApplicationContext.create(true, profile, false, false);
     BootstrapConfig config = context.configLoader().load(options.resolvedConfigFile());
+    Optional<BootstrapState> state = new JsonStateRepository(new ObjectMapper()).load(profile);
 
     if (resumeCommand) {
-      writeResumeCommand(config);
+      writeResumeCommand(config, state);
       return;
     }
 
-    Map<String, InstallationStatus> results =
-        context.parallelProbeRunner().probeAll(config.modules(), ignored -> {});
+    var plan = context.executionPlanBuilder().build(config);
+    var liveResults = context.parallelProbeRunner().probeAll(config.modules(), ignored -> {});
+    StatusReport report = new StatusReportBuilder().build(plan, state, liveResults);
+    List<StatusReport.Item> items = filteredItems(report);
 
     if (format == OutputFormat.JSON) {
-      JsonOutput.write(spec.commandLine().getOut(), jsonStatus(config, results));
+      JsonOutput.write(spec.commandLine().getOut(), jsonStatus(report, items));
+      return;
+    }
+
+    if (summary) {
+      writeSummary(report);
       return;
     }
 
     var out = spec.commandLine().getOut();
-    out.printf("%-45s  %-15s  %s%n", "Item", "Type", "Status");
+    out.printf("%-45s  %-15s  %-20s  %s%n", "Item", "Type", "Status", "Detail");
     out.println("-".repeat(80));
 
-    if (results.isEmpty()) {
+    if (items.isEmpty()) {
       out.println("(no items found)");
       return;
     }
 
-    results.forEach(
-        (key, status) -> {
-          String statusLabel =
-              switch (status) {
-                case InstallationStatus.InstalledByProbe p ->
-                    "installed"
-                        + (p.detectedVersion() != null ? " (" + p.detectedVersion() + ")" : "");
-                case InstallationStatus.InstalledFromState s ->
-                    "from-state (" + s.installedAt() + ")";
-                case InstallationStatus.NotInstalled ignored -> "not installed";
-                case InstallationStatus.Unknown u -> "unknown: " + u.reason();
-              };
-          out.printf("%-45s  %-15s  %s%n", truncate(key, 45), "", statusLabel);
-        });
+    items.forEach(
+        item ->
+            out.printf(
+                "%-45s  %-15s  %-20s  %s%n",
+                truncate(item.key(), 45),
+                item.type(),
+                statusKind(item.classification()),
+                item.detail()));
   }
 
-  private Map<String, Object> jsonStatus(
-      BootstrapConfig config, Map<String, InstallationStatus> results) {
+  private List<StatusReport.Item> filteredItems(StatusReport report) {
+    return report.items().stream().filter(this::includeItem).toList();
+  }
+
+  private boolean includeItem(StatusReport.Item item) {
+    if (missingOnly) {
+      return item.classification() == StatusReport.Classification.CONFIGURED_MISSING;
+    }
+    if (stateOnly) {
+      return item.classification() == StatusReport.Classification.STATE_ONLY;
+    }
+    if (failedOnly) {
+      return switch (item.classification()) {
+        case CONFIGURED_MISSING, UNKNOWN, VERSION_DRIFT -> true;
+        case CONFIGURED_INSTALLED, STATE_ONLY -> false;
+      };
+    }
+    return true;
+  }
+
+  private Map<String, Object> jsonStatus(StatusReport report, List<StatusReport.Item> items) {
     var output = new LinkedHashMap<String, Object>();
-    output.put("profileName", config.profileName().value());
-    output.put("items", results.entrySet().stream().map(this::jsonStatusItem).toList());
+    output.put("profileName", report.profileName());
+    output.put("summary", jsonSummary(report.summary()));
+    output.put("items", summary ? List.of() : items.stream().map(this::jsonStatusItem).toList());
     return output;
   }
 
-  private Map<String, Object> jsonStatusItem(Map.Entry<String, InstallationStatus> entry) {
+  private Map<String, Object> jsonStatusItem(StatusReport.Item item) {
     var output = new LinkedHashMap<String, Object>();
-    output.put("key", entry.getKey());
-    output.put("status", statusKind(entry.getValue()));
-    output.put("detail", statusDetail(entry.getValue()));
+    output.put("key", item.key());
+    output.put("displayName", item.displayName());
+    output.put("type", item.type());
+    output.put("status", statusKind(item.classification()));
+    output.put("detail", item.detail());
+    output.put("stateVersion", item.stateVersion());
+    output.put("liveVersion", item.liveVersion());
     return output;
   }
 
-  private String statusKind(InstallationStatus status) {
-    return switch (status) {
-      case InstallationStatus.InstalledByProbe ignored -> "installed";
-      case InstallationStatus.InstalledFromState ignored -> "from-state";
-      case InstallationStatus.NotInstalled ignored -> "not-installed";
-      case InstallationStatus.Unknown ignored -> "unknown";
+  private Map<String, Object> jsonSummary(StatusReport.Summary summary) {
+    var output = new LinkedHashMap<String, Object>();
+    output.put("total", summary.total());
+    output.put("configuredInstalled", summary.configuredInstalled());
+    output.put("configuredMissing", summary.configuredMissing());
+    output.put("stateOnly", summary.stateOnly());
+    output.put("unknown", summary.unknown());
+    output.put("versionDrift", summary.versionDrift());
+    return output;
+  }
+
+  private String statusKind(StatusReport.Classification classification) {
+    return switch (classification) {
+      case CONFIGURED_INSTALLED -> "configured-installed";
+      case CONFIGURED_MISSING -> "configured-missing";
+      case STATE_ONLY -> "state-only";
+      case UNKNOWN -> "unknown";
+      case VERSION_DRIFT -> "version-drift";
     };
   }
 
-  private String statusDetail(InstallationStatus status) {
-    return switch (status) {
-      case InstallationStatus.InstalledByProbe p -> p.detectedVersion();
-      case InstallationStatus.InstalledFromState s -> s.installedAt().toString();
-      case InstallationStatus.NotInstalled ignored -> null;
-      case InstallationStatus.Unknown u -> u.reason();
-    };
+  private void writeSummary(StatusReport report) {
+    var out = spec.commandLine().getOut();
+    StatusReport.Summary counts = report.summary();
+    out.printf("Profile: %s%n", report.profileName());
+    out.printf("Total: %d%n", counts.total());
+    out.printf("Configured installed: %d%n", counts.configuredInstalled());
+    out.printf("Configured missing: %d%n", counts.configuredMissing());
+    out.printf("State-only: %d%n", counts.stateOnly());
+    out.printf("Unknown: %d%n", counts.unknown());
+    out.printf("Version drift: %d%n", counts.versionDrift());
   }
 
   private String truncate(String s, int max) {
     return s.length() <= max ? s : s.substring(0, max - 3) + "...";
   }
 
-  private void writeResumeCommand(BootstrapConfig config) {
-    Optional<String> nextPhase = nextIncompletePhase(config);
+  private void writeResumeCommand(BootstrapConfig config, Optional<BootstrapState> state) {
+    Optional<String> nextPhase = nextIncompletePhase(config, state);
     if (format == OutputFormat.JSON) {
       JsonOutput.write(spec.commandLine().getOut(), jsonResumeCommand(config, nextPhase));
       return;
@@ -140,9 +195,8 @@ public final class StatusCommand implements Runnable {
         .println(ResumeCommandFormatter.command(options.resolvedConfigFile(), profile, nextPhase));
   }
 
-  private Optional<String> nextIncompletePhase(BootstrapConfig config) {
-    var repo = new JsonStateRepository(new ObjectMapper());
-    Optional<BootstrapState> state = repo.load(profile);
+  private Optional<String> nextIncompletePhase(
+      BootstrapConfig config, Optional<BootstrapState> state) {
     return new PhaseExecutionPlanner()
         .plan(config.phases()).stream()
             .filter(

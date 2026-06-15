@@ -2,12 +2,20 @@ package dev.sysboot.cli;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import dev.sysboot.cli.error.ExitCode;
+import dev.sysboot.core.BootstrapState;
+import dev.sysboot.core.ItemType;
+import dev.sysboot.core.StateEntry;
+import dev.sysboot.executor.JsonStateRepository;
 import java.io.IOException;
 import java.io.PrintWriter;
 import java.io.StringWriter;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.Instant;
+import java.util.List;
+import java.util.Optional;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import picocli.CommandLine;
@@ -236,8 +244,69 @@ class CliExitCodeTest {
     CliResult result = execute("status", "--format", "json", "-c", config.toString());
 
     assertThat(result.exitCode()).isEqualTo(ExitCode.SUCCESS.value());
-    assertThat(result.stdout()).contains("\"profileName\":\"test\"").contains("\"items\"");
+    assertThat(result.stdout())
+        .contains("\"profileName\":\"test\"")
+        .contains("\"summary\"")
+        .contains("\"items\"");
     assertThat(result.stderr()).isEmpty();
+  }
+
+  @Test
+  void status_whenSummary_outputsOnlyCounts() throws Exception {
+    Path config = writeBinaryWithoutChecksumConfig();
+
+    CliResult result = execute("status", "--summary", "-c", config.toString());
+
+    assertThat(result.exitCode()).isEqualTo(ExitCode.SUCCESS.value());
+    assertThat(result.stdout()).contains("Configured missing:").contains("Version drift:");
+    assertThat(result.stdout()).doesNotContain("/usr/local/bin/rg");
+  }
+
+  @Test
+  void status_whenMissingFilter_outputsOnlyMissingItems() throws Exception {
+    Path config = writeBinaryWithoutChecksumConfig();
+
+    CliResult result = execute("status", "--missing", "--format", "json", "-c", config.toString());
+
+    assertThat(result.exitCode()).isEqualTo(ExitCode.SUCCESS.value());
+    assertThat(result.stdout())
+        .contains("\"status\":\"configured-missing\"")
+        .doesNotContain("\"status\":\"state-only\"");
+  }
+
+  @Test
+  void status_whenStateOnlyFilter_outputsStateEntriesAbsentFromConfig() throws Exception {
+    Path config = writeShellConfig("/bin/sh");
+    String originalHome = System.getProperty("user.home");
+    System.setProperty("user.home", tempDir.toString());
+    try {
+      var repo = new JsonStateRepository(new ObjectMapper());
+      repo.save(
+          new BootstrapState(
+              "default",
+              Instant.now(),
+              "1.0.0",
+              List.of(
+                  new StateEntry(
+                      "default",
+                      "old-tools",
+                      "old-package",
+                      ItemType.PACKAGE,
+                      Instant.now(),
+                      Optional.empty(),
+                      Optional.empty())),
+              List.of()));
+
+      CliResult result =
+          execute("status", "--state-only", "--format", "json", "-c", config.toString());
+
+      assertThat(result.exitCode()).isEqualTo(ExitCode.SUCCESS.value());
+      assertThat(result.stdout())
+          .contains("\"key\":\"old-package\"")
+          .contains("\"status\":\"state-only\"");
+    } finally {
+      System.setProperty("user.home", originalHome);
+    }
   }
 
   @Test

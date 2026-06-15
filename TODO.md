@@ -426,6 +426,10 @@ Formats:
 
 ### 21. Turn status into a drift report
 
+Status: implemented with configured-installed, configured-missing, state-only, unknown, and
+version-drift classifications plus `--summary`, `--missing`, `--state-only`, and `--failed`
+filters.
+
 Compare config, state, and live machine.
 
 Statuses:
@@ -454,9 +458,241 @@ Implementation:
 - Add panes for phase DAG/progress, current command, recent log, and failures.
 - Add keys for pause-after-current-item, logs, retry command, and quit-after-phase.
 
-## P4 - Build, CI, Release
+## P4 - Strategic Product Direction
 
-### 23. Add CI format checking
+Fluxion should not compete as another dotfile manager. Its strongest product shape is a focused,
+local, restart-aware workstation bootstrap runner: Ansible-shaped enough to model a machine, but
+small and opinionated enough for one fresh Linux desktop or development laptop.
+
+### 23. Add `fluxion apply` as the safe default run mode
+
+`run` is accurate but sounds like a script launcher. `apply` makes the user-facing model closer to
+"make this machine match the profile" while still keeping the implementation imperative where Linux
+requires it.
+
+Implementation:
+
+- Keep `run` as an alias for compatibility.
+- Make `apply` the documented primary command.
+- Default to showing a compact plan summary before mutation in interactive terminals.
+- Add `apply --yes` for unattended setup.
+- Add `apply --dry-run` as an alias for the existing dry-run flow.
+
+Tests:
+
+- `apply` and `run` execute the same orchestration path.
+- `apply --dry-run` emits no mutating shell commands.
+- Help output presents `apply` as the preferred command.
+
+### 24. Add a first-class `diff` command
+
+The missing bridge between `plan` and `status` is "what would change on this host right now?".
+Ansible has check/diff patterns; Fluxion can make that local and understandable.
+
+Command:
+
+```bash
+fluxion diff -c ~/.config/fluxion/workstation.yaml
+fluxion diff -c ~/.config/fluxion/workstation.yaml --format json
+```
+
+Output categories:
+
+- packages to install
+- Flatpaks to install
+- shell commands that would run
+- binaries missing or version-drifted
+- phases skipped by matching fingerprint
+- phases rerun because config changed
+- state entries no longer present in config
+
+Implementation:
+
+- Build on the canonical `ExecutionPlan`.
+- Reuse probes and phase fingerprints.
+- Never mutate state.
+- Include enough machine-readable detail for CI and dotfile repo review workflows.
+
+### 25. Add a `why`/`explain` command for trust
+
+When bootstrapping a real machine, users need to know why an item is about to run or skip. This is
+where Fluxion can feel more predictable than shell-script bootstrap repos.
+
+Command:
+
+```bash
+fluxion explain -c config/example-fedora.yaml --phase shell-foundation
+fluxion explain -c config/example-fedora.yaml --item zsh
+```
+
+Explain:
+
+- phase dependency path
+- matched or changed fingerprint
+- state hit, probe hit, or no skip reason
+- exact executor selected
+- command preview
+- restart policy effect
+
+### 26. Add workstation snapshot/import workflows
+
+Fluxion should help users turn a hand-built machine into a reproducible profile. This is a clear
+differentiator from dotfile tools and a lighter-weight alternative to writing Ansible roles from
+scratch.
+
+Commands:
+
+```bash
+fluxion snapshot --output snapshot.json
+fluxion import packages --from-host --output packages.yaml
+fluxion import flatpaks --from-host --output flatpaks.yaml
+```
+
+Scope:
+
+- installed package lists by detected package manager
+- Flatpak app IDs and remotes
+- default shell
+- common toolchain presence: Rustup, SDKMAN, Juliaup
+- selected binary versions when version commands are configured
+
+Guardrails:
+
+- Never include secrets or shell history.
+- Mark generated content as review-required.
+- Prefer profile fragments over a giant generated config.
+
+### 27. Add host overlays and profile composition
+
+Real workstation configs need "base developer profile plus this machine's hardware/role". Avoid
+turning the main YAML into a templating language; use explicit composition instead.
+
+Config shape:
+
+```yaml
+includes:
+  - profiles/base-linux.yaml
+  - profiles/developer.yaml
+  - hosts/thinkpad.yaml
+```
+
+Rules:
+
+- Includes are resolved relative to the including file.
+- Jobs merge by name only when explicitly marked mergeable.
+- Duplicate job/module names fail by default.
+- `fluxion plan` shows the source file for each job and step.
+- Native-image resource and reflection implications are tested.
+
+### 28. Add `assert` and `manual` step types
+
+Not every workstation prerequisite should be mutated automatically. Fluxion can model human-safe
+checkpoints instead of hiding them in shell commands.
+
+`assert` examples:
+
+```yaml
+- type: assert
+  name: secure-boot-disabled
+  command: "mokutil --sb-state | grep -qi disabled"
+  message: "Disable Secure Boot before installing this graphics stack."
+```
+
+`manual` examples:
+
+```yaml
+- type: manual
+  name: github-login
+  message: "Run `gh auth login`, then continue."
+  probeCommand: "gh auth status"
+```
+
+Behavior:
+
+- `assert` fails the phase when the condition is false.
+- `manual` pauses in TUI mode and prints instructions in CLI mode.
+- Both participate in plan, status, state, and resume.
+
+### 29. Add package repository modules
+
+Current examples use `shell-command` for repository setup. That works, but it is exactly where
+bootstrap scripts become hard to audit. Repositories should become first-class, OS-specific modules.
+
+Module ideas:
+
+- `rpm-repository`
+- `apt-repository`
+- `pacman-repository`
+- `flatpak-remote`
+
+Capabilities:
+
+- add repository
+- import signing key
+- verify expected key fingerprint where available
+- probe existing repository state
+- preview commands in `plan --show-commands`
+- warn when a repository lacks signing verification
+
+### 30. Add artifact provenance for downloaded binaries
+
+Compiled binary support is useful but supply-chain-sensitive. Fluxion should make safe downloads
+the default.
+
+Implementation:
+
+- Treat missing checksums as errors in `validate --strict`.
+- Support SHA-256 checksum URLs, inline checksums, and detached signatures.
+- Persist installed artifact URL, checksum, and detected version in state.
+- Add `status --version-drift` for binaries with configured expected versions.
+- Add `doctor` checks for unsupported archive formats and non-HTTPS URLs.
+
+### 31. Add run reports
+
+After a long bootstrap, the user should get a useful artifact: what changed, what failed, what was
+skipped, and how to resume. This is valuable for personal audit, support, and team onboarding.
+
+Command:
+
+```bash
+fluxion report last --format markdown
+fluxion report last --format html
+```
+
+Report contents:
+
+- profile and config path
+- host OS and detected package managers
+- run ID, start/end time, duration
+- phase timeline
+- installed/skipped/failed items
+- restart checkpoints
+- exact resume command if incomplete
+- redacted command output snippets for failures
+
+### 32. Add profile quality scoring
+
+Fluxion can guide users toward safer bootstrap profiles without being a policy engine.
+
+Command:
+
+```bash
+fluxion lint -c config/example-fedora.yaml
+```
+
+Score dimensions:
+
+- reproducibility: pinned versions, checksums, explicit remotes
+- recoverability: restart policies, probes, continue-on-error choices
+- safety: sudo usage, unsigned downloads, destructive shell commands
+- portability: OS-specific steps isolated into overlays
+- observability: named modules, probe commands, command previews
+
+`validate` should stay correctness-focused; `lint` can be advisory and opinionated.
+
+## P5 - Build, CI, Release
+
+### 33. Add CI format checking
 
 Status: implemented.
 
@@ -467,7 +703,7 @@ Implementation:
 - Update `.github/workflows/ci.yml`.
 - Fail fast before test/native jobs.
 
-### 24. Expand native smoke tests in CI
+### 34. Expand native smoke tests in CI
 
 Status: implemented for `--help`, `--version`, and native config validation.
 
@@ -480,7 +716,7 @@ sysboot/out/cli/nativeImage.dest/native-executable --version
 sysboot/out/cli/nativeImage.dest/native-executable validate --no-tui -c sysboot/config/example-fedora.yaml
 ```
 
-### 25. Populate integration tests
+### 35. Populate integration tests
 
 Status: initial implementation added for read-only CLI commands and JSON formats.
 
@@ -493,7 +729,7 @@ Good first tests:
 - malformed YAML exit codes
 - prompt-logout resume state
 
-### 26. Package release archives with docs/examples
+### 36. Package release archives with docs/examples
 
 Status: implemented for native archives in CI and release workflows.
 
@@ -506,7 +742,7 @@ Include:
 - `config/example-*.yaml`
 - license if added
 
-### 27. Make versioning release-driven
+### 37. Make versioning release-driven
 
 CLI version and README examples disagree.
 
@@ -516,7 +752,7 @@ Implementation:
 - Keep README asset names aligned with actual release workflow.
 - Add a smoke assertion for `--version`.
 
-### 28. Add dependency update coverage
+### 38. Add dependency update coverage
 
 Status: documented cadence added because this Mill YAML project does not expose Maven POM files for
 Dependabot.
@@ -528,7 +764,7 @@ Implementation:
 - Add update coverage or a documented cadence for Maven coordinates in
   `sysboot/**/package.mill.yaml`.
 
-### 29. Gate native-image metadata
+### 39. Gate native-image metadata
 
 Manual GraalVM config must stay correct.
 

@@ -135,10 +135,17 @@ Reports live probe status for configured items.
 ```bash
 fluxion status -c config/example-fedora.yaml
 fluxion status -c config/example-fedora.yaml --format json
+fluxion status -c config/example-fedora.yaml --summary
+fluxion status -c config/example-fedora.yaml --missing
+fluxion status -c config/example-fedora.yaml --state-only
+fluxion status -c config/example-fedora.yaml --failed
 fluxion status -c config/example-fedora.yaml --resume-command
 fluxion status -c config/example-fedora.yaml --resume-command --format json
 ```
 
+`status` compares configured items, live probes, and saved state. It reports configured installed
+items, configured missing items, state-only entries, unknown probe results, and version drift when
+state and live versions disagree. `--failed` shows missing, unknown, and version-drift items.
 `--resume-command` prints the command for the next incomplete phase based on saved state.
 
 ## `state`
