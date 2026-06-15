@@ -1,8 +1,8 @@
 package dev.sysboot.cli.command;
 
 import dev.sysboot.app.ApplicationContext;
-import dev.sysboot.cli.output.StdoutExecutionEventListener;
 import dev.sysboot.cli.option.GlobalOptions;
+import dev.sysboot.cli.output.StdoutExecutionEventListener;
 import dev.sysboot.core.BootstrapConfig;
 import picocli.CommandLine.Command;
 import picocli.CommandLine.Mixin;

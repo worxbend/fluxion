@@ -43,7 +43,8 @@ public final class SkipEvaluator {
     }
 
     if (!reProbe) {
-      Optional<StateEntry> stateEntry = state.flatMap(s -> s.findEntry(item.key(), item.itemType()));
+      Optional<StateEntry> stateEntry =
+          state.flatMap(s -> s.findEntry(item.key(), item.itemType()));
       if (stateEntry.isPresent()) {
         StateEntry entry = stateEntry.get();
         return new SkipDecision.Skip(

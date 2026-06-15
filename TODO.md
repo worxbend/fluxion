@@ -36,6 +36,11 @@ and parallel agent analysis.
 - `validate` now uses structured diagnostics with path-aware issues, JSON output, strict warning
   failure mode, package-manager/OS compatibility checks, duplicate package warnings, and missing
   compiled-binary checksum warnings.
+- `plan`, `list`, `status`, and `state show` support JSON output for shell automation.
+- CI runs the Java format check before tests.
+- CI and release native smoke tests cover `--help`, `--version`, and config validation.
+- Native release archives include the binary, root README, docs, and example configs.
+- The Mill/Maven dependency update cadence is documented in `sysboot/docs/dependency-updates.md`.
 
 ## P0 - Trust And Correctness
 
@@ -400,6 +405,9 @@ Implementation:
 
 ### 20. Add structured output modes
 
+Status: implemented for JSON output on `validate`, `plan`, `list`, `status`, and `state show`.
+YAML output remains a later enhancement if there is real demand for it.
+
 Make read-only commands scriptable.
 
 Commands:
@@ -450,6 +458,8 @@ Implementation:
 
 ### 23. Add CI format checking
 
+Status: implemented.
+
 `just format-check` exists but should run in CI.
 
 Implementation:
@@ -458,6 +468,8 @@ Implementation:
 - Fail fast before test/native jobs.
 
 ### 24. Expand native smoke tests in CI
+
+Status: implemented for `--help`, `--version`, and native config validation.
 
 Native CI should run more than `--help`.
 
@@ -470,6 +482,8 @@ sysboot/out/cli/nativeImage.dest/native-executable validate --no-tui -c sysboot/
 
 ### 25. Populate integration tests
 
+Status: initial implementation added for read-only CLI commands and JSON formats.
+
 The `integration-tests` module exists but has no useful test source.
 
 Good first tests:
@@ -480,6 +494,8 @@ Good first tests:
 - prompt-logout resume state
 
 ### 26. Package release archives with docs/examples
+
+Status: implemented for native archives in CI and release workflows.
 
 Release archives should include more than the binary.
 
@@ -501,6 +517,9 @@ Implementation:
 - Add a smoke assertion for `--version`.
 
 ### 28. Add dependency update coverage
+
+Status: documented cadence added because this Mill YAML project does not expose Maven POM files for
+Dependabot.
 
 Dependabot currently covers GitHub Actions only.
 

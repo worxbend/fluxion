@@ -62,7 +62,8 @@ public final class ConfigValidator {
   private void validateModule(
       BootstrapConfig config, BootstrapModule module, String path, List<ValidationIssue> issues) {
     switch (module) {
-      case PackageModule packageModule -> validatePackageModule(config, packageModule, path, issues);
+      case PackageModule packageModule ->
+          validatePackageModule(config, packageModule, path, issues);
       case ZypperModule zypperModule ->
           validatePackageModule(config, zypperModule.asPackageModule(), path, issues);
       case CompiledBinaryModule binaryModule -> validateCompiledBinary(binaryModule, path, issues);
@@ -71,16 +72,14 @@ public final class ConfigValidator {
   }
 
   private void validatePackageModule(
-      BootstrapConfig config,
-      PackageModule module,
-      String path,
-      List<ValidationIssue> issues) {
+      BootstrapConfig config, PackageModule module, String path, List<ValidationIssue> issues) {
     if (!managerAllowed(config.target(), module.packageManager())) {
       addError(
           issues,
           path + ".packageManager",
           "Package manager %s is not valid for target %s"
-              .formatted(module.packageManager().name().toLowerCase(), targetName(config.target())));
+              .formatted(
+                  module.packageManager().name().toLowerCase(), targetName(config.target())));
     }
     validateDuplicatePackages(module, path, issues);
   }

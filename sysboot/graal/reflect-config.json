@@ -42,7 +42,7 @@
     "allDeclaredConstructors": true
   },
   {
-    "name": "dev.sysboot.cli.command.ValidateCommand$OutputFormat",
+    "name": "dev.sysboot.cli.output.OutputFormat",
     "allDeclaredFields": true,
     "allDeclaredMethods": true,
     "allDeclaredConstructors": true

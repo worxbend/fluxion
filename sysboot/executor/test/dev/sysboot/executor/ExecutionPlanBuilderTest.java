@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import dev.sysboot.core.BootstrapConfig;
 import dev.sysboot.core.ModuleName;
+import dev.sysboot.core.OsTarget;
 import dev.sysboot.core.PackageManagerExecutor;
 import dev.sysboot.core.PackageManagerKind;
 import dev.sysboot.core.PackageModule;
@@ -13,7 +14,6 @@ import dev.sysboot.core.PhaseName;
 import dev.sysboot.core.ProfileName;
 import dev.sysboot.core.RestartPolicy;
 import dev.sysboot.core.StepResult;
-import dev.sysboot.core.OsTarget;
 import java.time.Duration;
 import java.util.List;
 import org.junit.jupiter.api.Test;

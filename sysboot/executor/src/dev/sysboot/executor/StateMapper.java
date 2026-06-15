@@ -65,16 +65,16 @@ final class StateMapper {
 
   private static PhaseStateEntryRecord phaseEntryToRecord(PhaseStateEntry e) {
     return new PhaseStateEntryRecord(
-        e.phaseName(),
-        e.status().name(),
-        e.completedAt().toString(),
-        e.fingerprint().orElse(null));
+        e.phaseName(), e.status().name(), e.completedAt().toString(), e.fingerprint().orElse(null));
   }
 
   private static PhaseStateEntry phaseEntryFromRecord(PhaseStateEntryRecord record) {
     Instant completedAt =
         record.completedAt != null ? Instant.parse(record.completedAt) : Instant.EPOCH;
     return new PhaseStateEntry(
-        record.phaseName, PhaseStatus.valueOf(record.status), completedAt, Optional.ofNullable(record.fingerprint));
+        record.phaseName,
+        PhaseStatus.valueOf(record.status),
+        completedAt,
+        Optional.ofNullable(record.fingerprint));
   }
 }

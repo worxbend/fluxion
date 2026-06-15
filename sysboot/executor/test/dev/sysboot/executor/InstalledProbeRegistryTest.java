@@ -2,7 +2,6 @@ package dev.sysboot.executor;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-import dev.sysboot.core.InstallationStatus;
 import dev.sysboot.core.ModuleItem;
 import dev.sysboot.core.ModuleName;
 import dev.sysboot.core.PackageManagerKind;

@@ -102,8 +102,7 @@ class JsonStateRepositoryTest {
             PhaseStatus.COMPLETED,
             Instant.parse("2026-06-01T10:00:00Z"),
             Optional.of("abc123"));
-    BootstrapState state =
-        BootstrapState.empty("test-profile", "1.0.0").withPhaseEntry(phaseEntry);
+    BootstrapState state = BootstrapState.empty("test-profile", "1.0.0").withPhaseEntry(phaseEntry);
 
     var repo = newRepo();
     repo.save(state);

@@ -50,9 +50,7 @@ public final class ExecutionPlanBuilder {
 
   private ExecutionPlan.Module module(BootstrapModule module) {
     return new ExecutionPlan.Module(
-        module.name().value(),
-        moduleType(module),
-        items(module).stream().map(this::item).toList());
+        module.name().value(), moduleType(module), items(module).stream().map(this::item).toList());
   }
 
   private List<ModuleItem> items(BootstrapModule module) {
@@ -76,7 +74,9 @@ public final class ExecutionPlanBuilder {
   private List<ModuleItem> fallbackItems(BootstrapModule module) {
     return switch (module) {
       case FlatpakModule fm ->
-          fm.appIds().stream().map(app -> new ModuleItem(fm.name(), app, ItemType.FLATPAK)).toList();
+          fm.appIds().stream()
+              .map(app -> new ModuleItem(fm.name(), app, ItemType.FLATPAK))
+              .toList();
       case ShellScriptModule sm ->
           List.of(new ModuleItem(sm.name(), sm.script().toString(), ItemType.SHELL_SCRIPT));
       case CompiledBinaryModule bm ->

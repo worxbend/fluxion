@@ -4,6 +4,7 @@ import dev.sysboot.app.ApplicationContext;
 import dev.sysboot.cli.error.CliFailureException;
 import dev.sysboot.cli.error.ExitCode;
 import dev.sysboot.cli.option.GlobalOptions;
+import dev.sysboot.cli.output.OutputFormat;
 import dev.sysboot.core.BootstrapConfig;
 import dev.sysboot.executor.ConfigValidator;
 import dev.sysboot.executor.ValidationIssue;
@@ -56,8 +57,7 @@ public final class ValidateCommand implements Runnable {
     report
         .issues()
         .forEach(
-            issue ->
-                out.printf("%s %s: %s%n", severity(issue), issue.path(), issue.message()));
+            issue -> out.printf("%s %s: %s%n", severity(issue), issue.path(), issue.message()));
     if (report.hasErrors() || strict && report.hasWarnings()) {
       out.printf(
           "Config has %d issue(s): profile '%s' with %d job(s), %d step(s)%n",
@@ -76,7 +76,10 @@ public final class ValidateCommand implements Runnable {
   private void writeJson(ValidationReport report, PrintWriter out) {
     out.printf(
         "{\"profileName\":\"%s\",\"phaseCount\":%d,\"moduleCount\":%d,\"valid\":%s,\"issues\":[",
-        escape(report.profileName()), report.phaseCount(), report.moduleCount(), !report.hasErrors());
+        escape(report.profileName()),
+        report.phaseCount(),
+        report.moduleCount(),
+        !report.hasErrors());
     for (int i = 0; i < report.issues().size(); i++) {
       if (i > 0) {
         out.print(",");
@@ -101,10 +104,5 @@ public final class ValidateCommand implements Runnable {
         .replace("\n", "\\n")
         .replace("\r", "\\r")
         .replace("\t", "\\t");
-  }
-
-  enum OutputFormat {
-    TEXT,
-    JSON
   }
 }

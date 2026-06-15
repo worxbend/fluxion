@@ -195,9 +195,7 @@ public final class BootstrapOrchestratorImpl implements BootstrapOrchestrator {
       return moduleExecutor
           .orElseThrow()
           .execute(
-              module,
-              listener,
-              new ModuleExecutionContext(skipEvaluator, this::recordSuccess));
+              module, listener, new ModuleExecutionContext(skipEvaluator, this::recordSuccess));
     }
     return switch (module) {
       case FlatpakModule fm -> executeFlatpakModule(fm, listener);

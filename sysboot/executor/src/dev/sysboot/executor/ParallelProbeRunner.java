@@ -10,8 +10,8 @@ import dev.sysboot.core.ItemType;
 import dev.sysboot.core.ModuleItem;
 import dev.sysboot.core.NerdFontModule;
 import dev.sysboot.core.OhMyZshModule;
-import dev.sysboot.core.PackageModule;
 import dev.sysboot.core.PackageManagerKind;
+import dev.sysboot.core.PackageModule;
 import dev.sysboot.core.ShellCommandModule;
 import dev.sysboot.core.ShellReloadModule;
 import dev.sysboot.core.ShellScriptModule;
@@ -82,8 +82,7 @@ public final class ParallelProbeRunner {
                 .forEach(
                     pkg ->
                         targets.add(
-                            ModuleItem.packageItem(
-                                pm.name(), pkg.value(), pm.packageManager())));
+                            ModuleItem.packageItem(pm.name(), pkg.value(), pm.packageManager())));
         case ZypperModule zm ->
             zm.packages()
                 .forEach(
@@ -93,18 +92,14 @@ public final class ParallelProbeRunner {
                                 zm.name(), pkg.value(), PackageManagerKind.ZYPPER)));
         case FlatpakModule fm ->
             fm.appIds()
-                .forEach(
-                    appId ->
-                        targets.add(new ModuleItem(fm.name(), appId, ItemType.FLATPAK)));
+                .forEach(appId -> targets.add(new ModuleItem(fm.name(), appId, ItemType.FLATPAK)));
         case ShellScriptModule sm ->
-            targets.add(
-                new ModuleItem(sm.name(), sm.script().toString(), ItemType.SHELL_SCRIPT));
+            targets.add(new ModuleItem(sm.name(), sm.script().toString(), ItemType.SHELL_SCRIPT));
         case CompiledBinaryModule bm ->
             targets.add(
                 new ModuleItem(bm.name(), bm.installPath().toString(), ItemType.COMPILED_BINARY));
         case DotbotModule dm ->
-            targets.add(
-                new ModuleItem(dm.name(), dm.config().toString(), ItemType.DOTBOT));
+            targets.add(new ModuleItem(dm.name(), dm.config().toString(), ItemType.DOTBOT));
         case DefaultShellModule dsm ->
             targets.add(
                 new ModuleItem(dsm.name(), dsm.shellPath().toString(), ItemType.DEFAULT_SHELL));
@@ -126,8 +121,7 @@ public final class ParallelProbeRunner {
             targets.add(
                 new ModuleItem(srm.name(), srm.shell().binaryName(), ItemType.SHELL_RELOAD));
         case ShellCommandModule sc ->
-            targets.add(
-                new ModuleItem(sc.name(), sc.name().value(), ItemType.SHELL_COMMAND));
+            targets.add(new ModuleItem(sc.name(), sc.name().value(), ItemType.SHELL_COMMAND));
       }
     }
     return List.copyOf(targets);

@@ -2,11 +2,9 @@ package dev.sysboot.executor;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.when;
 
 import dev.sysboot.core.InstallationStatus;
-import dev.sysboot.core.ItemType;
 import dev.sysboot.core.ModuleItem;
 import dev.sysboot.core.ModuleName;
 import dev.sysboot.core.PackageManagerKind;

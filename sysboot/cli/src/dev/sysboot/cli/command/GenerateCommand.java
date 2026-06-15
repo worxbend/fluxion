@@ -71,13 +71,13 @@ public final class GenerateCommand implements Runnable {
 
   private String render(Target target, Preset selectedPreset) {
     return """
-        profile: %s
-        os:
-          type: %s%s
+    profile: %s
+    os:
+      type: %s%s
 
-        jobs:
-        %s
-        """
+    jobs:
+    %s
+    """
         .formatted(profile, target.osType(), target.releaseYaml(), selectedPreset.jobs(target));
   }
 
@@ -179,20 +179,20 @@ public final class GenerateCommand implements Runnable {
                 "zsh")
             + """
 
-          - name: desktop-apps
-            description: "Install starter desktop Flatpaks"
-            dependsOn:
-              - system-foundation
-            restartPolicy:
-              type: none
-            continueOnModuleError: true
-            steps:
-              - type: flatpak
-                name: starter-flatpaks
-                remote: flathub
-                appIds:
-                  - org.mozilla.firefox
-        """;
+              - name: desktop-apps
+                description: "Install starter desktop Flatpaks"
+                dependsOn:
+                  - system-foundation
+                restartPolicy:
+                  type: none
+                continueOnModuleError: true
+                steps:
+                  - type: flatpak
+                    name: starter-flatpaks
+                    remote: flathub
+                    appIds:
+                      - org.mozilla.firefox
+            """;
       }
     },
     DOTFILES {
@@ -201,21 +201,21 @@ public final class GenerateCommand implements Runnable {
         return packageJob("system-foundation", "dotfiles-tools", target, "git", "curl", "zsh")
             + """
 
-          - name: dotfiles
-            description: "Apply dotfiles with dotbot-go"
-            dependsOn:
-              - system-foundation
-            restartPolicy:
-              type: none
-            continueOnModuleError: false
-            steps:
-              - type: dotbot
-                name: dotfiles-core
-                installerVersion: "v0.2.1"
-                config: "~/.dotfiles/install.conf.yaml"
-                dotbotBinary: dotbot
-                probeCommand: "test -f ~/.zshrc"
-        """;
+              - name: dotfiles
+                description: "Apply dotfiles with dotbot-go"
+                dependsOn:
+                  - system-foundation
+                restartPolicy:
+                  type: none
+                continueOnModuleError: false
+                steps:
+                  - type: dotbot
+                    name: dotfiles-core
+                    installerVersion: "v0.2.1"
+                    config: "~/.dotfiles/install.conf.yaml"
+                    dotbotBinary: dotbot
+                    probeCommand: "test -f ~/.zshrc"
+            """;
       }
     };
 
@@ -223,18 +223,19 @@ public final class GenerateCommand implements Runnable {
 
     static String packageJob(String jobName, String moduleName, Target target, String... packages) {
       return """
-          - name: %s
-            description: "Install starter packages"
-            restartPolicy:
-              type: none
-            continueOnModuleError: true
-            steps:
-              - type: packages
-                name: %s
-                packageManager: %s
-                continueOnError: true
-                packages:
-        %s"""
+        - name: %s
+          description: "Install starter packages"
+          restartPolicy:
+            type: none
+          continueOnModuleError: true
+          steps:
+            - type: packages
+              name: %s
+              packageManager: %s
+              continueOnError: true
+              packages:
+      %s\
+      """
           .formatted(jobName, moduleName, target.packageManager(), packageList(packages));
     }
 

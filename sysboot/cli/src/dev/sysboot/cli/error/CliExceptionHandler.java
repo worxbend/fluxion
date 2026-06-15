@@ -1,8 +1,8 @@
 package dev.sysboot.cli.error;
 
 import dev.sysboot.config.ConfigLoadException;
-import dev.sysboot.executor.StateReadException;
 import dev.sysboot.executor.ShellExecutionException;
+import dev.sysboot.executor.StateReadException;
 import dev.sysboot.executor.UnsupportedPackageManagerException;
 import java.io.IOException;
 import java.io.UncheckedIOException;

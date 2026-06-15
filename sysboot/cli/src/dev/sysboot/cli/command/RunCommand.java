@@ -3,8 +3,8 @@ package dev.sysboot.cli.command;
 import dev.sysboot.app.ApplicationContext;
 import dev.sysboot.cli.error.CliFailureException;
 import dev.sysboot.cli.error.ExitCode;
-import dev.sysboot.cli.output.StdoutExecutionEventListener;
 import dev.sysboot.cli.option.GlobalOptions;
+import dev.sysboot.cli.output.StdoutExecutionEventListener;
 import dev.sysboot.core.BootstrapConfig;
 import dev.sysboot.core.Phase;
 import dev.sysboot.executor.PhaseExecutionPlanner;
@@ -166,7 +166,10 @@ public final class RunCommand implements Runnable {
             .map(phase -> phase.name().value())
             .collect(Collectors.toUnmodifiableSet());
     var unknown = allowed.stream().filter(phase -> !valid.contains(phase)).findFirst();
-    unknown.ifPresent(phase -> { throw unknownPhase(phase, config); });
+    unknown.ifPresent(
+        phase -> {
+          throw unknownPhase(phase, config);
+        });
   }
 
   private CliFailureException unknownPhase(String phaseName, BootstrapConfig config) {

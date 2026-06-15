@@ -32,6 +32,9 @@ jobs:
           distribution: temurin
           java-version: "25"
 
+      - name: Set up just
+        uses: extractions/setup-just@v3
+
       - name: Cache build dependencies
         uses: actions/cache@v4
         with:
@@ -42,6 +45,9 @@ jobs:
           key: ${{ runner.os }}-mill-${{ hashFiles('sysboot/.mill-version', 'sysboot/build.mill.yaml', 'sysboot/**/package.mill.yaml') }}
           restore-keys: |
             ${{ runner.os }}-mill-
+
+      - name: Check Java formatting
+        run: just format-check
 
       - name: Run tests
         working-directory: sysboot
@@ -110,7 +116,10 @@ jobs:
         run: ./mill cli.nativeImage
 
       - name: Smoke test native image
-        run: sysboot/out/cli/nativeImage.dest/native-executable --help >/dev/null
+        run: |
+          sysboot/out/cli/nativeImage.dest/native-executable --help >/dev/null
+          sysboot/out/cli/nativeImage.dest/native-executable --version
+          sysboot/out/cli/nativeImage.dest/native-executable validate --no-tui -c sysboot/config/example-fedora.yaml
 
       - name: Package native artifact
         run: |
@@ -118,7 +127,12 @@ jobs:
           mkdir -p dist/pkg
           cp sysboot/out/cli/nativeImage.dest/native-executable dist/pkg/fluxion
           chmod +x dist/pkg/fluxion
-          tar -C dist/pkg -czf dist/fluxion-linux-amd64.tar.gz fluxion
+          cp README.md dist/pkg/README.md
+          mkdir -p dist/pkg/docs dist/pkg/config
+          cp -R sysboot/docs/. dist/pkg/docs/
+          cp -R sysboot/config/. dist/pkg/config/
+          [ ! -f LICENSE ] || cp LICENSE dist/pkg/LICENSE
+          tar -C dist/pkg -czf dist/fluxion-linux-amd64.tar.gz .
           (cd dist && sha256sum fluxion-linux-amd64.tar.gz > fluxion-linux-amd64.tar.gz.sha256)
 
       - name: Upload native artifact

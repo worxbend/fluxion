@@ -13,10 +13,7 @@ public record ExecutionPlan(String profileName, List<ExecutionPlan.Phase> phases
   }
 
   public record Phase(
-      String name,
-      List<String> dependsOn,
-      RestartEffect restartEffect,
-      List<Module> modules) {
+      String name, List<String> dependsOn, RestartEffect restartEffect, List<Module> modules) {
 
     public Phase {
       Objects.requireNonNull(name);
@@ -39,10 +36,7 @@ public record ExecutionPlan(String profileName, List<ExecutionPlan.Phase> phases
 
     public Item {
       Objects.requireNonNull(item);
-      commandPreview =
-          commandPreview == null
-              ? Optional.empty()
-              : commandPreview.map(List::copyOf);
+      commandPreview = commandPreview == null ? Optional.empty() : commandPreview.map(List::copyOf);
     }
   }
 

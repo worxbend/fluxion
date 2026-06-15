@@ -7,7 +7,9 @@ import com.fasterxml.jackson.annotation.JsonTypeInfo;
 @JsonTypeInfo(use = JsonTypeInfo.Id.NAME, property = "type")
 @JsonSubTypes({
   @JsonSubTypes.Type(value = RestartPolicyDocument.NoneDocument.class, name = "none"),
-  @JsonSubTypes.Type(value = RestartPolicyDocument.PromptLogoutDocument.class, name = "prompt-logout"),
+  @JsonSubTypes.Type(
+      value = RestartPolicyDocument.PromptLogoutDocument.class,
+      name = "prompt-logout"),
   @JsonSubTypes.Type(
       value = RestartPolicyDocument.RequiresNewShellDocument.class,
       name = "requires-new-shell")

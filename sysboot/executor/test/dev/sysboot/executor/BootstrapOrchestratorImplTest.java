@@ -8,11 +8,10 @@ import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
-import dev.sysboot.core.BootstrapState;
 import dev.sysboot.core.BootstrapConfig;
+import dev.sysboot.core.BootstrapState;
 import dev.sysboot.core.EventKind;
 import dev.sysboot.core.ExecutionEvent;
-import dev.sysboot.core.ItemType;
 import dev.sysboot.core.ModuleName;
 import dev.sysboot.core.OsTarget;
 import dev.sysboot.core.PackageManagerExecutor;

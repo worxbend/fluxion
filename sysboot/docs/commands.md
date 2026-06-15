@@ -85,10 +85,13 @@ Prints the phase-ordered execution plan.
 ```bash
 fluxion plan -c config/example-fedora.yaml
 fluxion plan -c config/example-fedora.yaml --skip-already-installed
+fluxion plan -c config/example-fedora.yaml --format json
 ```
 
 The plan uses the same phase ordering as execution and shows restart checkpoints. With
 `--skip-already-installed`, Fluxion probes configured items and marks what would be skipped.
+JSON output includes phases, modules, item keys, item types, package managers, status labels, and
+command previews where available.
 
 ## `run`
 
@@ -131,7 +134,9 @@ Reports live probe status for configured items.
 
 ```bash
 fluxion status -c config/example-fedora.yaml
+fluxion status -c config/example-fedora.yaml --format json
 fluxion status -c config/example-fedora.yaml --resume-command
+fluxion status -c config/example-fedora.yaml --resume-command --format json
 ```
 
 `--resume-command` prints the command for the next incomplete phase based on saved state.
@@ -142,6 +147,7 @@ Manages persisted state under `~/.local/share/fluxion`.
 
 ```bash
 fluxion state show default
+fluxion state show default --format json
 fluxion state path default
 fluxion state forget --profile default --item git
 fluxion state forget --profile default --phase shell-foundation
@@ -157,4 +163,5 @@ Prints configured modules and their item counts or source paths.
 
 ```bash
 fluxion list -c config/example-fedora.yaml
+fluxion list -c config/example-fedora.yaml --format json
 ```

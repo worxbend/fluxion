@@ -1,4 +1,4 @@
 extends: JavaModule
 jvmVersion: temurin:25
 javacOptions: [--release, "25", -Xlint:all, -Xlint:-processing]
-moduleDeps: [app]
+moduleDeps: [cli]

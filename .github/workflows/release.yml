@@ -77,7 +77,10 @@ jobs:
         run: ./mill cli.nativeImage
 
       - name: Smoke test native image
-        run: sysboot/out/cli/nativeImage.dest/native-executable --help >/dev/null
+        run: |
+          sysboot/out/cli/nativeImage.dest/native-executable --help >/dev/null
+          sysboot/out/cli/nativeImage.dest/native-executable --version
+          sysboot/out/cli/nativeImage.dest/native-executable validate --no-tui -c sysboot/config/example-fedora.yaml
 
       - name: Package release assets
         run: |
@@ -87,7 +90,12 @@ jobs:
           cp sysboot/out/cli/assembly.dest/out.jar "dist/fluxion-${version}-all.jar"
           cp sysboot/out/cli/nativeImage.dest/native-executable dist/pkg/fluxion
           chmod +x dist/pkg/fluxion
-          tar -C dist/pkg -czf "dist/fluxion-${version}-linux-amd64.tar.gz" fluxion
+          cp README.md dist/pkg/README.md
+          mkdir -p dist/pkg/docs dist/pkg/config
+          cp -R sysboot/docs/. dist/pkg/docs/
+          cp -R sysboot/config/. dist/pkg/config/
+          [ ! -f LICENSE ] || cp LICENSE dist/pkg/LICENSE
+          tar -C dist/pkg -czf "dist/fluxion-${version}-linux-amd64.tar.gz" .
           (cd dist && sha256sum "fluxion-${version}-all.jar" "fluxion-${version}-linux-amd64.tar.gz" > "fluxion-${version}-checksums.sha256")
 
       - name: Upload release assets as workflow artifacts

@@ -75,15 +75,15 @@ class PackageModuleExecutorTest {
                     Optional.empty(),
                     Optional.empty()));
     var skipEvaluator =
-        new SkipEvaluator(
-            Optional.of(state), new InstalledProbeRegistry(List.of()), true, false);
+        new SkipEvaluator(Optional.of(state), new InstalledProbeRegistry(List.of()), true, false);
     List<ExecutionEvent> events = new ArrayList<>();
 
     boolean failed =
         executor.execute(
             module("git"),
             events::add,
-            new ModuleExecutionContext(skipEvaluator, (moduleName, itemKey, itemType, result) -> {}));
+            new ModuleExecutionContext(
+                skipEvaluator, (moduleName, itemKey, itemType, result) -> {}));
 
     assertThat(failed).isFalse();
     assertThat(events).extracting(ExecutionEvent::kind).contains(EventKind.ITEM_COMPLETED);
@@ -94,8 +94,7 @@ class PackageModuleExecutorTest {
   @Test
   void dryRun_usesPackageManagerCommandPreview() {
     when(dnf.supports(PackageManagerKind.DNF)).thenReturn(true);
-    when(dnf.installCommand(any()))
-        .thenReturn(List.of("sudo", "dnf", "install", "-y", "git"));
+    when(dnf.installCommand(any())).thenReturn(List.of("sudo", "dnf", "install", "-y", "git"));
     var executor = new PackageModuleExecutor(new PackageManagerExecutorRegistry(List.of(dnf)));
     List<ExecutionEvent> events = new ArrayList<>();
 
