@@ -38,7 +38,7 @@ class CliExitCodeTest {
     CliResult result = execute("--version");
 
     assertThat(result.exitCode()).isEqualTo(ExitCode.SUCCESS.value());
-    assertThat(result.stdout()).contains("fluxion");
+    assertThat(result.stdout()).isEqualTo("fluxion 1.0.0\n");
     assertThat(result.stderr()).isEmpty();
   }
 

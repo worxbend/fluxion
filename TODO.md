@@ -744,6 +744,9 @@ Include:
 
 ### 37. Make versioning release-driven
 
+Status: implemented with CLI version metadata in `VersionProvider` and a release workflow check
+that the release tag matches that metadata.
+
 CLI version and README examples disagree.
 
 Implementation:

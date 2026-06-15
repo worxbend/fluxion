@@ -56,6 +56,16 @@ jobs:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           native-image-job-reports: true
 
+      - name: Check release version metadata
+        run: |
+          set -eu
+          expected="${{ steps.version.outputs.version }}"
+          actual="v$(sed -n 's/.*VERSION = \"\\([^\"]*\\)\".*/\\1/p' sysboot/cli/src/dev/sysboot/cli/command/VersionProvider.java)"
+          if [ "$actual" != "$expected" ]; then
+            echo "Version metadata mismatch: expected ${expected}, found ${actual}" >&2
+            exit 1
+          fi
+
       - name: Run tests
         working-directory: sysboot
         run: ./mill __.test
@@ -79,7 +89,9 @@ jobs:
       - name: Smoke test native image
         run: |
           sysboot/out/cli/nativeImage.dest/native-executable --help >/dev/null
-          sysboot/out/cli/nativeImage.dest/native-executable --version
+          expected="${{ steps.version.outputs.version }}"
+          expected="${expected#v}"
+          test "$(sysboot/out/cli/nativeImage.dest/native-executable --version)" = "fluxion ${expected}"
           sysboot/out/cli/nativeImage.dest/native-executable validate --no-tui -c sysboot/config/example-fedora.yaml
 
       - name: Package release assets

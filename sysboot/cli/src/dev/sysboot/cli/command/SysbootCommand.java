@@ -13,7 +13,7 @@ import picocli.CommandLine.Mixin;
 @Command(
     name = "fluxion",
     mixinStandardHelpOptions = true,
-    version = "fluxion 1.0.0",
+    versionProvider = VersionProvider.class,
     description = "Bootstrap your Linux system from a declarative YAML config",
     subcommands = {
       RunCommand.class,

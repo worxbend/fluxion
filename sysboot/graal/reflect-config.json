@@ -18,6 +18,12 @@
     "allDeclaredConstructors": true
   },
   {
+    "name": "dev.sysboot.cli.command.VersionProvider",
+    "allDeclaredFields": true,
+    "allDeclaredMethods": true,
+    "allDeclaredConstructors": true
+  },
+  {
     "name": "dev.sysboot.cli.option.GlobalOptions",
     "allDeclaredFields": true,
     "allDeclaredMethods": true,
