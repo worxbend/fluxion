@@ -10,6 +10,7 @@ import dev.sysboot.core.Phase;
 import dev.sysboot.executor.PhaseExecutionPlanner;
 import java.util.Arrays;
 import java.util.List;
+import java.util.Optional;
 import java.util.Set;
 import java.util.stream.Collectors;
 import picocli.CommandLine.Command;
@@ -78,7 +79,17 @@ public final class RunCommand implements Runnable {
     }
 
     if (options.noTui()) {
-      var listener = new StdoutExecutionEventListener();
+      var listener =
+          new StdoutExecutionEventListener(
+              event ->
+                  event
+                      .phaseContext()
+                      .map(
+                          phase ->
+                              ResumeCommandFormatter.command(
+                                  options.resolvedConfigFile(),
+                                  profile,
+                                  nextPhaseAfter(filtered, phase))));
       if (dryRun) {
         context.orchestrator().dryRun(filtered, listener);
       } else {
@@ -166,5 +177,17 @@ public final class RunCommand implements Runnable {
     return new CliFailureException(
         ExitCode.CONFIGURATION_ERROR,
         "Unknown phase '" + phaseName + "'. Valid phases: " + validPhases);
+  }
+
+  private Optional<String> nextPhaseAfter(BootstrapConfig config, String completedPhase) {
+    List<Phase> ordered = new PhaseExecutionPlanner().plan(config.phases());
+    for (int i = 0; i < ordered.size(); i++) {
+      if (ordered.get(i).name().value().equals(completedPhase)) {
+        return i + 1 < ordered.size()
+            ? Optional.of(ordered.get(i + 1).name().value())
+            : Optional.empty();
+      }
+    }
+    return Optional.empty();
   }
 }

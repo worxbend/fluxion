@@ -117,6 +117,29 @@ class CliExitCodeTest {
     assertThat(result.stderr()).contains("base");
   }
 
+  @Test
+  void statusResumeCommand_printsNextIncompletePhase() throws Exception {
+    Path config = writeConfig();
+
+    CliResult result =
+        execute(
+            "status",
+            "--resume-command",
+            "-c",
+            config.toString(),
+            "--profile",
+            "default");
+
+    assertThat(result.exitCode()).isEqualTo(ExitCode.SUCCESS.value());
+    assertThat(result.stdout())
+        .contains("fluxion run --no-tui")
+        .contains("-c " + config)
+        .contains("--profile default")
+        .contains("--skip-already-installed")
+        .contains("--from-phase base");
+    assertThat(result.stderr()).isEmpty();
+  }
+
   private CliResult execute(String... args) {
     CommandLine commandLine = Main.commandLine();
     var stdout = new StringWriter();
