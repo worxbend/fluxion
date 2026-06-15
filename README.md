@@ -45,7 +45,7 @@ cd sysboot
 java -jar out/cli/assembly.dest/out.jar validate -c config/example-fedora.yaml --no-tui
 java -jar out/cli/assembly.dest/out.jar plan -c config/example-fedora.yaml --no-tui
 java -jar out/cli/assembly.dest/out.jar generate --os fedora --profile starter --output /tmp/starter.yaml
-java -jar out/cli/assembly.dest/out.jar run -c config/example-fedora.yaml --no-tui
+java -jar out/cli/assembly.dest/out.jar apply -c config/example-fedora.yaml --no-tui
 ```
 
 Native:
@@ -59,7 +59,8 @@ cd sysboot
 ## Commands
 
 ```text
-run        execute a profile
+apply      apply a profile
+run        alias for apply
 dry-run    show what would be executed
 validate   validate YAML
 list       list configured modules

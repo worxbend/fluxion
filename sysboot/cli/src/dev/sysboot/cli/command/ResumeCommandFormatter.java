@@ -15,7 +15,7 @@ final class ResumeCommandFormatter {
         new ArrayList<>(
             List.of(
                 "fluxion",
-                "run",
+                "apply",
                 "--no-tui",
                 "-c",
                 configFile.toString(),

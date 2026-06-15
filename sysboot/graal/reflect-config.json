@@ -30,7 +30,7 @@
     "allDeclaredConstructors": true
   },
   {
-    "name": "dev.sysboot.cli.command.RunCommand",
+    "name": "dev.sysboot.cli.command.ApplyCommand",
     "allDeclaredFields": true,
     "allDeclaredMethods": true,
     "allDeclaredConstructors": true

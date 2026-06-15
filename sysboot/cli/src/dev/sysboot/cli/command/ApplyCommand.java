@@ -17,8 +17,8 @@ import picocli.CommandLine.Command;
 import picocli.CommandLine.Mixin;
 import picocli.CommandLine.Option;
 
-@Command(name = "run", description = "Execute a bootstrap profile")
-public final class RunCommand implements Runnable {
+@Command(name = "apply", aliases = "run", description = "Apply a bootstrap profile")
+public final class ApplyCommand implements Runnable {
 
   @Mixin private GlobalOptions options;
 
@@ -38,6 +38,11 @@ public final class RunCommand implements Runnable {
       names = {"--dry-run"},
       description = "Show what would be executed without changes")
   private boolean dryRun;
+
+  @Option(
+      names = {"--yes", "-y"},
+      description = "Approve unattended execution")
+  private boolean yes;
 
   @Option(
       names = {"--skip-already-installed"},

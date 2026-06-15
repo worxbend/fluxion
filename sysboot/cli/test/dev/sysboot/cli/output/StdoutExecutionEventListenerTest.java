@@ -20,7 +20,7 @@ class StdoutExecutionEventListenerTest {
     try {
       var listener =
           new StdoutExecutionEventListener(
-              event -> Optional.of("fluxion run --no-tui -c profile.yaml --from-phase shell"));
+              event -> Optional.of("fluxion apply --no-tui -c profile.yaml --from-phase shell"));
 
       listener.onEvent(ExecutionEvent.restartRequired(new PhaseName("base"), "log out"));
     } finally {
@@ -30,6 +30,6 @@ class StdoutExecutionEventListenerTest {
     assertThat(output.toString(StandardCharsets.UTF_8))
         .contains("[RESTART] base")
         .contains("log out")
-        .contains("Resume with: fluxion run --no-tui -c profile.yaml --from-phase shell");
+        .contains("Resume with: fluxion apply --no-tui -c profile.yaml --from-phase shell");
   }
 }

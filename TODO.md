@@ -466,6 +466,10 @@ small and opinionated enough for one fresh Linux desktop or development laptop.
 
 ### 23. Add `fluxion apply` as the safe default run mode
 
+Status: implemented for the CLI boundary: `apply` is the documented primary command, `run` remains
+an alias, `apply --dry-run` uses the existing dry-run flow, `--yes` is accepted for unattended
+execution, and generated resume commands prefer `apply`.
+
 `run` is accurate but sounds like a script launcher. `apply` makes the user-facing model closer to
 "make this machine match the profile" while still keeping the implementation imperative where Linux
 requires it.

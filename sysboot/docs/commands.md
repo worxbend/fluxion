@@ -7,7 +7,7 @@ fluxion generate --os auto --profile starter --output ~/.config/fluxion/starter.
 fluxion validate -c ~/.config/fluxion/starter.yaml
 fluxion doctor -c ~/.config/fluxion/starter.yaml
 fluxion plan -c ~/.config/fluxion/starter.yaml
-fluxion run -c ~/.config/fluxion/starter.yaml
+fluxion apply -c ~/.config/fluxion/starter.yaml
 ```
 
 Global options:
@@ -52,9 +52,9 @@ fluxion validate -c config/example-fedora.yaml --strict
 fluxion validate -c config/example-fedora.yaml --format json
 ```
 
-Use this before `run`, especially after editing dependencies, module names, URLs, or package lists.
-Warnings do not fail validation unless `--strict` is set. JSON output is stable enough for shell
-automation and CI checks.
+Use this before `apply`, especially after editing dependencies, module names, URLs, or package
+lists. Warnings do not fail validation unless `--strict` is set. JSON output is stable enough for
+shell automation and CI checks.
 
 ## `doctor`
 
@@ -93,13 +93,14 @@ The plan uses the same phase ordering as execution and shows restart checkpoints
 JSON output includes phases, modules, item keys, item types, package managers, status labels, and
 command previews where available.
 
-## `run`
+## `apply`
 
 Executes a profile.
 
 ```bash
-fluxion run -c config/example-fedora.yaml
-fluxion run -c config/example-fedora.yaml --no-tui --skip-already-installed
+fluxion apply -c config/example-fedora.yaml
+fluxion apply -c config/example-fedora.yaml --no-tui --skip-already-installed
+fluxion apply -c config/example-fedora.yaml --dry-run
 ```
 
 Useful options:
@@ -108,6 +109,7 @@ Useful options:
 --phase PHASE[,PHASE]       Run only selected phases
 --from-phase PHASE          Resume from a specific phase
 --dry-run                   Emit dry-run events instead of executing
+--yes, -y                   Approve unattended execution
 --skip-already-installed    Use state and probes to skip known installed work
 --re-probe                  Ignore state and rely on live probes
 --probe-only                Probe configured items without installing
@@ -117,6 +119,8 @@ Useful options:
 When a phase uses `restartPolicy: prompt-logout`, Fluxion records completed state, prints a resume
 command, and stops cleanly.
 
+`run` remains available as an alias for `apply` for older scripts.
+
 ## `dry-run`
 
 Runs the orchestrator dry-run path for the full config.
@@ -125,7 +129,7 @@ Runs the orchestrator dry-run path for the full config.
 fluxion dry-run -c config/example-fedora.yaml
 ```
 
-Prefer `plan` when you want a concise phase view. Prefer `run --dry-run` when you want execution
+Prefer `plan` when you want a concise phase view. Prefer `apply --dry-run` when you want execution
 events shaped like a real run.
 
 ## `status`

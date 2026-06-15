@@ -44,13 +44,13 @@ fluxion validate -c ~/.config/fluxion/fedora.yaml
 fluxion generate --os auto --profile starter --preset developer --output ~/.config/fluxion/starter.yaml
 fluxion list -c ~/.config/fluxion/fedora.yaml
 fluxion dry-run -c ~/.config/fluxion/fedora.yaml
-fluxion run -c ~/.config/fluxion/fedora.yaml
+fluxion apply -c ~/.config/fluxion/fedora.yaml
 ```
 
 No TUI:
 
 ```bash
-fluxion run -c config/example-fedora.yaml --no-tui
+fluxion apply -c config/example-fedora.yaml --no-tui
 ```
 
 From the repo before installing:
@@ -58,7 +58,7 @@ From the repo before installing:
 ```bash
 cd sysboot
 ./mill cli.run validate -c config/example-fedora.yaml
-./out/cli/nativeImage.dest/native-executable run -c config/example-fedora.yaml --no-tui
+./out/cli/nativeImage.dest/native-executable apply -c config/example-fedora.yaml --no-tui
 ```
 
 ## Commands
@@ -74,7 +74,8 @@ Global:
   --version            version
 
 Commands:
-  run        execute the profile
+  apply      apply the profile
+  run        alias for apply
   dry-run    show what would happen
   validate   check the YAML
   list       print modules

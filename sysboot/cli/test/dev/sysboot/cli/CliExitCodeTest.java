@@ -8,9 +8,12 @@ import dev.sysboot.core.BootstrapState;
 import dev.sysboot.core.ItemType;
 import dev.sysboot.core.StateEntry;
 import dev.sysboot.executor.JsonStateRepository;
+import java.io.ByteArrayOutputStream;
 import java.io.IOException;
+import java.io.PrintStream;
 import java.io.PrintWriter;
 import java.io.StringWriter;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Instant;
@@ -30,6 +33,7 @@ class CliExitCodeTest {
 
     assertThat(result.exitCode()).isEqualTo(ExitCode.SUCCESS.value());
     assertThat(result.stdout()).contains("Usage: fluxion");
+    assertThat(result.stdout()).contains("apply");
     assertThat(result.stderr()).isEmpty();
   }
 
@@ -114,6 +118,32 @@ class CliExitCodeTest {
   }
 
   @Test
+  void runAlias_executesApplyDryRunPath() throws Exception {
+    Path config = writeConfig();
+
+    CliResult result =
+        executeCapturingSystemOut("run", "--no-tui", "--dry-run", "-c", config.toString());
+
+    assertThat(result.exitCode()).isEqualTo(ExitCode.SUCCESS.value());
+    assertThat(result.stdout()).contains("DRY-RUN").contains("git");
+    assertThat(result.stderr()).isEmpty();
+  }
+
+  @Test
+  void applyDryRun_emitsNoMutatingExecution() throws Exception {
+    Path config = writeConfig();
+
+    CliResult result =
+        executeCapturingSystemOut(
+            "apply", "--no-tui", "--dry-run", "-c", config.toString(), "--yes");
+
+    assertThat(result.exitCode()).isEqualTo(ExitCode.SUCCESS.value());
+    assertThat(result.stdout()).contains("DRY-RUN").contains("dnf install -y git");
+    assertThat(result.stdout()).doesNotContain("OK (");
+    assertThat(result.stderr()).isEmpty();
+  }
+
+  @Test
   void run_whenFromPhaseDoesNotExist_returnsConfigurationError() throws Exception {
     Path config = writeConfig();
 
@@ -134,7 +164,7 @@ class CliExitCodeTest {
 
     assertThat(result.exitCode()).isEqualTo(ExitCode.SUCCESS.value());
     assertThat(result.stdout())
-        .contains("fluxion run --no-tui")
+        .contains("fluxion apply --no-tui")
         .contains("-c " + config)
         .contains("--profile default")
         .contains("--skip-already-installed")
@@ -373,6 +403,19 @@ class CliExitCodeTest {
     int exitCode = commandLine.execute(args);
 
     return new CliResult(exitCode, stdout.toString(), stderr.toString());
+  }
+
+  private CliResult executeCapturingSystemOut(String... args) {
+    PrintStream originalOut = System.out;
+    var stdout = new ByteArrayOutputStream();
+    System.setOut(new PrintStream(stdout, true, StandardCharsets.UTF_8));
+    try {
+      CliResult result = execute(args);
+      return new CliResult(
+          result.exitCode(), stdout.toString(StandardCharsets.UTF_8), result.stderr());
+    } finally {
+      System.setOut(originalOut);
+    }
   }
 
   private Path writeConfig() throws IOException {

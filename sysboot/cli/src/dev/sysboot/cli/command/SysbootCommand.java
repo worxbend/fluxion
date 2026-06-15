@@ -16,7 +16,7 @@ import picocli.CommandLine.Mixin;
     versionProvider = VersionProvider.class,
     description = "Bootstrap your Linux system from a declarative YAML config",
     subcommands = {
-      RunCommand.class,
+      ApplyCommand.class,
       DryRunCommand.class,
       ValidateCommand.class,
       PlanCommand.class,

@@ -9,7 +9,7 @@ the main roadmap once their value and implementation shape are clear.
 ### Safer First Run
 
 - Add `fluxion init` as a guided wrapper around `generate`, `doctor`, and `plan`.
-- Add `fluxion run --confirm-plan` to require an explicit confirmation after showing the plan.
+- Add `fluxion apply --confirm-plan` to require an explicit confirmation after showing the plan.
 - Add `--assume-yes` for non-interactive runs where prompts should fail fast or proceed
   deterministically.
 - Add `--require-clean-state` to refuse a run when state contains failed or interrupted phases.
@@ -164,4 +164,3 @@ Move an item from this backlog into `TODO.md` when it has:
 - tests that can run in CI without mutating the host,
 - native-image implications understood,
 - documentation touchpoints identified.
-
