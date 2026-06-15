@@ -48,6 +48,7 @@ and parallel agent analysis.
 - `plan --show-commands` displays executor command previews where available.
 - `validate` and `doctor` reject unsupported compiled-binary archive formats before installation.
 - `plan --format table|tree|json` offers compact, hierarchical, and machine-readable views.
+- Integration tests cover malformed YAML and state path/reset behavior.
 
 ## P0 - Trust And Correctness
 

@@ -32,6 +32,40 @@ class CliReadOnlyCommandIT {
     }
   }
 
+  @Test
+  void validate_whenYamlMalformed_returnsConfigurationError() throws Exception {
+    Path config = tempDir.resolve("malformed.yaml");
+    Files.writeString(config, "profile: [");
+
+    CliResult result = execute("validate", "--no-tui", "-c", config.toString());
+
+    assertThat(result.exitCode()).isEqualTo(ExitCode.CONFIGURATION_ERROR.value());
+    assertThat(result.stderr()).contains("Failed to load config").contains("YAML parse error");
+  }
+
+  @Test
+  void statePathAndReset_useFluxionStateDirectory() throws Exception {
+    String originalHome = System.getProperty("user.home");
+    System.setProperty("user.home", tempDir.toString());
+    try {
+      CliResult pathResult = execute("state", "path", "integration");
+      Path stateFile = Path.of(pathResult.stdout().strip());
+      Files.createDirectories(stateFile.getParent());
+      Files.writeString(stateFile, "{}");
+
+      CliResult resetResult = execute("state", "reset", "--force", "integration");
+
+      assertThat(pathResult.exitCode()).isEqualTo(ExitCode.SUCCESS.value());
+      assertThat(stateFile)
+          .hasToString(tempDir.resolve(".local/share/fluxion/integration.state.json").toString());
+      assertThat(resetResult.exitCode()).isEqualTo(ExitCode.SUCCESS.value());
+      assertThat(resetResult.stdout()).contains("State reset for profile: integration");
+      assertThat(stateFile).doesNotExist();
+    } finally {
+      System.setProperty("user.home", originalHome);
+    }
+  }
+
   private void assertSuccess(CliResult result) {
     assertThat(result.exitCode()).isEqualTo(ExitCode.SUCCESS.value());
     assertThat(result.stdout()).contains("\"profileName\"");
