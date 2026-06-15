@@ -74,8 +74,16 @@ public final class ProfileLinter {
     if (normalized.contains("rm -rf") || normalized.contains("mkfs.")) {
       warning(issues, "safety", path, "Potentially destructive shell command needs review");
     }
-    if (normalized.contains("curl ") && normalized.contains("| sh")) {
+    if (pipesDownloadedContentIntoShell(normalized)) {
       warning(issues, "safety", path, "Piping downloaded content into a shell needs review");
+    }
+    if (configuresRepository(normalized)) {
+      warning(
+          issues,
+          "safety",
+          path,
+          "Repository setup in shell commands is hard to audit; prefer first-class repository"
+              + " modules when available");
     }
     if (normalized.contains("sudo ")) {
       info(
@@ -84,6 +92,21 @@ public final class ProfileLinter {
           path,
           "Shell command embeds sudo instead of using Fluxion sudo handling");
     }
+  }
+
+  private boolean pipesDownloadedContentIntoShell(String normalized) {
+    return normalized.contains("curl ")
+        && (normalized.contains("| sh") || normalized.contains("| bash"));
+  }
+
+  private boolean configuresRepository(String normalized) {
+    return normalized.contains("dnf config-manager")
+        || normalized.contains("add-apt-repository")
+        || normalized.contains("apt-key ")
+        || normalized.contains("rpm --import")
+        || normalized.contains("flatpak remote-add")
+        || normalized.contains("zypper addrepo")
+        || normalized.contains("pacman-key ");
   }
 
   private int score(List<ProfileLintIssue> issues) {

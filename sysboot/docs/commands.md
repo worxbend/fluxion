@@ -108,7 +108,8 @@ fluxion lint -c config/example-fedora.yaml --format json
 `lint` is intentionally separate from `validate`: validation checks correctness, while lint flags
 profile quality and safety concerns. The first rule set warns about compiled binaries without
 checksums, shell command modules without probes, potentially destructive shell commands, downloaded
-content piped into a shell, and embedded `sudo` inside shell commands.
+content piped into a shell, repository setup hidden inside shell commands, and embedded `sudo`
+inside shell commands.
 
 ## `doctor`
 
