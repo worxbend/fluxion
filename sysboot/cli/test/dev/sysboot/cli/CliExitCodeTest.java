@@ -269,6 +269,50 @@ class CliExitCodeTest {
   }
 
   @Test
+  void explain_whenItemRequested_outputsStatusAndPreview() throws Exception {
+    Path config = writeConfig();
+
+    CliResult result =
+        execute("explain", "--format", "json", "--item", "git", "-c", config.toString());
+
+    assertThat(result.exitCode()).isEqualTo(ExitCode.SUCCESS.value());
+    assertThat(result.stdout())
+        .contains("\"kind\":\"item\"")
+        .contains("\"key\":\"git\"")
+        .contains("\"phaseName\":\"base\"")
+        .contains("\"moduleName\":\"tools\"")
+        .contains("\"commandPreview\":[\"sudo\",\"dnf\",\"install\",\"-y\",\"git\"]");
+    assertThat(result.stderr()).isEmpty();
+  }
+
+  @Test
+  void explain_whenPhaseRequested_outputsPhaseItems() throws Exception {
+    Path config = writeConfig();
+
+    CliResult result =
+        execute("explain", "--format", "json", "--phase", "base", "-c", config.toString());
+
+    assertThat(result.exitCode()).isEqualTo(ExitCode.SUCCESS.value());
+    assertThat(result.stdout())
+        .contains("\"kind\":\"phase\"")
+        .contains("\"phaseName\":\"base\"")
+        .contains("\"restartEffect\":\"none\"")
+        .contains("\"items\"")
+        .contains("\"key\":\"git\"");
+    assertThat(result.stderr()).isEmpty();
+  }
+
+  @Test
+  void explain_whenSelectorMissing_returnsInvalidInput() throws Exception {
+    Path config = writeConfig();
+
+    CliResult result = execute("explain", "-c", config.toString());
+
+    assertThat(result.exitCode()).isEqualTo(ExitCode.INVALID_INPUT.value());
+    assertThat(result.stderr()).contains("Specify exactly one of --phase or --item");
+  }
+
+  @Test
   void list_whenFormatJson_outputsModuleList() throws Exception {
     Path config = writeConfig();
 

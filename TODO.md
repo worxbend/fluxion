@@ -523,6 +523,10 @@ Implementation:
 
 ### 25. Add a `why`/`explain` command for trust
 
+Status: implemented as `fluxion explain` with `--phase` and `--item` selectors, text/JSON output,
+phase dependency context, restart effect, module ownership, current status classification, and
+command previews where available.
+
 When bootstrapping a real machine, users need to know why an item is about to run or skip. This is
 where Fluxion can feel more predictable than shell-script bootstrap repos.
 

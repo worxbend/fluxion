@@ -21,6 +21,7 @@ import picocli.CommandLine.Mixin;
       ValidateCommand.class,
       PlanCommand.class,
       DiffCommand.class,
+      ExplainCommand.class,
       ListCommand.class,
       StatusCommand.class,
       StateCommand.class,

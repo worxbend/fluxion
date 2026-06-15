@@ -66,6 +66,12 @@
     "allDeclaredConstructors": true
   },
   {
+    "name": "dev.sysboot.cli.command.ExplainCommand",
+    "allDeclaredFields": true,
+    "allDeclaredMethods": true,
+    "allDeclaredConstructors": true
+  },
+  {
     "name": "dev.sysboot.cli.command.ListCommand",
     "allDeclaredFields": true,
     "allDeclaredMethods": true,

@@ -8,6 +8,7 @@ fluxion validate -c ~/.config/fluxion/starter.yaml
 fluxion doctor -c ~/.config/fluxion/starter.yaml
 fluxion plan -c ~/.config/fluxion/starter.yaml
 fluxion diff -c ~/.config/fluxion/starter.yaml
+fluxion explain -c ~/.config/fluxion/starter.yaml --item git
 fluxion apply -c ~/.config/fluxion/starter.yaml
 ```
 
@@ -106,6 +107,19 @@ fluxion diff -c config/example-fedora.yaml --format json
 `diff` is read-only. It reuses the same live probes and state comparison as `status`, but omits
 items already classified as installed. Output includes missing configured items, state-only entries,
 unknown probe results, and version drift.
+
+## `explain`
+
+Explains why a phase or item would run, skip, or need review.
+
+```bash
+fluxion explain -c config/example-fedora.yaml --phase system-foundation
+fluxion explain -c config/example-fedora.yaml --item git
+fluxion explain -c config/example-fedora.yaml --item git --format json
+```
+
+`explain` is read-only. It reports phase dependencies, restart effect, module ownership, current
+status classification, and command preview when the executor can provide one.
 
 ## `apply`
 
