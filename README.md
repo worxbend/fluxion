@@ -65,6 +65,7 @@ dry-run    show what would be executed
 validate   validate YAML
 list       list configured modules
 plan       show phase order and planned work
+diff       show host changes needed
 status     show current status
 state      show/reset/forget/path persisted state
 generate   create a starter YAML profile

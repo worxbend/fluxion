@@ -254,6 +254,21 @@ class CliExitCodeTest {
   }
 
   @Test
+  void diff_whenFormatJson_outputsConfiguredChanges() throws Exception {
+    Path config = writeMissingBinaryConfig();
+
+    CliResult result = execute("diff", "--format", "json", "-c", config.toString());
+
+    assertThat(result.exitCode()).isEqualTo(ExitCode.SUCCESS.value());
+    assertThat(result.stdout())
+        .contains("\"profileName\":\"test\"")
+        .contains("\"changes\"")
+        .contains("\"status\":\"configured-missing\"")
+        .contains("/definitely/missing/fluxion-rg");
+    assertThat(result.stderr()).isEmpty();
+  }
+
+  @Test
   void list_whenFormatJson_outputsModuleList() throws Exception {
     Path config = writeConfig();
 
@@ -477,6 +492,30 @@ class CliExitCodeTest {
                 binaryName: rg
                 url: https://example.test/rg.tar.gz
                 installPath: /usr/local/bin/rg
+        """);
+    return config;
+  }
+
+  private Path writeMissingBinaryConfig() throws IOException {
+    Path config = tempDir.resolve("missing-binary-profile.yaml");
+    Files.writeString(
+        config,
+        """
+        profile: test
+        os:
+          type: fedora
+          release: "44"
+        jobs:
+          - name: base
+            steps:
+              - type: compiled-binary
+                name: ripgrep
+                binaryName: fluxion-rg
+                url: https://example.test/rg.tar.gz
+                installPath: /definitely/missing/fluxion-rg
+                checksum:
+                  algorithm: sha256
+                  value: abcdef
         """);
     return config;
   }

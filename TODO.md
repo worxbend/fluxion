@@ -490,6 +490,10 @@ Tests:
 
 ### 24. Add a first-class `diff` command
 
+Status: first slice implemented as a read-only CLI command with text and JSON output, backed by the
+existing execution plan, live probes, and state comparison. It reports missing configured items,
+state-only entries, unknown probe results, and version drift.
+
 The missing bridge between `plan` and `status` is "what would change on this host right now?".
 Ansible has check/diff patterns; Fluxion can make that local and understandable.
 

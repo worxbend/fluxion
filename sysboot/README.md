@@ -80,6 +80,7 @@ Commands:
   validate   check the YAML
   list       print modules
   plan       show job order
+  diff       show host changes needed
   status     show last run status, or `--resume-command`
   state      show/reset/forget saved state
   generate   create a starter YAML profile

@@ -7,6 +7,7 @@ fluxion generate --os auto --profile starter --output ~/.config/fluxion/starter.
 fluxion validate -c ~/.config/fluxion/starter.yaml
 fluxion doctor -c ~/.config/fluxion/starter.yaml
 fluxion plan -c ~/.config/fluxion/starter.yaml
+fluxion diff -c ~/.config/fluxion/starter.yaml
 fluxion apply -c ~/.config/fluxion/starter.yaml
 ```
 
@@ -92,6 +93,19 @@ The plan uses the same phase ordering as execution and shows restart checkpoints
 `--skip-already-installed`, Fluxion probes configured items and marks what would be skipped.
 JSON output includes phases, modules, item keys, item types, package managers, status labels, and
 command previews where available.
+
+## `diff`
+
+Shows the configured work that differs from the current host and saved state.
+
+```bash
+fluxion diff -c config/example-fedora.yaml
+fluxion diff -c config/example-fedora.yaml --format json
+```
+
+`diff` is read-only. It reuses the same live probes and state comparison as `status`, but omits
+items already classified as installed. Output includes missing configured items, state-only entries,
+unknown probe results, and version drift.
 
 ## `apply`
 
