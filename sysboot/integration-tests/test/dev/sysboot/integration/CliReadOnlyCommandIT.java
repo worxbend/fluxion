@@ -4,8 +4,11 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import dev.sysboot.cli.Main;
 import dev.sysboot.cli.error.ExitCode;
+import java.io.ByteArrayOutputStream;
+import java.io.PrintStream;
 import java.io.PrintWriter;
 import java.io.StringWriter;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import org.junit.jupiter.api.Test;
@@ -66,6 +69,29 @@ class CliReadOnlyCommandIT {
     }
   }
 
+  @Test
+  void apply_whenPromptLogoutPhaseCompletes_statusPrintsResumeCommand() throws Exception {
+    Path config = writePromptLogoutConfig();
+    String originalHome = System.getProperty("user.home");
+    System.setProperty("user.home", tempDir.toString());
+    try {
+      CliResult applyResult =
+          executeCapturingSystemOut(
+              "apply", "--no-tui", "--yes", "-c", config.toString(), "--profile", "integration");
+      CliResult resumeResult =
+          execute(
+              "status", "--resume-command", "-c", config.toString(), "--profile", "integration");
+
+      assertThat(applyResult.exitCode()).isEqualTo(ExitCode.SUCCESS.value());
+      assertThat(applyResult.stdout()).contains("[RESTART]").contains("Resume with:");
+      assertThat(resumeResult.exitCode()).isEqualTo(ExitCode.SUCCESS.value());
+      assertThat(resumeResult.stdout()).contains("--from-phase desktop");
+      assertThat(resumeResult.stderr()).isEmpty();
+    } finally {
+      System.setProperty("user.home", originalHome);
+    }
+  }
+
   private void assertSuccess(CliResult result) {
     assertThat(result.exitCode()).isEqualTo(ExitCode.SUCCESS.value());
     assertThat(result.stdout()).contains("\"profileName\"");
@@ -82,6 +108,19 @@ class CliReadOnlyCommandIT {
     int exitCode = commandLine.execute(args);
 
     return new CliResult(exitCode, stdout.toString(), stderr.toString());
+  }
+
+  private CliResult executeCapturingSystemOut(String... args) {
+    PrintStream originalOut = System.out;
+    var stdout = new ByteArrayOutputStream();
+    System.setOut(new PrintStream(stdout, true, StandardCharsets.UTF_8));
+    try {
+      CliResult result = execute(args);
+      return new CliResult(
+          result.exitCode(), stdout.toString(StandardCharsets.UTF_8), result.stderr());
+    } finally {
+      System.setOut(originalOut);
+    }
   }
 
   private Path writeShellCommandConfig() throws Exception {
@@ -101,6 +140,38 @@ class CliReadOnlyCommandIT {
                 shell: "/bin/sh"
                 commands:
                   - "echo ready"
+        """);
+    return config;
+  }
+
+  private Path writePromptLogoutConfig() throws Exception {
+    Path config = tempDir.resolve("prompt-logout.yaml");
+    Files.writeString(
+        config,
+        """
+        profile: integration
+        os:
+          type: fedora
+          release: "44"
+        jobs:
+          - name: base
+            restartPolicy:
+              type: prompt-logout
+              message: "Log out and back in."
+            steps:
+              - type: shell-command
+                name: base-echo
+                shell: "/bin/sh"
+                commands:
+                  - "echo base"
+          - name: desktop
+            dependsOn: [base]
+            steps:
+              - type: shell-command
+                name: desktop-echo
+                shell: "/bin/sh"
+                commands:
+                  - "echo desktop"
         """);
     return config;
   }

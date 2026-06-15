@@ -50,6 +50,7 @@ and parallel agent analysis.
 - `plan --format table|tree|json` offers compact, hierarchical, and machine-readable views.
 - Integration tests cover malformed YAML and state path/reset behavior.
 - Phase state persists failure/blocked reasons and exposes them in `state show --format json`.
+- Integration tests cover prompt-logout state and generated resume commands.
 
 ## P0 - Trust And Correctness
 
