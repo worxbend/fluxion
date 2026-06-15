@@ -25,6 +25,9 @@ public final class StateEntryRecord {
   @JsonProperty("checksum")
   public String checksum;
 
+  @JsonProperty("sourceUrl")
+  public String sourceUrl;
+
   public StateEntryRecord() {}
 
   public StateEntryRecord(
@@ -35,6 +38,18 @@ public final class StateEntryRecord {
       String completedAt,
       String version,
       String checksum) {
+    this(profileName, moduleName, itemKey, itemType, completedAt, version, checksum, null);
+  }
+
+  public StateEntryRecord(
+      String profileName,
+      String moduleName,
+      String itemKey,
+      String itemType,
+      String completedAt,
+      String version,
+      String checksum,
+      String sourceUrl) {
     this.profileName = profileName;
     this.moduleName = moduleName;
     this.itemKey = itemKey;
@@ -42,5 +57,6 @@ public final class StateEntryRecord {
     this.completedAt = completedAt;
     this.version = version;
     this.checksum = checksum;
+    this.sourceUrl = sourceUrl;
   }
 }

@@ -10,20 +10,27 @@ public sealed interface StepResult
 
   String item();
 
-  record Success(String item, Duration elapsed, Optional<String> detectedVersion)
+  record Success(
+      String item, Duration elapsed, Optional<String> detectedVersion, Optional<String> checksum)
       implements StepResult {
     public Success {
       Objects.requireNonNull(item);
       Objects.requireNonNull(elapsed);
       detectedVersion = detectedVersion != null ? detectedVersion : Optional.empty();
+      checksum = checksum != null ? checksum : Optional.empty();
     }
 
     public Success(String item, Duration elapsed) {
-      this(item, elapsed, Optional.empty());
+      this(item, elapsed, Optional.empty(), Optional.empty());
     }
 
     public Success(String item, Duration elapsed, String version) {
-      this(item, elapsed, Optional.ofNullable(version));
+      this(item, elapsed, Optional.ofNullable(version), Optional.empty());
+    }
+
+    public Success(
+        String item, Duration elapsed, Optional<String> detectedVersion, String checksum) {
+      this(item, elapsed, detectedVersion, Optional.ofNullable(checksum));
     }
   }
 

@@ -14,7 +14,7 @@ import java.util.Optional;
 
 final class StateMapper {
 
-  private static final int SCHEMA_VERSION = 3;
+  private static final int SCHEMA_VERSION = 4;
 
   private StateMapper() {}
 
@@ -47,7 +47,8 @@ final class StateMapper {
         e.itemType().name(),
         e.completedAt().toString(),
         e.version().orElse(null),
-        e.checksum().orElse(null));
+        e.checksum().orElse(null),
+        e.sourceUrl().orElse(null));
   }
 
   private static StateEntry entryFromRecord(StateEntryRecord record) {
@@ -60,7 +61,8 @@ final class StateMapper {
         ItemType.valueOf(record.itemType),
         completedAt,
         Optional.ofNullable(record.version),
-        Optional.ofNullable(record.checksum));
+        Optional.ofNullable(record.checksum),
+        Optional.ofNullable(record.sourceUrl));
   }
 
   private static PhaseStateEntryRecord phaseEntryToRecord(PhaseStateEntry e) {

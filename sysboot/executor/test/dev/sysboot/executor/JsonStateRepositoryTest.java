@@ -95,6 +95,31 @@ class JsonStateRepositoryTest {
   }
 
   @Test
+  void saveAndLoad_roundTrip_preservesBinaryProvenance() {
+    StateEntry entry =
+        new StateEntry(
+            "test-profile",
+            "ripgrep",
+            "/usr/local/bin/rg",
+            ItemType.COMPILED_BINARY,
+            Instant.parse("2026-06-01T10:00:00Z"),
+            Optional.of("14.1.1"),
+            Optional.of("a".repeat(64)),
+            Optional.of("https://example.test/rg.tar.gz"));
+    BootstrapState state = BootstrapState.empty("test-profile", "1.0.0").withEntry(entry);
+
+    var repo = newRepo();
+    repo.save(state);
+
+    Optional<BootstrapState> loaded = repo.load("test-profile");
+    assertThat(loaded).isPresent();
+    StateEntry loadedEntry = loaded.get().entries().getFirst();
+    assertThat(loadedEntry.version()).contains("14.1.1");
+    assertThat(loadedEntry.checksum()).contains("a".repeat(64));
+    assertThat(loadedEntry.sourceUrl()).contains("https://example.test/rg.tar.gz");
+  }
+
+  @Test
   void saveAndLoad_roundTrip_preservesPhaseFingerprint() {
     var phaseEntry =
         new PhaseStateEntry(

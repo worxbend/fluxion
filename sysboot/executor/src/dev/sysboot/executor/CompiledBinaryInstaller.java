@@ -2,6 +2,7 @@ package dev.sysboot.executor;
 
 import dev.sysboot.core.Checksum;
 import dev.sysboot.core.CompiledBinaryModule;
+import dev.sysboot.core.InstallationStatus;
 import dev.sysboot.core.ShellRunner;
 import dev.sysboot.core.StepResult;
 import java.io.BufferedInputStream;
@@ -66,7 +67,11 @@ public final class CompiledBinaryInstaller {
         log.warn("Installing downloaded binary '{}' without checksum verification", module.name());
       }
       extractOrCopy(downloadedFile, module);
-      return new StepResult.Success(module.binaryName(), Duration.between(start, Instant.now()));
+      return new StepResult.Success(
+          module.binaryName(),
+          Duration.between(start, Instant.now()),
+          detectedVersion(module),
+          checksum.map(Checksum::value));
     } catch (IOException | ShellExecutionException e) {
       return new StepResult.Failure(
           module.binaryName(), e.getMessage(), 1, Duration.between(start, Instant.now()));
@@ -114,6 +119,16 @@ public final class CompiledBinaryInstaller {
     } else {
       copyBinary(sourceFile, module.installPath());
     }
+  }
+
+  private Optional<String> detectedVersion(CompiledBinaryModule module) {
+    InstallationStatus status =
+        new CompiledBinaryProbe(module.versionCommand(), module.expectedVersion())
+            .probe(module.installPath().toString());
+    if (status instanceof InstallationStatus.InstalledByProbe installed) {
+      return Optional.ofNullable(installed.detectedVersion());
+    }
+    return Optional.empty();
   }
 
   private void extractTarGz(Path archive, Path installPath, String binaryName) throws IOException {

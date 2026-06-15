@@ -53,6 +53,8 @@ and parallel agent analysis.
 - Phase state persists failure/blocked reasons and exposes them in `state show --format json`.
 - Integration tests cover prompt-logout state and generated resume commands.
 - Compiled binaries support HTTPS `checksumUrl` SHA-256 files as an alternative to inline checksums.
+- Compiled-binary state records persist source URL, resolved checksum, and detected version when
+  available.
 
 ## P0 - Trust And Correctness
 
@@ -677,6 +679,7 @@ Implementation:
   - Status: inline checksums and HTTPS `checksumUrl` files are implemented; detached signatures
     remain open.
 - Persist installed artifact URL, checksum, and detected version in state.
+  - Status: implemented for compiled-binary successes when checksum/version data is available.
 - Add `doctor` checks for unsupported archive formats and non-HTTPS URLs.
 
 ### 31. Add run reports

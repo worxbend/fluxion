@@ -164,6 +164,7 @@ public final class StateCommand implements Runnable {
       output.put("completedAt", entry.completedAt().toString());
       output.put("version", entry.version().orElse(null));
       output.put("checksum", entry.checksum().orElse(null));
+      output.put("sourceUrl", entry.sourceUrl().orElse(null));
       return output;
     }
   }

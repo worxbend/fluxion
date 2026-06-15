@@ -11,7 +11,8 @@ public record StateEntry(
     ItemType itemType,
     Instant completedAt,
     Optional<String> version,
-    Optional<String> checksum) {
+    Optional<String> checksum,
+    Optional<String> sourceUrl) {
 
   public StateEntry {
     Objects.requireNonNull(profileName);
@@ -21,5 +22,25 @@ public record StateEntry(
     Objects.requireNonNull(completedAt);
     Objects.requireNonNull(version);
     Objects.requireNonNull(checksum);
+    Objects.requireNonNull(sourceUrl);
+  }
+
+  public StateEntry(
+      String profileName,
+      String moduleName,
+      String itemKey,
+      ItemType itemType,
+      Instant completedAt,
+      Optional<String> version,
+      Optional<String> checksum) {
+    this(
+        profileName,
+        moduleName,
+        itemKey,
+        itemType,
+        completedAt,
+        version,
+        checksum,
+        Optional.empty());
   }
 }

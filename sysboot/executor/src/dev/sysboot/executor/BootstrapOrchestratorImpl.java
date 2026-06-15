@@ -318,7 +318,7 @@ public final class BootstrapOrchestratorImpl implements BootstrapOrchestrator {
     }
     StepResult result = new CompiledBinaryInstaller(phaseRunner).install(module);
     listener.onEvent(ExecutionEvent.itemCompleted(module.name(), module.binaryName(), result));
-    recordSuccess(module.name(), installKey, ItemType.COMPILED_BINARY, result);
+    recordBinarySuccess(module, installKey, result);
     return result instanceof StepResult.Failure && !module.continueOnError();
   }
 
@@ -441,6 +441,24 @@ public final class BootstrapOrchestratorImpl implements BootstrapOrchestrator {
 
   private void recordSuccess(
       ModuleName moduleName, String itemKey, ItemType itemType, StepResult result) {
+    recordSuccess(moduleName, itemKey, itemType, result, Optional.empty());
+  }
+
+  private void recordBinarySuccess(CompiledBinaryModule module, String itemKey, StepResult result) {
+    recordSuccess(
+        module.name(),
+        itemKey,
+        ItemType.COMPILED_BINARY,
+        result,
+        Optional.of(module.url().toString()));
+  }
+
+  private void recordSuccess(
+      ModuleName moduleName,
+      String itemKey,
+      ItemType itemType,
+      StepResult result,
+      Optional<String> sourceUrl) {
     if (!(result instanceof StepResult.Success success)) return;
     stateRepository.ifPresent(
         repo -> {
@@ -454,7 +472,8 @@ public final class BootstrapOrchestratorImpl implements BootstrapOrchestrator {
                       itemType,
                       java.time.Instant.now(),
                       success.detectedVersion(),
-                      Optional.empty()));
+                      success.checksum(),
+                      sourceUrl));
           skipEvaluator.refreshState(updatedState);
         });
   }

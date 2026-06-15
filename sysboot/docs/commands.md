@@ -273,6 +273,8 @@ State records successful items and phase completion fingerprints. A completed ph
 when its stored fingerprint still matches the current config. When `state show` is given `-c`, it
 also prints `nextPhase`/`Next phase` for the first configured phase that is not completed in state.
 JSON output includes a phase `reason` when Fluxion has recorded why a phase failed or was blocked.
+JSON item output includes persisted provenance fields where available: `version`, `checksum`, and
+`sourceUrl`.
 
 ## `list`
 
