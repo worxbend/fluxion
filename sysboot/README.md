@@ -86,6 +86,7 @@ Commands:
   state      show/reset/forget saved state
   generate   create a starter YAML profile
   snapshot   write a host inventory JSON
+  import     generate profile fragments from this host
   doctor     check host readiness for a profile
 ```
 

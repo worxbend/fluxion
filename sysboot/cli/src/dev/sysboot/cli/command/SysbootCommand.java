@@ -27,6 +27,7 @@ import picocli.CommandLine.Mixin;
       StateCommand.class,
       GenerateCommand.class,
       SnapshotCommand.class,
+      ImportCommand.class,
       DoctorCommand.class
     })
 public final class SysbootCommand implements Runnable {

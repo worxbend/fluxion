@@ -548,9 +548,11 @@ Explain:
 
 ### 26. Add workstation snapshot/import workflows
 
-Status: first slice implemented with `fluxion snapshot --output snapshot.json`, producing
-review-required JSON for OS metadata, detected package managers, package inventory when available,
-Flatpak apps/remotes, default shell, and common toolchain presence. Import commands remain a later
+Status: snapshot and package import slices are implemented. `fluxion snapshot --output
+snapshot.json` produces review-required JSON for OS metadata, detected package managers, package
+inventory when available, Flatpak apps/remotes, default shell, and common toolchain presence.
+`fluxion import packages --from-host --output packages.yaml` now generates a review-required YAML
+packages fragment from RPM, Pacman, or Dpkg host databases. Flatpak import remains a later
 expansion.
 
 Fluxion should help users turn a hand-built machine into a reproducible profile. This is a clear

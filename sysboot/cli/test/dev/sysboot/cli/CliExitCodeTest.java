@@ -9,6 +9,7 @@ import dev.sysboot.core.ItemType;
 import dev.sysboot.core.StateEntry;
 import dev.sysboot.executor.JsonStateRepository;
 import java.io.ByteArrayOutputStream;
+import java.io.File;
 import java.io.IOException;
 import java.io.PrintStream;
 import java.io.PrintWriter;
@@ -17,8 +18,10 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Instant;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Optional;
+import org.junit.jupiter.api.Assumptions;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import picocli.CommandLine;
@@ -450,6 +453,35 @@ class CliExitCodeTest {
   }
 
   @Test
+  void importPackages_writesReviewRequiredFragment() throws Exception {
+    Assumptions.assumeTrue(hasSupportedPackageDatabase());
+    Path output = tempDir.resolve("packages.yaml");
+
+    CliResult result = execute("import", "packages", "--from-host", "--output", output.toString());
+
+    assertThat(result.exitCode()).isEqualTo(ExitCode.SUCCESS.value());
+    assertThat(result.stdout()).contains("Imported packages:");
+    assertThat(output).exists();
+    assertThat(Files.readString(output))
+        .contains("Review required")
+        .contains("type: packages")
+        .contains("packageManager:")
+        .contains("packages:");
+    assertThat(result.stderr()).isEmpty();
+  }
+
+  @Test
+  void importPackages_whenOutputExistsWithoutForce_returnsInvalidInput() throws Exception {
+    Path output = tempDir.resolve("packages.yaml");
+    Files.writeString(output, "existing");
+
+    CliResult result = execute("import", "packages", "--from-host", "--output", output.toString());
+
+    assertThat(result.exitCode()).isEqualTo(ExitCode.INVALID_INPUT.value());
+    assertThat(result.stderr()).contains("Output file already exists");
+  }
+
+  @Test
   void doctor_whenConfigIsReady_returnsSuccessWithReport() throws Exception {
     Path config = writeShellConfig("/bin/sh");
     String originalHome = System.getProperty("user.home");
@@ -610,6 +642,21 @@ class CliExitCodeTest {
                 packages: [git]
         """);
     return config;
+  }
+
+  private boolean hasSupportedPackageDatabase() {
+    return commandExists("rpm") || commandExists("pacman") || commandExists("dpkg-query");
+  }
+
+  private boolean commandExists(String command) {
+    String path = System.getenv("PATH");
+    if (path == null || path.isBlank()) {
+      return false;
+    }
+    return Arrays.stream(path.split(File.pathSeparator))
+        .map(Path::of)
+        .map(dir -> dir.resolve(command))
+        .anyMatch(Files::isExecutable);
   }
 
   private record CliResult(int exitCode, String stdout, String stderr) {}

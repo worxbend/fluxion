@@ -45,6 +45,7 @@ cd sysboot
 java -jar out/cli/assembly.dest/out.jar validate -c config/example-fedora.yaml --no-tui
 java -jar out/cli/assembly.dest/out.jar plan -c config/example-fedora.yaml --no-tui
 java -jar out/cli/assembly.dest/out.jar generate --os fedora --profile starter --output /tmp/starter.yaml
+java -jar out/cli/assembly.dest/out.jar import packages --from-host --output /tmp/packages.yaml
 java -jar out/cli/assembly.dest/out.jar apply -c config/example-fedora.yaml --no-tui
 ```
 
@@ -71,6 +72,7 @@ status     show current status
 state      show/reset/forget/path persisted state
 generate   create a starter YAML profile
 snapshot   write a host inventory JSON
+import     generate profile fragments from this host
 doctor     check host readiness for a profile
 ```
 

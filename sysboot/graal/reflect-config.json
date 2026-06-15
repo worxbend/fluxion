@@ -96,6 +96,18 @@
     "allDeclaredConstructors": true
   },
   {
+    "name": "dev.sysboot.cli.command.ImportCommand",
+    "allDeclaredFields": true,
+    "allDeclaredMethods": true,
+    "allDeclaredConstructors": true
+  },
+  {
+    "name": "dev.sysboot.cli.command.ImportCommand$PackagesSubcommand",
+    "allDeclaredFields": true,
+    "allDeclaredMethods": true,
+    "allDeclaredConstructors": true
+  },
+  {
     "name": "dev.sysboot.cli.command.DoctorCommand",
     "allDeclaredFields": true,
     "allDeclaredMethods": true,

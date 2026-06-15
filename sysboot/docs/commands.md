@@ -10,6 +10,7 @@ fluxion plan -c ~/.config/fluxion/starter.yaml
 fluxion diff -c ~/.config/fluxion/starter.yaml
 fluxion explain -c ~/.config/fluxion/starter.yaml --item git
 fluxion snapshot --output ~/fluxion-snapshot.json
+fluxion import packages --from-host --output ~/fluxion-packages.yaml
 fluxion apply -c ~/.config/fluxion/starter.yaml
 ```
 
@@ -57,6 +58,20 @@ The snapshot is read-only. It records `/etc/os-release` fields, detected package
 installed package names when the host package database is available, Flatpak apps/remotes when
 Flatpak is present, default shell, and common toolchain presence. It does not read shell history,
 dotfile contents, credentials, or other user secrets.
+
+## `import`
+
+Generates review-required profile fragments from the current host.
+
+```bash
+fluxion import packages --from-host --output packages.yaml
+fluxion import packages --from-host --output packages.yaml --force
+```
+
+Package import reads the local package database and writes a YAML fragment with one `packages`
+step. It detects RPM, Pacman, and Dpkg package databases and chooses `dnf`, `zypper`, `pacman`, or
+`apt` as the package manager. The generated file is intentionally not applied automatically; review
+it to remove transient, machine-specific, or unwanted packages before merging it into a profile.
 
 ## `validate`
 
