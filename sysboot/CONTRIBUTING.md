@@ -55,6 +55,12 @@ java -agentlib:native-image-agent=config-output-dir=graal/ \
 
 Then merge the generated `graal/` files and rebuild.
 
+Check source-derived native metadata before opening a PR:
+
+```bash
+just native-metadata-check
+```
+
 ## PR Checklist
 
 - [ ] All new public methods have unit tests.
@@ -63,7 +69,7 @@ Then merge the generated `graal/` files and rebuild.
 - [ ] No method exceeds 20 lines.
 - [ ] `./mill __.test` passes.
 - [ ] `./mill config-parser.test` covers any new YAML fields.
-- [ ] New reflective types are registered in `graal/reflect-config.json`.
+- [ ] `just native-metadata-check` passes.
 - [ ] `--no-tui` mode still works (no TamboUI imports in `executor` or `core`).
 - [ ] Passwords never appear in log output.
 - [ ] New package manager: `PackageManagerKind` updated, executor added, registered in `ApplicationContext`.

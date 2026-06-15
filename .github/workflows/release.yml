@@ -66,17 +66,16 @@ jobs:
             exit 1
           fi
 
+      - name: Check native-image metadata
+        run: python3 scripts/check-native-metadata.py
+
       - name: Run tests
         working-directory: sysboot
         run: ./mill __.test
 
       - name: Validate example configs
         working-directory: sysboot
-        run: |
-          ./mill cli.run validate -c config/example-fedora.yaml
-          ./mill cli.run validate -c config/example-arch.yaml
-          ./mill cli.run validate -c config/example-opensuse.yaml
-          ./mill cli.run validate -c config/system-bootstrap-fedora.yaml
+        run: for f in config/*.yaml; do ./mill cli.run validate --no-tui -c "$f"; done
 
       - name: Build JVM assembly
         working-directory: sysboot
@@ -92,7 +91,9 @@ jobs:
           expected="${{ steps.version.outputs.version }}"
           expected="${expected#v}"
           test "$(sysboot/out/cli/nativeImage.dest/native-executable --version)" = "fluxion ${expected}"
-          sysboot/out/cli/nativeImage.dest/native-executable validate --no-tui -c sysboot/config/example-fedora.yaml
+          for f in sysboot/config/*.yaml; do
+            sysboot/out/cli/nativeImage.dest/native-executable validate --no-tui -c "$f"
+          done
 
       - name: Package release assets
         run: |

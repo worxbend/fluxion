@@ -39,16 +39,17 @@ provider warnings at startup.
 When adding reflective types:
 
 1. Add focused JVM tests for the path.
-2. Update `graal/reflect-config.json` or regenerate with the native-image agent.
-3. Rebuild with `./mill cli.nativeImage`.
-4. Smoke test `--help`, `--version`, and `validate`.
+2. Run `just native-metadata-check` from the repository root.
+3. Update `graal/reflect-config.json` or regenerate with the native-image agent.
+4. Rebuild with `./mill cli.nativeImage`.
+5. Smoke test `--help`, `--version`, and every shipped config.
 
 ## Smoke Test
 
 ```bash
 ./out/cli/nativeImage.dest/native-executable --help
 ./out/cli/nativeImage.dest/native-executable --version
-./out/cli/nativeImage.dest/native-executable validate -c config/example-fedora.yaml --no-tui
+for f in config/*.yaml; do ./out/cli/nativeImage.dest/native-executable validate --no-tui -c "$f"; done
 ./out/cli/nativeImage.dest/native-executable generate --os fedora --profile smoke --output /tmp/fluxion-smoke.yaml --force
 ./out/cli/nativeImage.dest/native-executable doctor -c /tmp/fluxion-smoke.yaml --skip-network
 ```

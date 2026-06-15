@@ -769,6 +769,9 @@ Implementation:
 
 ### 39. Gate native-image metadata
 
+Status: implemented with `just native-metadata-check`, CI/release metadata gates, and native smoke
+validation for every shipped config.
+
 Manual GraalVM config must stay correct.
 
 Implementation:

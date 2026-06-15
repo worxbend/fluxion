@@ -40,14 +40,16 @@ format-check: setup-format
     java -jar {{gjf_jar}} --dry-run --set-exit-if-changed \
       $(find sysboot -path '*/out/*' -prune -o -name '*.java' -print)
 
+# Check GraalVM reflection metadata for source-derived reflective types.
+native-metadata-check:
+    python3 scripts/check-native-metadata.py
+
 # Validate shipped example configs through the CLI.
 validate-configs: compile
-    cd sysboot && {{mill}} cli.run validate --no-tui -c config/example-fedora.yaml
-    cd sysboot && {{mill}} cli.run validate --no-tui -c config/example-arch.yaml
-    cd sysboot && {{mill}} cli.run validate --no-tui -c config/example-opensuse.yaml
+    cd sysboot && for f in config/*.yaml; do {{mill}} cli.run validate --no-tui -c "$f"; done
 
 # Run the normal local verification gate.
-verify: compile test validate-configs
+verify: compile native-metadata-check test validate-configs
 
 # CI verification gate. Kept separate so CI can add format-check explicitly.
 ci: doctor verify
@@ -59,6 +61,8 @@ native:
 # Build native executable and run a basic smoke test.
 native-smoke: native
     ./sysboot/out/cli/nativeImage.dest/native-executable --help >/dev/null
+    ./sysboot/out/cli/nativeImage.dest/native-executable --version
+    for f in sysboot/config/*.yaml; do ./sysboot/out/cli/nativeImage.dest/native-executable validate --no-tui -c "$f"; done
 
 # Remove Mill outputs and local formatter cache.
 clean:
