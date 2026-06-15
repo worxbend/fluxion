@@ -5,7 +5,6 @@ import dev.sysboot.cli.error.CliFailureException;
 import dev.sysboot.cli.error.ExitCode;
 import dev.sysboot.cli.option.GlobalOptions;
 import dev.sysboot.cli.output.JsonOutput;
-import dev.sysboot.cli.output.OutputFormat;
 import dev.sysboot.core.BootstrapConfig;
 import dev.sysboot.core.InstallationStatus;
 import dev.sysboot.executor.ExecutionPlan;
@@ -41,7 +40,7 @@ public final class PlanCommand implements Runnable {
       names = "--format",
       defaultValue = "text",
       description = "Output format: ${COMPLETION-CANDIDATES}")
-  private OutputFormat format;
+  private PlanFormat format;
 
   @Option(names = "--show-commands", description = "Show executor command previews when available")
   private boolean showCommands;
@@ -64,30 +63,29 @@ public final class PlanCommand implements Runnable {
             ? context.parallelProbeRunner().probeAll(config.modules(), ignored -> {})
             : Map.of();
 
-    if (format == OutputFormat.JSON) {
-      JsonOutput.write(spec.commandLine().getOut(), jsonPlan(plan, probeResults));
-      return;
+    switch (format) {
+      case JSON -> JsonOutput.write(spec.commandLine().getOut(), jsonPlan(plan, probeResults));
+      case TABLE -> writeTablePlan(plan, probeResults);
+      case TREE -> writeTreePlan(plan, probeResults);
+      case TEXT -> writeTextPlan(plan, probeResults);
     }
+  }
 
+  private void writeTextPlan(ExecutionPlan plan, Map<String, InstallationStatus> probeResults) {
     var out = spec.commandLine().getOut();
-    out.println("Execution plan for: " + config.profileName().value());
+    out.println("Execution plan for: " + plan.profileName());
     out.println();
 
     for (int i = 0; i < plan.phases().size(); i++) {
       ExecutionPlan.Phase phase = plan.phases().get(i);
-      String deps =
-          phase.dependsOn().isEmpty()
-              ? "no deps"
-              : "after: " + phase.dependsOn().stream().reduce((a, b) -> a + ", " + b).orElse("");
-
-      out.printf("Phase %d: %-25s [%s]%n", i + 1, phase.name(), deps);
+      out.printf("Phase %d: %-25s [%s]%n", i + 1, phase.name(), dependencyLabel(phase));
 
       for (ExecutionPlan.Module module : phase.modules()) {
         for (ExecutionPlan.Item item : module.items()) {
           String skipLabel = computeSkipLabel(item.item().key(), probeResults);
           out.printf("  • %-35s %s%n", item.item().displayName(), skipLabel);
           if (showCommands && item.commandPreview().isPresent()) {
-            out.printf("    $ %s%n", String.join(" ", item.commandPreview().orElseThrow()));
+            out.printf("    $ %s%n", commandPreview(item));
           }
         }
       }
@@ -99,6 +97,57 @@ public final class PlanCommand implements Runnable {
       }
       out.println();
     }
+  }
+
+  private void writeTablePlan(ExecutionPlan plan, Map<String, InstallationStatus> probeResults) {
+    var out = spec.commandLine().getOut();
+    out.printf("%-22s %-24s %-35s %s%n", "PHASE", "MODULE", "ITEM", "STATUS");
+    out.println("-".repeat(100));
+    for (ExecutionPlan.Phase phase : plan.phases()) {
+      for (ExecutionPlan.Module module : phase.modules()) {
+        for (ExecutionPlan.Item item : module.items()) {
+          out.printf(
+              "%-22s %-24s %-35s %s%n",
+              phase.name(),
+              module.name(),
+              item.item().displayName(),
+              computeSkipLabel(item.item().key(), probeResults));
+          if (showCommands && item.commandPreview().isPresent()) {
+            out.printf("%-22s %-24s %-35s $ %s%n", "", "", "", commandPreview(item));
+          }
+        }
+      }
+    }
+  }
+
+  private void writeTreePlan(ExecutionPlan plan, Map<String, InstallationStatus> probeResults) {
+    var out = spec.commandLine().getOut();
+    out.println("Execution plan for: " + plan.profileName());
+    for (ExecutionPlan.Phase phase : plan.phases()) {
+      out.printf("└─ %s [%s]%n", phase.name(), dependencyLabel(phase));
+      for (ExecutionPlan.Module module : phase.modules()) {
+        out.printf("   └─ %s (%s)%n", module.name(), module.type());
+        for (ExecutionPlan.Item item : module.items()) {
+          out.printf(
+              "      └─ %s - %s%n",
+              item.item().displayName(), computeSkipLabel(item.item().key(), probeResults));
+          if (showCommands && item.commandPreview().isPresent()) {
+            out.printf("         $ %s%n", commandPreview(item));
+          }
+        }
+      }
+    }
+  }
+
+  private String dependencyLabel(ExecutionPlan.Phase phase) {
+    if (phase.dependsOn().isEmpty()) {
+      return "no deps";
+    }
+    return "after: " + String.join(", ", phase.dependsOn());
+  }
+
+  private String commandPreview(ExecutionPlan.Item item) {
+    return String.join(" ", item.commandPreview().orElseThrow());
   }
 
   private Map<String, Object> jsonPlan(
@@ -159,5 +208,12 @@ public final class PlanCommand implements Runnable {
       case InstallationStatus.NotInstalled ignored -> "would run";
       case InstallationStatus.Unknown ignored -> "would run (probe unknown)";
     };
+  }
+
+  private enum PlanFormat {
+    TEXT,
+    TABLE,
+    TREE,
+    JSON
   }
 }

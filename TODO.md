@@ -47,6 +47,7 @@ and parallel agent analysis.
 - `status --version-drift` filters directly to version-drifted items.
 - `plan --show-commands` displays executor command previews where available.
 - `validate` and `doctor` reject unsupported compiled-binary archive formats before installation.
+- `plan --format table|tree|json` offers compact, hierarchical, and machine-readable views.
 
 ## P0 - Trust And Correctness
 
