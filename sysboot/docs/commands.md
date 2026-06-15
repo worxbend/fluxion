@@ -9,6 +9,7 @@ fluxion doctor -c ~/.config/fluxion/starter.yaml
 fluxion plan -c ~/.config/fluxion/starter.yaml
 fluxion diff -c ~/.config/fluxion/starter.yaml
 fluxion explain -c ~/.config/fluxion/starter.yaml --item git
+fluxion snapshot --output ~/fluxion-snapshot.json
 fluxion apply -c ~/.config/fluxion/starter.yaml
 ```
 
@@ -42,6 +43,20 @@ Options:
 
 `--os auto` reads `/etc/os-release` and chooses the matching package manager. Generated configs
 should still be reviewed before running.
+
+## `snapshot`
+
+Writes a review-required host inventory JSON file.
+
+```bash
+fluxion snapshot --output snapshot.json
+fluxion snapshot --output snapshot.json --force
+```
+
+The snapshot is read-only. It records `/etc/os-release` fields, detected package-manager commands,
+installed package names when the host package database is available, Flatpak apps/remotes when
+Flatpak is present, default shell, and common toolchain presence. It does not read shell history,
+dotfile contents, credentials, or other user secrets.
 
 ## `validate`
 

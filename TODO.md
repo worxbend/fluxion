@@ -548,6 +548,11 @@ Explain:
 
 ### 26. Add workstation snapshot/import workflows
 
+Status: first slice implemented with `fluxion snapshot --output snapshot.json`, producing
+review-required JSON for OS metadata, detected package managers, package inventory when available,
+Flatpak apps/remotes, default shell, and common toolchain presence. Import commands remain a later
+expansion.
+
 Fluxion should help users turn a hand-built machine into a reproducible profile. This is a clear
 differentiator from dotfile tools and a lighter-weight alternative to writing Ansible roles from
 scratch.

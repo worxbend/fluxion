@@ -70,6 +70,7 @@ explain    explain why a phase or item runs
 status     show current status
 state      show/reset/forget/path persisted state
 generate   create a starter YAML profile
+snapshot   write a host inventory JSON
 doctor     check host readiness for a profile
 ```
 

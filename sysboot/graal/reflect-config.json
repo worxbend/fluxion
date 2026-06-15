@@ -90,6 +90,12 @@
     "allDeclaredConstructors": true
   },
   {
+    "name": "dev.sysboot.cli.command.SnapshotCommand",
+    "allDeclaredFields": true,
+    "allDeclaredMethods": true,
+    "allDeclaredConstructors": true
+  },
+  {
     "name": "dev.sysboot.cli.command.DoctorCommand",
     "allDeclaredFields": true,
     "allDeclaredMethods": true,

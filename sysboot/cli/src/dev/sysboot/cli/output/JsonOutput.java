@@ -13,8 +13,12 @@ public final class JsonOutput {
   private JsonOutput() {}
 
   public static void write(PrintWriter out, Object value) {
+    out.println(toJson(value));
+  }
+
+  public static String toJson(Object value) {
     try {
-      out.println(MAPPER.writeValueAsString(value));
+      return MAPPER.writeValueAsString(value);
     } catch (JsonProcessingException e) {
       throw new CliFailureException(ExitCode.GENERAL_FAILURE, "Could not render JSON output", e);
     }

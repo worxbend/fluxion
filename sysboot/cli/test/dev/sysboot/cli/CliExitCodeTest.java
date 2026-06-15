@@ -422,6 +422,34 @@ class CliExitCodeTest {
   }
 
   @Test
+  void snapshot_writesReviewRequiredInventory() throws Exception {
+    Path snapshot = tempDir.resolve("snapshot.json");
+
+    CliResult result = execute("snapshot", "--output", snapshot.toString());
+
+    assertThat(result.exitCode()).isEqualTo(ExitCode.SUCCESS.value());
+    assertThat(result.stdout()).contains("Snapshot written:");
+    assertThat(snapshot).exists();
+    assertThat(Files.readString(snapshot))
+        .contains("\"schemaVersion\":1")
+        .contains("\"reviewRequired\":true")
+        .contains("\"packageManagers\"")
+        .contains("\"toolchains\"");
+    assertThat(result.stderr()).isEmpty();
+  }
+
+  @Test
+  void snapshot_whenOutputExistsWithoutForce_returnsInvalidInput() throws Exception {
+    Path snapshot = tempDir.resolve("snapshot.json");
+    Files.writeString(snapshot, "{}");
+
+    CliResult result = execute("snapshot", "--output", snapshot.toString());
+
+    assertThat(result.exitCode()).isEqualTo(ExitCode.INVALID_INPUT.value());
+    assertThat(result.stderr()).contains("Output file already exists");
+  }
+
+  @Test
   void doctor_whenConfigIsReady_returnsSuccessWithReport() throws Exception {
     Path config = writeShellConfig("/bin/sh");
     String originalHome = System.getProperty("user.home");
