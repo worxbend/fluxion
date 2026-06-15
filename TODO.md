@@ -30,6 +30,7 @@ and parallel agent analysis.
 - Skip state refreshes after successful item writes during a run.
 - State item metadata uses `Optional` rather than nullable version/checksum fields.
 - Plain CLI restart checkpoints print resume guidance, and `status --resume-command` is available.
+- `state show -c <config>` reports the next incomplete phase.
 - `generate` creates starter configs with `minimal`, `developer`, `desktop`, and `dotfiles`
   presets.
 - `doctor` performs host readiness checks for a profile.

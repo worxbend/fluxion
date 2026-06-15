@@ -238,6 +238,7 @@ Manages persisted state under `~/.local/share/fluxion`.
 ```bash
 fluxion state show default
 fluxion state show default --format json
+fluxion state show -c config/example-fedora.yaml default
 fluxion state path default
 fluxion state forget --profile default --item git
 fluxion state forget --profile default --phase shell-foundation
@@ -245,7 +246,8 @@ fluxion state reset default --force
 ```
 
 State records successful items and phase completion fingerprints. A completed phase is skipped only
-when its stored fingerprint still matches the current config.
+when its stored fingerprint still matches the current config. When `state show` is given `-c`, it
+also prints `nextPhase`/`Next phase` for the first configured phase that is not completed in state.
 
 ## `list`
 

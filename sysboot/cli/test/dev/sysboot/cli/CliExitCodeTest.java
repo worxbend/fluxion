@@ -6,6 +6,8 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import dev.sysboot.cli.error.ExitCode;
 import dev.sysboot.core.BootstrapState;
 import dev.sysboot.core.ItemType;
+import dev.sysboot.core.PhaseStateEntry;
+import dev.sysboot.core.PhaseStatus;
 import dev.sysboot.core.StateEntry;
 import dev.sysboot.executor.JsonStateRepository;
 import java.io.ByteArrayOutputStream;
@@ -441,6 +443,56 @@ class CliExitCodeTest {
         .contains("\"phases\":[]")
         .contains("\"items\":[]");
     assertThat(result.stderr()).isEmpty();
+  }
+
+  @Test
+  void stateShow_whenConfigProvided_outputsNextIncompletePhase() throws Exception {
+    Path config = writeDependentPhaseConfig();
+    String originalHome = System.getProperty("user.home");
+    System.setProperty("user.home", tempDir.toString());
+    try {
+      var repo = new JsonStateRepository(new ObjectMapper());
+      repo.save(
+          new BootstrapState(
+              "default",
+              Instant.now(),
+              "1.0.0",
+              List.of(),
+              List.of(new PhaseStateEntry("base", PhaseStatus.COMPLETED, Instant.now()))));
+
+      CliResult result =
+          execute("state", "show", "-c", config.toString(), "--format", "json", "default");
+
+      assertThat(result.exitCode()).isEqualTo(ExitCode.SUCCESS.value());
+      assertThat(result.stdout()).contains("\"nextPhase\":\"desktop\"");
+      assertThat(result.stderr()).isEmpty();
+    } finally {
+      System.setProperty("user.home", originalHome);
+    }
+  }
+
+  @Test
+  void stateShow_whenConfigOmitted_keepsLegacyOutputShape() throws Exception {
+    String originalHome = System.getProperty("user.home");
+    System.setProperty("user.home", tempDir.toString());
+    try {
+      var repo = new JsonStateRepository(new ObjectMapper());
+      repo.save(
+          new BootstrapState(
+              "default",
+              Instant.now(),
+              "1.0.0",
+              List.of(),
+              List.of(new PhaseStateEntry("base", PhaseStatus.COMPLETED, Instant.now()))));
+
+      CliResult result = execute("state", "show", "default");
+
+      assertThat(result.exitCode()).isEqualTo(ExitCode.SUCCESS.value());
+      assertThat(result.stdout()).contains("Profile: default").doesNotContain("Next phase:");
+      assertThat(result.stderr()).isEmpty();
+    } finally {
+      System.setProperty("user.home", originalHome);
+    }
   }
 
   @Test

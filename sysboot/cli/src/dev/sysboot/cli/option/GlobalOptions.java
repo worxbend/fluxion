@@ -39,6 +39,10 @@ public final class GlobalOptions {
     return Path.of(System.getProperty("user.home"), ".config", "fluxion", "default.yaml");
   }
 
+  public boolean hasConfigFile() {
+    return configFile != null;
+  }
+
   public boolean noTui() {
     return noTui;
   }

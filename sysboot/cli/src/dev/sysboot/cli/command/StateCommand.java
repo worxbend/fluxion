@@ -1,20 +1,24 @@
 package dev.sysboot.cli.command;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import dev.sysboot.app.ApplicationContext;
 import dev.sysboot.cli.error.CliFailureException;
 import dev.sysboot.cli.error.ExitCode;
 import dev.sysboot.cli.option.GlobalOptions;
 import dev.sysboot.cli.output.JsonOutput;
 import dev.sysboot.cli.output.OutputFormat;
+import dev.sysboot.core.BootstrapConfig;
 import dev.sysboot.core.BootstrapState;
 import dev.sysboot.core.PhaseStateEntry;
 import dev.sysboot.core.StateEntry;
 import dev.sysboot.executor.JsonStateRepository;
+import dev.sysboot.executor.PhaseExecutionPlanner;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import picocli.CommandLine.Command;
 import picocli.CommandLine.Mixin;
 import picocli.CommandLine.Model.CommandSpec;
@@ -44,6 +48,8 @@ public final class StateCommand implements Runnable {
   @Command(name = "show", description = "Print all entries in the state file for a profile")
   public static final class ShowSubcommand implements Runnable {
 
+    @Mixin private GlobalOptions options;
+
     @Spec private CommandSpec spec;
 
     @Parameters(index = "0", description = "Profile name", defaultValue = "default")
@@ -61,12 +67,14 @@ public final class StateCommand implements Runnable {
       repo.load(profile)
           .ifPresentOrElse(
               state -> {
+                Optional<String> nextPhase = nextIncompletePhase(state);
                 if (format == OutputFormat.JSON) {
-                  JsonOutput.write(spec.commandLine().getOut(), jsonState(state));
+                  JsonOutput.write(spec.commandLine().getOut(), jsonState(state, nextPhase));
                   return;
                 }
                 var out = spec.commandLine().getOut();
                 out.printf("Profile: %s  (last run: %s)%n", state.profileName(), state.lastRunAt());
+                nextPhase.ifPresent(phase -> out.printf("Next phase: %s%n", phase));
                 out.println();
                 out.println("Phases:");
                 if (state.phaseEntries().isEmpty()) {
@@ -109,18 +117,33 @@ public final class StateCommand implements Runnable {
       var output = new LinkedHashMap<String, Object>();
       output.put("profileName", profile);
       output.put("lastRunAt", null);
+      output.put("nextPhase", null);
       output.put("phases", List.of());
       output.put("items", List.of());
       return output;
     }
 
-    private Map<String, Object> jsonState(BootstrapState state) {
+    private Map<String, Object> jsonState(BootstrapState state, Optional<String> nextPhase) {
       var output = new LinkedHashMap<String, Object>();
       output.put("profileName", state.profileName());
       output.put("lastRunAt", state.lastRunAt().toString());
+      output.put("nextPhase", nextPhase.orElse(null));
       output.put("phases", state.phaseEntries().stream().map(this::jsonPhase).toList());
       output.put("items", state.entries().stream().map(this::jsonItem).toList());
       return output;
+    }
+
+    private Optional<String> nextIncompletePhase(BootstrapState state) {
+      if (!options.hasConfigFile() || !Files.isReadable(options.resolvedConfigFile())) {
+        return Optional.empty();
+      }
+      BootstrapConfig config =
+          ApplicationContext.create(true).configLoader().load(options.resolvedConfigFile());
+      return new PhaseExecutionPlanner()
+          .plan(config.phases()).stream()
+              .filter(phase -> !state.isPhaseCompleted(phase.name().value()))
+              .map(phase -> phase.name().value())
+              .findFirst();
     }
 
     private Map<String, Object> jsonPhase(PhaseStateEntry phase) {
