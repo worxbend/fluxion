@@ -82,6 +82,7 @@ Commands:
   status     show last run status, or `--resume-command`
   state      show/reset/forget saved state
   generate   create a starter YAML profile
+  doctor     check host readiness for a profile
 ```
 
 State moves:

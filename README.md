@@ -67,6 +67,7 @@ plan       show phase order and planned work
 status     show current status
 state      show/reset/forget/path persisted state
 generate   create a starter YAML profile
+doctor     check host readiness for a profile
 ```
 
 ## Config

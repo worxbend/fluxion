@@ -181,6 +181,37 @@ class CliExitCodeTest {
     assertThat(result.stderr()).contains("Output file already exists");
   }
 
+  @Test
+  void doctor_whenConfigIsReady_returnsSuccessWithReport() throws Exception {
+    Path config = writeShellConfig("/bin/sh");
+    String originalHome = System.getProperty("user.home");
+    System.setProperty("user.home", tempDir.toString());
+    try {
+      CliResult result =
+          execute("doctor", "--skip-network", "-c", config.toString(), "--profile", "default");
+
+      assertThat(result.exitCode()).isEqualTo(ExitCode.SUCCESS.value());
+      assertThat(result.stdout())
+          .contains("[pass] config file")
+          .contains("[pass] state directory")
+          .contains("[pass] shell");
+      assertThat(result.stderr()).isEmpty();
+    } finally {
+      System.setProperty("user.home", originalHome);
+    }
+  }
+
+  @Test
+  void doctor_whenConfiguredShellIsMissing_returnsDependencyError() throws Exception {
+    Path config = writeShellConfig("/definitely/missing/fluxion-shell");
+
+    CliResult result = execute("doctor", "--skip-network", "-c", config.toString());
+
+    assertThat(result.exitCode()).isEqualTo(ExitCode.EXTERNAL_DEPENDENCY_ERROR.value());
+    assertThat(result.stdout()).contains("[fail] shell");
+    assertThat(result.stderr()).contains("Doctor found");
+  }
+
   private CliResult execute(String... args) {
     CommandLine commandLine = Main.commandLine();
     var stdout = new StringWriter();
@@ -210,6 +241,28 @@ class CliExitCodeTest {
                 packageManager: dnf
                 packages: [git]
         """);
+    return config;
+  }
+
+  private Path writeShellConfig(String shell) throws IOException {
+    Path config = tempDir.resolve("shell-profile.yaml");
+    Files.writeString(
+        config,
+        """
+        profile: test
+        os:
+          type: fedora
+          release: "44"
+        jobs:
+          - name: base
+            steps:
+              - type: shell-command
+                name: echo
+                shell: "%s"
+                commands:
+                  - "echo ready"
+        """
+            .formatted(shell));
     return config;
   }
 
