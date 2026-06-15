@@ -44,6 +44,7 @@ and parallel agent analysis.
 - The Mill/Maven dependency update cadence is documented in `sysboot/docs/dependency-updates.md`.
 - `graph` renders the phase DAG as Mermaid, DOT, or JSON.
 - `lint` reports advisory profile quality and safety findings with text/JSON output.
+- `status --version-drift` filters directly to version-drifted items.
 
 ## P0 - Trust And Correctness
 
@@ -666,7 +667,6 @@ Implementation:
 - Treat missing checksums as errors in `validate --strict`.
 - Support SHA-256 checksum URLs, inline checksums, and detached signatures.
 - Persist installed artifact URL, checksum, and detected version in state.
-- Add `status --version-drift` for binaries with configured expected versions.
 - Add `doctor` checks for unsupported archive formats and non-HTTPS URLs.
 
 ### 31. Add run reports

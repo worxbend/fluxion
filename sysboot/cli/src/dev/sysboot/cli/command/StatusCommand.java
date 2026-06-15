@@ -58,6 +58,9 @@ public final class StatusCommand implements Runnable {
   @Option(names = "--failed", description = "Show missing, unknown, and version-drift items")
   private boolean failedOnly;
 
+  @Option(names = "--version-drift", description = "Show only items whose live version differs")
+  private boolean versionDriftOnly;
+
   @Override
   public void run() {
     var context = ApplicationContext.create(true, profile, false, false);
@@ -119,6 +122,9 @@ public final class StatusCommand implements Runnable {
         case CONFIGURED_MISSING, UNKNOWN, VERSION_DRIFT -> true;
         case CONFIGURED_INSTALLED, STATE_ONLY -> false;
       };
+    }
+    if (versionDriftOnly) {
+      return item.classification() == StatusReport.Classification.VERSION_DRIFT;
     }
     return true;
   }

@@ -429,6 +429,18 @@ class CliExitCodeTest {
   }
 
   @Test
+  void status_whenVersionDriftFilter_outputsOnlyVersionDriftItems() throws Exception {
+    Path config = writeBinaryWithoutChecksumConfig();
+
+    CliResult result =
+        execute("status", "--version-drift", "--format", "json", "-c", config.toString());
+
+    assertThat(result.exitCode()).isEqualTo(ExitCode.SUCCESS.value());
+    assertThat(result.stdout()).contains("\"items\":[]").doesNotContain("configured-missing");
+    assertThat(result.stderr()).isEmpty();
+  }
+
+  @Test
   void status_whenStateOnlyFilter_outputsStateEntriesAbsentFromConfig() throws Exception {
     Path config = writeShellConfig("/bin/sh");
     String originalHome = System.getProperty("user.home");
