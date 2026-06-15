@@ -7,6 +7,7 @@ fluxion generate --os auto --profile starter --output ~/.config/fluxion/starter.
 fluxion validate -c ~/.config/fluxion/starter.yaml
 fluxion doctor -c ~/.config/fluxion/starter.yaml
 fluxion plan -c ~/.config/fluxion/starter.yaml
+fluxion graph -c ~/.config/fluxion/starter.yaml --format mermaid
 fluxion diff -c ~/.config/fluxion/starter.yaml
 fluxion explain -c ~/.config/fluxion/starter.yaml --item git
 fluxion snapshot --output ~/fluxion-snapshot.json
@@ -130,6 +131,20 @@ The plan uses the same phase ordering as execution and shows restart checkpoints
 `--skip-already-installed`, Fluxion probes configured items and marks what would be skipped.
 JSON output includes phases, modules, item keys, item types, package managers, status labels, and
 command previews where available.
+
+## `graph`
+
+Renders the phase dependency graph without probing or mutating the host.
+
+```bash
+fluxion graph -c config/example-fedora.yaml
+fluxion graph -c config/example-fedora.yaml --format dot
+fluxion graph -c config/example-fedora.yaml --format json
+```
+
+The default format is Mermaid `flowchart TD`, suitable for pasting into Markdown renderers that
+support Mermaid. `dot` output can be rendered with Graphviz. JSON output includes phase nodes and
+dependency edges for scripts.
 
 ## `diff`
 

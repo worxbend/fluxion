@@ -258,6 +258,35 @@ class CliExitCodeTest {
   }
 
   @Test
+  void graph_outputsMermaidPhaseDag() throws Exception {
+    Path config = writeDependentPhaseConfig();
+
+    CliResult result = execute("graph", "--format", "mermaid", "-c", config.toString());
+
+    assertThat(result.exitCode()).isEqualTo(ExitCode.SUCCESS.value());
+    assertThat(result.stdout())
+        .contains("flowchart TD")
+        .contains("p_base[\"base\"]")
+        .contains("p_base --> p_desktop");
+    assertThat(result.stderr()).isEmpty();
+  }
+
+  @Test
+  void graph_whenFormatJson_outputsPhaseEdges() throws Exception {
+    Path config = writeDependentPhaseConfig();
+
+    CliResult result = execute("graph", "--format", "json", "-c", config.toString());
+
+    assertThat(result.exitCode()).isEqualTo(ExitCode.SUCCESS.value());
+    assertThat(result.stdout())
+        .contains("\"profileName\":\"test\"")
+        .contains("\"edges\"")
+        .contains("\"from\":\"base\"")
+        .contains("\"to\":\"desktop\"");
+    assertThat(result.stderr()).isEmpty();
+  }
+
+  @Test
   void diff_whenFormatJson_outputsConfiguredChanges() throws Exception {
     Path config = writeMissingBinaryConfig();
 
@@ -606,6 +635,33 @@ class CliExitCodeTest {
                   - "echo ready"
         """
             .formatted(shell));
+    return config;
+  }
+
+  private Path writeDependentPhaseConfig() throws IOException {
+    Path config = tempDir.resolve("dependent-profile.yaml");
+    Files.writeString(
+        config,
+        """
+        profile: test
+        os:
+          type: fedora
+          release: "44"
+        jobs:
+          - name: base
+            steps:
+              - type: packages
+                name: tools
+                packageManager: dnf
+                packages: [git]
+          - name: desktop
+            dependsOn: [base]
+            steps:
+              - type: flatpak
+                name: apps
+                remote: flathub
+                appIds: [org.mozilla.firefox]
+        """);
     return config;
   }
 

@@ -41,6 +41,7 @@ and parallel agent analysis.
 - CI and release native smoke tests cover `--help`, `--version`, and config validation.
 - Native release archives include the binary, root README, docs, and example configs.
 - The Mill/Maven dependency update cadence is documented in `sysboot/docs/dependency-updates.md`.
+- `graph` renders the phase DAG as Mermaid, DOT, or JSON.
 
 ## P0 - Trust And Correctness
 
@@ -806,7 +807,6 @@ release, and documentation ideas. Promote items from that document into this roa
 ready for implementation.
 
 - `fluxion explain -c config.yaml --item git` to show why an item will run or skip.
-- `fluxion graph` to output a phase DAG in DOT/Mermaid.
 - `fluxion import packages --from-host` to produce a draft config from installed packages.
 - `fluxion snapshot` to record host state before a run.
 - Config includes with profiles, e.g. base developer profile plus host-specific overlay.

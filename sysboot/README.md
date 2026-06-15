@@ -80,6 +80,7 @@ Commands:
   validate   check the YAML
   list       print modules
   plan       show job order
+  graph      render the job dependency graph
   diff       show host changes needed
   explain    explain why a phase or item runs
   status     show last run status, or `--resume-command`

@@ -20,6 +20,7 @@ import picocli.CommandLine.Mixin;
       DryRunCommand.class,
       ValidateCommand.class,
       PlanCommand.class,
+      GraphCommand.class,
       DiffCommand.class,
       ExplainCommand.class,
       ListCommand.class,

@@ -67,6 +67,7 @@ dry-run    show what would be executed
 validate   validate YAML
 list       list configured modules
 plan       show phase order and planned work
+graph      render the phase dependency graph
 diff       show host changes needed
 explain    explain why a phase or item runs
 status     show current status
