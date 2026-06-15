@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import dev.sysboot.core.BinaryUrl;
 import dev.sysboot.core.BootstrapConfig;
 import dev.sysboot.core.BootstrapModule;
+import dev.sysboot.core.Checksum;
 import dev.sysboot.core.CompiledBinaryModule;
 import dev.sysboot.core.ModuleName;
 import dev.sysboot.core.OsTarget;
@@ -63,6 +64,7 @@ class ConfigValidatorTest {
             "rg",
             new BinaryUrl(new URI("https://example.test/rg.tar.gz")),
             Optional.empty(),
+            Optional.empty(),
             Path.of("/usr/local/bin/rg"),
             false);
 
@@ -87,6 +89,7 @@ class ConfigValidatorTest {
             "rg",
             new BinaryUrl(new URI("https://example.test/rg.zip")),
             Optional.empty(),
+            Optional.empty(),
             Path.of("/usr/local/bin/rg"),
             false);
 
@@ -99,6 +102,72 @@ class ConfigValidatorTest {
               assertThat(issue.severity()).isEqualTo(ValidationIssue.Severity.ERROR);
               assertThat(issue.path()).isEqualTo("jobs[0].steps[0].url");
               assertThat(issue.message()).contains("unsupported artifact format");
+            });
+  }
+
+  @Test
+  void validate_whenCompiledBinaryHasChecksumUrl_doesNotReportMissingChecksum() throws Exception {
+    var module =
+        new CompiledBinaryModule(
+            new ModuleName("ripgrep"),
+            "rg",
+            new BinaryUrl(new URI("https://example.test/rg.tar.gz")),
+            Optional.empty(),
+            Optional.of(new BinaryUrl(new URI("https://example.test/rg.sha256"))),
+            Path.of("/usr/local/bin/rg"),
+            false);
+
+    ValidationReport report = validator.validate(config(phase("base", List.of(module))));
+
+    assertThat(report.issues())
+        .noneMatch(issue -> issue.path().equals("jobs[0].steps[0].checksum"));
+  }
+
+  @Test
+  void validate_whenCompiledBinaryHasChecksumAndChecksumUrl_reportsError() throws Exception {
+    var module =
+        new CompiledBinaryModule(
+            new ModuleName("ripgrep"),
+            "rg",
+            new BinaryUrl(new URI("https://example.test/rg.tar.gz")),
+            Optional.of(new Checksum("SHA-256", "a".repeat(64))),
+            Optional.of(new BinaryUrl(new URI("https://example.test/rg.sha256"))),
+            Path.of("/usr/local/bin/rg"),
+            false);
+
+    ValidationReport report = validator.validate(config(phase("base", List.of(module))));
+
+    assertThat(report.hasErrors()).isTrue();
+    assertThat(report.issues())
+        .anySatisfy(
+            issue -> {
+              assertThat(issue.severity()).isEqualTo(ValidationIssue.Severity.ERROR);
+              assertThat(issue.path()).isEqualTo("jobs[0].steps[0].checksum");
+              assertThat(issue.message()).contains("either checksum or checksumUrl");
+            });
+  }
+
+  @Test
+  void validate_whenCompiledBinaryChecksumAlgorithmUnsupported_reportsError() throws Exception {
+    var module =
+        new CompiledBinaryModule(
+            new ModuleName("ripgrep"),
+            "rg",
+            new BinaryUrl(new URI("https://example.test/rg.tar.gz")),
+            Optional.of(new Checksum("SHA-1", "a".repeat(40))),
+            Optional.empty(),
+            Path.of("/usr/local/bin/rg"),
+            false);
+
+    ValidationReport report = validator.validate(config(phase("base", List.of(module))));
+
+    assertThat(report.hasErrors()).isTrue();
+    assertThat(report.issues())
+        .anySatisfy(
+            issue -> {
+              assertThat(issue.severity()).isEqualTo(ValidationIssue.Severity.ERROR);
+              assertThat(issue.path()).isEqualTo("jobs[0].steps[0].checksum.algorithm");
+              assertThat(issue.message()).contains("unsupported checksum algorithm");
             });
   }
 

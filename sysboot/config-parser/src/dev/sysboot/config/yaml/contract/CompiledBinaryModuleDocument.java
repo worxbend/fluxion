@@ -13,6 +13,9 @@ public final class CompiledBinaryModuleDocument extends ModuleDocument {
   @JsonProperty("checksum")
   public ChecksumDocument checksum;
 
+  @JsonProperty("checksumUrl")
+  public String checksumUrl;
+
   @JsonProperty("installPath")
   public String installPath;
 

@@ -21,6 +21,7 @@ import java.time.Instant;
 import java.util.HexFormat;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import org.apache.commons.compress.archivers.ArchiveEntry;
 import org.apache.commons.compress.archivers.ArchiveInputStream;
 import org.apache.commons.compress.archivers.tar.TarArchiveInputStream;
@@ -35,9 +36,15 @@ public final class CompiledBinaryInstaller {
 
   private final ShellRunner shellRunner;
   private final HttpClient httpClient;
+  private final ChecksumResolver checksumResolver;
 
   public CompiledBinaryInstaller(ShellRunner shellRunner) {
+    this(shellRunner, new ChecksumResolver());
+  }
+
+  CompiledBinaryInstaller(ShellRunner shellRunner, ChecksumResolver checksumResolver) {
     this.shellRunner = shellRunner;
+    this.checksumResolver = checksumResolver;
     this.httpClient =
         HttpClient.newBuilder()
             .connectTimeout(Duration.ofSeconds(30))
@@ -52,8 +59,9 @@ public final class CompiledBinaryInstaller {
       tempFile = Files.createTempFile("sysboot-", "-" + module.binaryName());
       Path downloadedFile = tempFile;
       download(module.url().value(), downloadedFile);
-      if (module.checksum().isPresent()) {
-        verifyChecksum(downloadedFile, module.checksum().orElseThrow());
+      Optional<Checksum> checksum = checksumResolver.resolve(module);
+      if (checksum.isPresent()) {
+        verifyChecksum(downloadedFile, checksum.orElseThrow());
       } else {
         log.warn("Installing downloaded binary '{}' without checksum verification", module.name());
       }

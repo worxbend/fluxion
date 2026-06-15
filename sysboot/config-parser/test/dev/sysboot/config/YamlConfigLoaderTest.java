@@ -302,6 +302,33 @@ class YamlConfigLoaderTest {
   }
 
   @Test
+  void load_whenCompiledBinaryChecksumUrlPresent_parsesChecksumUrl(@TempDir Path tmpDir)
+      throws IOException {
+    Path config =
+        writeConfig(
+            tmpDir,
+            """
+            profile: binary-test
+            os:
+              type: fedora
+              release: "41"
+            modules:
+              - type: compiled-binary
+                name: zoxide
+                binaryName: zoxide
+                url: https://example.com/zoxide.tar.gz
+                checksumUrl: https://example.com/zoxide.sha256
+                installPath: ~/.local/bin/zoxide
+            """);
+
+    BootstrapConfig result = loader.load(config);
+
+    var module = (CompiledBinaryModule) result.modules().getFirst();
+    assertThat(module.checksumUrl())
+        .hasValueSatisfying(url -> assertThat(url.toString()).endsWith(".sha256"));
+  }
+
+  @Test
   void load_whenCompiledBinaryInstallPathIsRelative_throwsConfigLoadException(@TempDir Path tmpDir)
       throws IOException {
     Path config =

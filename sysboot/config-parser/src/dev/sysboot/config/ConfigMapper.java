@@ -194,6 +194,7 @@ final class ConfigMapper {
         requireField(dto.binaryName, "binaryName"),
         url,
         mapChecksum(dto.checksum),
+        mapBinaryUrl(dto.checksumUrl),
         installPath,
         dto.continueOnError,
         Optional.ofNullable(dto.versionCommand),
@@ -285,6 +286,10 @@ final class ConfigMapper {
         new Checksum(
             requireField(dto.algorithm, "checksum.algorithm"),
             requireField(dto.value, "checksum.value")));
+  }
+
+  private Optional<BinaryUrl> mapBinaryUrl(String value) {
+    return Optional.ofNullable(value).map(url -> new BinaryUrl(URI.create(url)));
   }
 
   private Path absolutePath(String rawPath, String fieldName) {

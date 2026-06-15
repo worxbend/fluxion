@@ -52,6 +52,7 @@ and parallel agent analysis.
 - Integration tests cover malformed YAML and state path/reset behavior.
 - Phase state persists failure/blocked reasons and exposes them in `state show --format json`.
 - Integration tests cover prompt-logout state and generated resume commands.
+- Compiled binaries support HTTPS `checksumUrl` SHA-256 files as an alternative to inline checksums.
 
 ## P0 - Trust And Correctness
 
@@ -673,6 +674,8 @@ Implementation:
 
 - Treat missing checksums as errors in `validate --strict`.
 - Support SHA-256 checksum URLs, inline checksums, and detached signatures.
+  - Status: inline checksums and HTTPS `checksumUrl` files are implemented; detached signatures
+    remain open.
 - Persist installed artifact URL, checksum, and detected version in state.
 - Add `doctor` checks for unsupported archive formats and non-HTTPS URLs.
 

@@ -37,7 +37,7 @@ public final class ProfileLinter {
   }
 
   private void lintBinary(CompiledBinaryModule module, String path, List<ProfileLintIssue> issues) {
-    if (module.checksum().isEmpty()) {
+    if (module.checksum().isEmpty() && module.checksumUrl().isEmpty()) {
       warning(
           issues,
           "safety",

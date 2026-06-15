@@ -107,7 +107,24 @@ public final class ConfigValidator {
           "Compiled binary '%s' uses an unsupported artifact format; supported formats are %s"
               .formatted(module.name().value(), CompiledBinaryArtifactFormat.supportedFormats()));
     }
-    if (module.checksum().isEmpty()) {
+    if (module.checksum().isPresent() && module.checksumUrl().isPresent()) {
+      addError(
+          issues,
+          path + ".checksum",
+          "Compiled binary '%s' must declare either checksum or checksumUrl, not both"
+              .formatted(module.name().value()));
+    }
+    module
+        .checksum()
+        .filter(checksum -> !"SHA-256".equals(checksum.algorithm()))
+        .ifPresent(
+            checksum ->
+                addError(
+                    issues,
+                    path + ".checksum.algorithm",
+                    "Compiled binary '%s' uses unsupported checksum algorithm '%s'"
+                        .formatted(module.name().value(), checksum.algorithm())));
+    if (module.checksum().isEmpty() && module.checksumUrl().isEmpty()) {
       addWarning(
           issues,
           path + ".checksum",

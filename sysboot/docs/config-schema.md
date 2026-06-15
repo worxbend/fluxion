@@ -139,17 +139,23 @@ The interpreter is detected from the shebang line; falls back to `/bin/bash`. Th
   checksum:                     # optional but strongly recommended
     algorithm: sha256           # SHA-256 is the only currently supported algorithm
     value: abc123...            # lowercase hex digest
+  checksumUrl: https://github.com/.../checksums.txt # optional alternative to checksum
   installPath: /usr/local/bin/nvim  # required — absolute path
   continueOnError: false        # default: false
 ```
+
+Use either `checksum` or `checksumUrl`, not both. `checksumUrl` must be HTTPS and may point to a
+file containing either a bare SHA-256 digest or common `sha256sum` output such as
+`<digest>  <filename>`.
 
 Supported artifact formats: `.tar.gz`, `.tgz`, or plain binary URLs. Other archive formats such as
 `.zip` and `.tar.xz` are rejected by validation because the installer cannot extract them yet.
 
 The binary is copied to `installPath`. If the parent directory is root-owned, `sudo cp` is used.
-When `checksum` is omitted, Fluxion logs an explicit warning and installs from the HTTPS source
-without integrity verification. Use SHA-256 checksums for downloaded binaries whenever possible.
-`fluxion validate --strict` treats missing compiled-binary checksums as configuration failures.
+When both `checksum` and `checksumUrl` are omitted, Fluxion logs an explicit warning and installs
+from the HTTPS source without integrity verification. Use SHA-256 checksums for downloaded binaries
+whenever possible. `fluxion validate --strict` treats missing compiled-binary checksums as
+configuration failures.
 
 ---
 
