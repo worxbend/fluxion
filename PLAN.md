@@ -535,6 +535,10 @@ Progress:
   result. `PackageModule.continueOnError` and WorkstationProfile Flatpak entry continuation now
   control only whether the aggregate entry failure stops later top-level entries in the synthetic
   `manifest-plan` phase. `./mill executor.test` and `./mill __.test` passed.
+- 2026-06-29: VALIDATION-8 completed the package behavior checkpoint after T006. `./mill
+  config-parser.test`, `./mill executor.test`, and `./mill __.test` all passed with no code fixes
+  required. Remaining risk moves to pending installer-kind work, especially dry-run previews for
+  downloads, scripts, commands, dotfiles, and filesystem-like mutations.
 
 Plan kinds:
 
@@ -861,7 +865,7 @@ policy, variable, host-facts, `when`, and skipped-reporting milestones recorded 
 4. `T004` - Checkpoint source prelude (validation, completed).
 5. `T005` - Add package manager actions (complex feature, completed).
 6. `T006` - Verify package item isolation (moderate fix, completed).
-7. `T007` - Checkpoint package behavior (validation).
+7. `T007` - Checkpoint package behavior (validation, completed).
 8. `T008` - Map basic installer kinds (complex feature).
 9. `T009` - Extend binary downloads (complex feature).
 10. `T010` - Extend scripts and commands (complex feature).
