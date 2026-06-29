@@ -51,7 +51,7 @@ public final class YamlConfigLoader implements ConfigLoader {
       case WORKSTATION_PROFILE -> {
         WorkstationProfileDocument dto =
             objectMapper.treeToValue(root, WorkstationProfileDocument.class);
-        yield workstationProfileConfigMapper.map(dto);
+        yield workstationProfileConfigMapper.map(dto, configFile);
       }
     };
   }
@@ -63,7 +63,7 @@ public final class YamlConfigLoader implements ConfigLoader {
     if (!root.isObject()) {
       throw new IllegalArgumentException("Config root must be a YAML mapping");
     }
-    if (isWorkstationProfile(root)) {
+    if (hasAny(root, "apiVersion", "kind")) {
       return ConfigSchema.WORKSTATION_PROFILE;
     }
     if (hasAny(root, "profile", "os", "jobs", "phases", "modules", "schemaVersion")) {
@@ -72,23 +72,6 @@ public final class YamlConfigLoader implements ConfigLoader {
     throw new IllegalArgumentException(
         "Unknown config schema; expected Fluxion profile/os/jobs/phases/modules fields or "
             + "apiVersion: initkit.io/v1alpha1 with kind: WorkstationProfile");
-  }
-
-  private boolean isWorkstationProfile(JsonNode root) {
-    JsonNode apiVersion = root.get("apiVersion");
-    JsonNode kind = root.get("kind");
-    if (apiVersion == null && kind == null) {
-      return false;
-    }
-    boolean supportedApiVersion =
-        apiVersion != null && "initkit.io/v1alpha1".equals(apiVersion.asText());
-    boolean supportedKind = kind != null && "WorkstationProfile".equals(kind.asText());
-    if (supportedApiVersion && supportedKind) {
-      return true;
-    }
-    throw new IllegalArgumentException(
-        "Unsupported manifest schema; expected apiVersion initkit.io/v1alpha1 and kind "
-            + "WorkstationProfile");
   }
 
   private boolean hasAny(JsonNode root, String... fieldNames) {

@@ -10,12 +10,20 @@ import dev.sysboot.core.Phase;
 import dev.sysboot.core.PhaseName;
 import dev.sysboot.core.ProfileName;
 import dev.sysboot.core.RestartPolicy;
+import java.nio.file.Path;
 import java.util.List;
 import java.util.Locale;
 
 final class WorkstationProfileConfigMapper {
 
-  BootstrapConfig map(WorkstationProfileDocument document) {
+  private final WorkstationProfileValidator validator;
+
+  WorkstationProfileConfigMapper() {
+    this.validator = new WorkstationProfileValidator();
+  }
+
+  BootstrapConfig map(WorkstationProfileDocument document, Path manifestPath) {
+    validator.validate(document, manifestPath);
     MetadataDocument metadata = requireField(document.metadata().orElse(null), "metadata");
     TargetDocument target =
         requireField(document.spec().orElse(null), "spec").target().orElse(null);

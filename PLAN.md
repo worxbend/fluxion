@@ -214,6 +214,11 @@ Progress:
   planned T005/T007 work: WorkstationProfile contract validation and executable `spec.plan`
   mapping are still incomplete, so currently loaded manifests still produce an empty synthetic
   phase.
+- 2026-06-29: T005 added WorkstationProfile contract validation in the parser path. Invalid
+  `apiVersion`/`kind`, blank or duplicate `spec.plan[].name`, unsupported plan kinds, empty
+  package/app install lists, malformed SHA-256 checksum objects, and `spec.policy.statePath`
+  equal to the manifest path now fail with field-path diagnostics. Plan entries are still
+  validated only; T007 remains responsible for mapping package plan kinds into executable modules.
 
 Tasks:
 

@@ -313,6 +313,165 @@ class YamlConfigLoaderTest {
   }
 
   @Test
+  void load_whenWorkstationProfileHeaderInvalid_reportsApiVersionAndKind(
+      @TempDir Path tmpDir) throws IOException {
+    Path config =
+        writeConfig(
+            tmpDir,
+            """
+            apiVersion: initkit.io/v2
+            kind: Profile
+            metadata:
+              name: developer-workstation
+            spec:
+              target:
+                os:
+                  distribution: fedora
+                  release: "44"
+              plan: []
+            """);
+
+    assertThatThrownBy(() -> loader.load(config))
+        .isInstanceOf(ConfigLoadException.class)
+        .hasMessageContaining("apiVersion")
+        .hasMessageContaining("initkit.io/v1alpha1")
+        .hasMessageContaining("kind")
+        .hasMessageContaining("WorkstationProfile");
+  }
+
+  @Test
+  void load_whenWorkstationProfilePlanNamesInvalid_reportsOffendingEntries(
+      @TempDir Path tmpDir) throws IOException {
+    Path config =
+        writeConfig(
+            tmpDir,
+            """
+            apiVersion: initkit.io/v1alpha1
+            kind: WorkstationProfile
+            metadata:
+              name: developer-workstation
+            spec:
+              target:
+                os:
+                  distribution: fedora
+                  release: "44"
+              plan:
+                - name: " "
+                  kind: commands
+                - name: base
+                  kind: commands
+                - name: base
+                  kind: commands
+            """);
+
+    assertThatThrownBy(() -> loader.load(config))
+        .isInstanceOf(ConfigLoadException.class)
+        .hasMessageContaining("spec.plan[0].name")
+        .hasMessageContaining("must not be blank")
+        .hasMessageContaining("spec.plan[2].name")
+        .hasMessageContaining("base")
+        .hasMessageContaining("spec.plan[1].name");
+  }
+
+  @Test
+  void load_whenWorkstationProfilePlanKindUnsupported_reportsFieldPath(
+      @TempDir Path tmpDir) throws IOException {
+    Path config =
+        writeConfig(
+            tmpDir,
+            """
+            apiVersion: initkit.io/v1alpha1
+            kind: WorkstationProfile
+            metadata:
+              name: developer-workstation
+            spec:
+              target:
+                os:
+                  distribution: fedora
+                  release: "44"
+              plan:
+                - name: snaps
+                  kind: snap-packages
+            """);
+
+    assertThatThrownBy(() -> loader.load(config))
+        .isInstanceOf(ConfigLoadException.class)
+        .hasMessageContaining("spec.plan[0].kind")
+        .hasMessageContaining("snap-packages")
+        .hasMessageContaining("unsupported plan kind");
+  }
+
+  @Test
+  void load_whenWorkstationProfileInstallsEmptyOrChecksumsMalformed_reportsFieldPaths(
+      @TempDir Path tmpDir) throws IOException {
+    Path config =
+        writeConfig(
+            tmpDir,
+            """
+            apiVersion: initkit.io/v1alpha1
+            kind: WorkstationProfile
+            metadata:
+              name: developer-workstation
+            spec:
+              target:
+                os:
+                  distribution: fedora
+                  release: "44"
+              plan:
+                - name: base
+                  kind: dnf-packages
+                  spec:
+                    packages: []
+                - name: apps
+                  kind: flatpak-packages
+                  spec:
+                    apps: []
+                - name: binary
+                  kind: binary-downloads
+                  spec:
+                    checksum:
+                      algorithm: sha1
+                      value: nope
+            """);
+
+    assertThatThrownBy(() -> loader.load(config))
+        .isInstanceOf(ConfigLoadException.class)
+        .hasMessageContaining("spec.plan[0].spec.packages")
+        .hasMessageContaining("at least one item")
+        .hasMessageContaining("spec.plan[1].spec.apps")
+        .hasMessageContaining("spec.plan[2].spec.checksum.algorithm")
+        .hasMessageContaining("sha1")
+        .hasMessageContaining("spec.plan[2].spec.checksum.value");
+  }
+
+  @Test
+  void load_whenWorkstationProfileStatePathEqualsManifest_reportsFieldPath(
+      @TempDir Path tmpDir) throws IOException {
+    Path config =
+        writeConfig(
+            tmpDir,
+            """
+            apiVersion: initkit.io/v1alpha1
+            kind: WorkstationProfile
+            metadata:
+              name: developer-workstation
+            spec:
+              policy:
+                statePath: config.yaml
+              target:
+                os:
+                  distribution: fedora
+                  release: "44"
+              plan: []
+            """);
+
+    assertThatThrownBy(() -> loader.load(config))
+        .isInstanceOf(ConfigLoadException.class)
+        .hasMessageContaining("spec.policy.statePath")
+        .hasMessageContaining("must not equal the manifest path");
+  }
+
+  @Test
   void load_whenProfileFieldMissing_throwsConfigLoadException(@TempDir Path tmpDir)
       throws IOException {
     Path config =
