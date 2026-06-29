@@ -3,8 +3,12 @@ package dev.sysboot.core;
 import java.util.List;
 import java.util.Objects;
 
-public record FlatpakModule(ModuleName name, String remote, List<String> appIds)
+public record FlatpakModule(ModuleName name, String remote, List<String> appIds, boolean continueOnError)
     implements BootstrapModule {
+
+  public FlatpakModule(ModuleName name, String remote, List<String> appIds) {
+    this(name, remote, appIds, false);
+  }
 
   public FlatpakModule {
     Objects.requireNonNull(name, "Module name must not be null");

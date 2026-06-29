@@ -419,7 +419,7 @@ public final class BootstrapOrchestratorImpl implements BootstrapOrchestrator {
       recordSuccess(module.name(), appId, ItemType.FLATPAK, result);
       if (result instanceof StepResult.Failure) anyFailed = true;
     }
-    return anyFailed;
+    return anyFailed && !module.continueOnError();
   }
 
   private boolean executeAptRepositoryModule(

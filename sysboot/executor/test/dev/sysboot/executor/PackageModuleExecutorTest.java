@@ -83,6 +83,75 @@ class PackageModuleExecutorTest {
   }
 
   @Test
+  void execute_whenMiddlePackageFails_attemptsLaterPackagesBeforeReportingFailure() {
+    when(dnf.supports(PackageManagerKind.DNF)).thenReturn(true);
+    when(dnf.install(new PackageName("git")))
+        .thenReturn(new StepResult.Success("git", Duration.ZERO));
+    when(dnf.install(new PackageName("broken")))
+        .thenReturn(new StepResult.Failure("broken", "not found", 1, Duration.ZERO));
+    when(dnf.install(new PackageName("curl")))
+        .thenReturn(new StepResult.Success("curl", Duration.ZERO));
+    var executor = new PackageModuleExecutor(new PackageManagerExecutorRegistry(List.of(dnf)));
+    List<ExecutionEvent> events = new ArrayList<>();
+
+    boolean failed =
+        executor.execute(
+            module(false, "git", "broken", "curl"),
+            events::add,
+            new ModuleExecutionContext(
+                SkipEvaluator.alwaysRun(), (moduleName, itemKey, itemType, result) -> {}));
+
+    assertThat(failed).isTrue();
+    assertThat(completedItems(events)).containsExactly("git", "broken", "curl");
+    verify(dnf).install(new PackageName("git"));
+    verify(dnf).install(new PackageName("broken"));
+    verify(dnf).install(new PackageName("curl"));
+  }
+
+  @Test
+  void execute_whenActionFails_attemptsLaterPackagesBeforeReportingFailure() {
+    var action = new PackageManagerAction("upgrade", List.of());
+    when(dnf.supports(PackageManagerKind.DNF)).thenReturn(true);
+    when(dnf.runAction(action))
+        .thenReturn(new StepResult.Failure("upgrade", "failed", 1, Duration.ZERO));
+    when(dnf.install(any())).thenReturn(new StepResult.Success("git", Duration.ZERO));
+    var executor = new PackageModuleExecutor(new PackageManagerExecutorRegistry(List.of(dnf)));
+    List<ExecutionEvent> events = new ArrayList<>();
+
+    boolean failed =
+        executor.execute(
+            module(List.of(action), false, "git"),
+            events::add,
+            new ModuleExecutionContext(
+                SkipEvaluator.alwaysRun(), (moduleName, itemKey, itemType, result) -> {}));
+
+    assertThat(failed).isTrue();
+    assertThat(completedItems(events)).containsExactly("action[0]", "git");
+    verify(dnf).runAction(action);
+    verify(dnf).install(new PackageName("git"));
+  }
+
+  @Test
+  void execute_whenContinueOnErrorTrue_suppressesAggregateFailureAfterAttemptingItems() {
+    when(dnf.supports(PackageManagerKind.DNF)).thenReturn(true);
+    when(dnf.install(any()))
+        .thenReturn(new StepResult.Success("git", Duration.ZERO))
+        .thenReturn(new StepResult.Failure("broken", "not found", 1, Duration.ZERO))
+        .thenReturn(new StepResult.Success("curl", Duration.ZERO));
+    var executor = new PackageModuleExecutor(new PackageManagerExecutorRegistry(List.of(dnf)));
+
+    boolean failed =
+        executor.execute(
+            module(true, "git", "broken", "curl"),
+            ignored -> {},
+            new ModuleExecutionContext(
+                SkipEvaluator.alwaysRun(), (moduleName, itemKey, itemType, result) -> {}));
+
+    assertThat(failed).isFalse();
+    verify(dnf, times(3)).install(any());
+  }
+
+  @Test
   void execute_whenSkipEvaluatorSkips_doesNotInstall() {
     when(dnf.supports(PackageManagerKind.DNF)).thenReturn(true);
     var executor = new PackageModuleExecutor(new PackageManagerExecutorRegistry(List.of(dnf)));
@@ -146,16 +215,25 @@ class PackageModuleExecutorTest {
   }
 
   private static PackageModule module(String packageName) {
-    return module(List.of(), packageName);
+    return module(List.of(), true, packageName);
   }
 
   private static PackageModule module(List<PackageManagerAction> actions, String packageName) {
+    return module(actions, true, packageName);
+  }
+
+  private static PackageModule module(boolean continueOnError, String... packageNames) {
+    return module(List.of(), continueOnError, packageNames);
+  }
+
+  private static PackageModule module(
+      List<PackageManagerAction> actions, boolean continueOnError, String... packageNames) {
     return new PackageModule(
         new ModuleName("tools"),
         PackageManagerKind.DNF,
-        List.of(new PackageName(packageName)),
+        java.util.Arrays.stream(packageNames).map(PackageName::new).toList(),
         actions,
-        true);
+        continueOnError);
   }
 
   private static List<String> completedItems(List<ExecutionEvent> events) {

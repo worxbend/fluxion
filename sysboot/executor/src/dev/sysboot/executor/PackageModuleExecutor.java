@@ -55,9 +55,6 @@ final class PackageModuleExecutor implements ModuleExecutor {
       PackageManagerAction action = packageModule.actions().get(index);
       StepResult result = executeAction(packageModule, action, index, executor, listener);
       if (result instanceof StepResult.Failure) {
-        if (!packageModule.continueOnError()) {
-          return true;
-        }
         anyFailed = true;
       }
     }
@@ -82,13 +79,10 @@ final class PackageModuleExecutor implements ModuleExecutor {
           .successRecorder()
           .record(packageModule.name(), packageName.value(), ItemType.PACKAGE, result);
       if (result instanceof StepResult.Failure) {
-        if (!packageModule.continueOnError()) {
-          return true;
-        }
         anyFailed = true;
       }
     }
-    return anyFailed;
+    return anyFailed && !packageModule.continueOnError();
   }
 
   @Override

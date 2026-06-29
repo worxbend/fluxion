@@ -530,6 +530,11 @@ Progress:
   package-manager actions, validate unsupported action names with plan-entry field paths, render in
   execution plans before package items, and dry-run/apply through the same action-before-install
   order.
+- 2026-06-29: Agent-loop T006 fixed package item isolation after package-manager actions. Package
+  actions and package/app installs now attempt every item in an entry before returning an aggregate
+  result. `PackageModule.continueOnError` and WorkstationProfile Flatpak entry continuation now
+  control only whether the aggregate entry failure stops later top-level entries in the synthetic
+  `manifest-plan` phase. `./mill executor.test` and `./mill __.test` passed.
 
 Plan kinds:
 
@@ -855,7 +860,7 @@ policy, variable, host-facts, `when`, and skipped-reporting milestones recorded 
 3. `T003` - Plan source setup prelude (complex feature, completed).
 4. `T004` - Checkpoint source prelude (validation, completed).
 5. `T005` - Add package manager actions (complex feature, completed).
-6. `T006` - Verify package item isolation (moderate fix).
+6. `T006` - Verify package item isolation (moderate fix, completed).
 7. `T007` - Checkpoint package behavior (validation).
 8. `T008` - Map basic installer kinds (complex feature).
 9. `T009` - Extend binary downloads (complex feature).

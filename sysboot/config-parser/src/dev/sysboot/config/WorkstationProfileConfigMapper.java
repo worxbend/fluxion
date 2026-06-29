@@ -90,7 +90,8 @@ final class WorkstationProfileConfigMapper {
         "WorkstationProfile plan",
         mapPlanModules(plan, policy),
         List.of(),
-        new RestartPolicy.None());
+        new RestartPolicy.None(),
+        false);
   }
 
   private List<BootstrapModule> mapPlanModules(
@@ -110,7 +111,7 @@ final class WorkstationProfileConfigMapper {
           Optional.of(packageModule(entry, PackageManagerKind.PACMAN, policy));
       case "zypper-packages" ->
           Optional.of(packageModule(entry, PackageManagerKind.ZYPPER, policy));
-      case "flatpak-packages" -> Optional.of(flatpakModule(entry));
+      case "flatpak-packages" -> Optional.of(flatpakModule(entry, policy));
       default -> Optional.empty();
     };
   }
@@ -147,10 +148,13 @@ final class WorkstationProfileConfigMapper {
         .toList();
   }
 
-  private FlatpakModule flatpakModule(PlanEntryDocument entry) {
+  private FlatpakModule flatpakModule(PlanEntryDocument entry, BootstrapPolicy policy) {
     PlanSpecDocument spec = requireField(entry.spec().orElse(null), planName(entry) + ".spec");
     return new FlatpakModule(
-        new ModuleName(planName(entry)), spec.remote().orElse("flathub"), appIds(spec));
+        new ModuleName(planName(entry)),
+        spec.remote().orElse("flathub"),
+        appIds(spec),
+        continueOnError(entry, policy));
   }
 
   private List<String> appIds(PlanSpecDocument spec) {

@@ -15,6 +15,7 @@ import dev.sysboot.core.BootstrapConfig;
 import dev.sysboot.core.BootstrapState;
 import dev.sysboot.core.EventKind;
 import dev.sysboot.core.ExecutionEvent;
+import dev.sysboot.core.FlatpakModule;
 import dev.sysboot.core.FlatpakRemoteModule;
 import dev.sysboot.core.ManualModule;
 import dev.sysboot.core.ModuleName;
@@ -135,24 +136,29 @@ class BootstrapOrchestratorImplTest {
   }
 
   @Test
-  void execute_whenPackageFailsAndContinueOnErrorFalse_stopsAfterFailure() {
+  void execute_whenPackageFailsAndContinueOnErrorFalse_attemptsLaterItemsThenStopsPhase() {
     when(dnfExecutor.install(any()))
         .thenReturn(new StepResult.Failure("git", "not found", 1, Duration.ofMillis(100)))
         .thenReturn(new StepResult.Success("curl", Duration.ofMillis(100)));
 
     var config =
-        buildConfig(
+        buildPhasedConfig(
             List.of(
-                new PackageModule(
-                    new ModuleName("tools"),
-                    PackageManagerKind.DNF,
-                    List.of(new PackageName("git"), new PackageName("curl")),
-                    false)));
+                phase(
+                    "manifest-plan",
+                    false,
+                    List.of(),
+                    new PackageModule(
+                        new ModuleName("tools"),
+                        PackageManagerKind.DNF,
+                        List.of(new PackageName("git"), new PackageName("curl")),
+                        false))));
 
     List<ExecutionEvent> events = new ArrayList<>();
     orchestrator.execute(config, events::add);
 
-    verify(dnfExecutor, times(1)).install(any());
+    verify(dnfExecutor, times(2)).install(any());
+    assertThat(events).extracting(ExecutionEvent::kind).contains(EventKind.PHASE_FAILED);
   }
 
   @Test
@@ -176,6 +182,101 @@ class BootstrapOrchestratorImplTest {
   }
 
   @Test
+  void execute_whenAggregatePackageFailureDisallowsContinuation_skipsLaterEntryAfterItemsRun() {
+    when(dnfExecutor.install(any()))
+        .thenReturn(new StepResult.Success("git", Duration.ZERO))
+        .thenReturn(new StepResult.Failure("broken", "not found", 1, Duration.ZERO))
+        .thenReturn(new StepResult.Success("curl", Duration.ZERO));
+    var config =
+        buildPhasedConfig(
+            List.of(
+                phase(
+                    "manifest-plan",
+                    false,
+                    List.of(),
+                    new PackageModule(
+                        new ModuleName("tools"),
+                        PackageManagerKind.DNF,
+                        List.of(
+                            new PackageName("git"),
+                            new PackageName("broken"),
+                            new PackageName("curl")),
+                        false),
+                    new PackageModule(
+                        new ModuleName("later-tools"),
+                        PackageManagerKind.DNF,
+                        List.of(new PackageName("jq")),
+                        false))));
+
+    orchestrator.execute(config, ignored -> {});
+
+    verify(dnfExecutor, times(3)).install(any());
+  }
+
+  @Test
+  void execute_whenAggregatePackageFailureAllowsContinuation_runsLaterEntry() {
+    when(dnfExecutor.install(any()))
+        .thenReturn(new StepResult.Success("git", Duration.ZERO))
+        .thenReturn(new StepResult.Failure("broken", "not found", 1, Duration.ZERO))
+        .thenReturn(new StepResult.Success("curl", Duration.ZERO))
+        .thenReturn(new StepResult.Success("jq", Duration.ZERO));
+    var config =
+        buildPhasedConfig(
+            List.of(
+                phase(
+                    "manifest-plan",
+                    false,
+                    List.of(),
+                    new PackageModule(
+                        new ModuleName("tools"),
+                        PackageManagerKind.DNF,
+                        List.of(
+                            new PackageName("git"),
+                            new PackageName("broken"),
+                            new PackageName("curl")),
+                        true),
+                    new PackageModule(
+                        new ModuleName("later-tools"),
+                        PackageManagerKind.DNF,
+                        List.of(new PackageName("jq")),
+                        false))));
+
+    orchestrator.execute(config, ignored -> {});
+
+    verify(dnfExecutor, times(4)).install(any());
+  }
+
+  @Test
+  void execute_whenFlatpakMiddleAppFails_attemptsLaterAppBeforeAggregateFailure() {
+    when(flatpakInstaller.install(any(), org.mockito.ArgumentMatchers.eq("org.first")))
+        .thenReturn(new StepResult.Success("org.first", Duration.ZERO));
+    when(flatpakInstaller.install(any(), org.mockito.ArgumentMatchers.eq("org.broken")))
+        .thenReturn(new StepResult.Failure("org.broken", "failed", 1, Duration.ZERO));
+    when(flatpakInstaller.install(any(), org.mockito.ArgumentMatchers.eq("org.last")))
+        .thenReturn(new StepResult.Success("org.last", Duration.ZERO));
+    var config =
+        buildPhasedConfig(
+            List.of(
+                phase(
+                    "manifest-plan",
+                    false,
+                    List.of(),
+                    new FlatpakModule(
+                        new ModuleName("desktop"),
+                        "flathub",
+                        List.of("org.first", "org.broken", "org.last"),
+                        false))));
+
+    List<ExecutionEvent> events = new ArrayList<>();
+    orchestrator.execute(config, events::add);
+
+    verify(flatpakInstaller).install(any(), org.mockito.ArgumentMatchers.eq("org.first"));
+    verify(flatpakInstaller).install(any(), org.mockito.ArgumentMatchers.eq("org.broken"));
+    verify(flatpakInstaller).install(any(), org.mockito.ArgumentMatchers.eq("org.last"));
+    assertThat(events).extracting(ExecutionEvent::kind).contains(EventKind.PHASE_FAILED);
+  }
+
+  @Test
   void execute_whenPhaseAllowsModuleErrors_completesPhaseAndRunsDependentPhase() {
     when(dnfExecutor.install(any()))
         .thenReturn(new StepResult.Failure("git", "not found", 1, Duration.ofMillis(100)))
@@ -192,7 +293,7 @@ class BootstrapOrchestratorImplTest {
                         new ModuleName("tools"),
                         PackageManagerKind.DNF,
                         List.of(new PackageName("git")),
-                        true)),
+                        false)),
                 phase(
                     "dependent",
                     false,
@@ -232,7 +333,7 @@ class BootstrapOrchestratorImplTest {
                         new ModuleName("tools"),
                         PackageManagerKind.DNF,
                         List.of(new PackageName("git")),
-                        true)),
+                        false)),
                 phase(
                     "dependent",
                     false,
@@ -852,10 +953,26 @@ class BootstrapOrchestratorImplTest {
       boolean continueOnModuleError,
       List<PhaseName> dependsOn,
       dev.sysboot.core.BootstrapModule module) {
+    return phase(name, continueOnModuleError, dependsOn, List.of(module));
+  }
+
+  private static Phase phase(
+      String name,
+      boolean continueOnModuleError,
+      List<PhaseName> dependsOn,
+      dev.sysboot.core.BootstrapModule... modules) {
+    return phase(name, continueOnModuleError, dependsOn, List.of(modules));
+  }
+
+  private static Phase phase(
+      String name,
+      boolean continueOnModuleError,
+      List<PhaseName> dependsOn,
+      List<dev.sysboot.core.BootstrapModule> modules) {
     return new Phase(
         new PhaseName(name),
         "",
-        List.of(module),
+        modules,
         dependsOn,
         new RestartPolicy.None(),
         continueOnModuleError);
