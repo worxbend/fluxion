@@ -8,6 +8,7 @@ import dev.sysboot.core.DefaultShellModule;
 import dev.sysboot.core.DotbotModule;
 import dev.sysboot.core.FlatpakModule;
 import dev.sysboot.core.FlatpakRemoteModule;
+import dev.sysboot.core.InterruptModule;
 import dev.sysboot.core.ManualModule;
 import dev.sysboot.core.NerdFontModule;
 import dev.sysboot.core.OhMyZshModule;
@@ -54,6 +55,7 @@ final class SelectionEntryCatalog {
           List.of(shellReloadModule.shell().name().toLowerCase());
       case AssertModule assertModule -> List.of(assertModule.name().value());
       case ManualModule manualModule -> List.of(manualModule.name().value());
+      case InterruptModule interruptModule -> List.of(interruptModule.name().value());
     };
   }
 }

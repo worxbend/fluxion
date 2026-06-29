@@ -72,6 +72,7 @@ public final class TuiExecutionEventListener implements ExecutionEventListener {
       case StepResult.Failure ignored -> ItemResult.FAILED;
       case StepResult.Skipped ignored -> ItemResult.SKIPPED;
       case StepResult.DryRun ignored -> ItemResult.DRY_RUN;
+      case StepResult.Paused ignored -> ItemResult.FAILED;
     };
   }
 
@@ -81,6 +82,7 @@ public final class TuiExecutionEventListener implements ExecutionEventListener {
       case StepResult.Failure f -> f.elapsed();
       case StepResult.Skipped ignored -> Duration.ZERO;
       case StepResult.DryRun ignored -> Duration.ZERO;
+      case StepResult.Paused ignored -> Duration.ZERO;
     };
   }
 
@@ -93,6 +95,7 @@ public final class TuiExecutionEventListener implements ExecutionEventListener {
       case StepResult.Skipped s -> String.format("[SKIP]  %s: %s", item, s.reason());
       case StepResult.DryRun d ->
           String.format("[DRY]   %s: %s", item, String.join(" ", d.wouldExecute()));
+      case StepResult.Paused p -> String.format("[PAUSE] %s: %s", item, p.message());
     };
   }
 }

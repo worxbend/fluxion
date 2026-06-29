@@ -19,5 +19,6 @@ public enum ItemType {
   SHELL_RELOAD,
   SHELL_COMMAND,
   ASSERT,
-  MANUAL
+  MANUAL,
+  INTERRUPT
 }

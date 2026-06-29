@@ -9,6 +9,7 @@ import dev.sysboot.core.DefaultShellModule;
 import dev.sysboot.core.DotbotModule;
 import dev.sysboot.core.FlatpakModule;
 import dev.sysboot.core.FlatpakRemoteModule;
+import dev.sysboot.core.InterruptModule;
 import dev.sysboot.core.ManualModule;
 import dev.sysboot.core.NerdFontConfig;
 import dev.sysboot.core.NerdFontModule;
@@ -101,6 +102,7 @@ final class BootstrapConfigSelectionFilter {
       case ShellReloadModule shellReloadModule -> Optional.of(shellReloadModule);
       case AssertModule assertModule -> Optional.of(assertModule);
       case ManualModule manualModule -> Optional.of(manualModule);
+      case InterruptModule interruptModule -> Optional.of(interruptModule);
     };
   }
 

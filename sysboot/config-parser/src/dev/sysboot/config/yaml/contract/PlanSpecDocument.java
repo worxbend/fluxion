@@ -115,6 +115,18 @@ public final class PlanSpecDocument {
   @JsonProperty("confirm")
   private String confirm;
 
+  @JsonProperty("message")
+  private String message;
+
+  @JsonProperty("instructions")
+  private List<String> instructions;
+
+  @JsonProperty("resumeFrom")
+  private String resumeFrom;
+
+  @JsonProperty("exitCode")
+  private Integer exitCode;
+
   @JsonProperty("timeout")
   private String timeout;
 
@@ -309,6 +321,22 @@ public final class PlanSpecDocument {
 
   public Optional<String> confirm() {
     return DocumentDefaults.optional(confirm);
+  }
+
+  public Optional<String> message() {
+    return DocumentDefaults.optional(message);
+  }
+
+  public List<String> instructions() {
+    return DocumentDefaults.list(instructions);
+  }
+
+  public Optional<String> resumeFrom() {
+    return DocumentDefaults.optional(resumeFrom);
+  }
+
+  public Optional<Integer> exitCode() {
+    return DocumentDefaults.optional(exitCode);
   }
 
   public Optional<String> timeout() {

@@ -673,6 +673,17 @@ cd sysboot
 
 Goal: support explicit `kind: interrupt` entries with separate state-file behavior.
 
+Progress:
+
+- 2026-06-29: Agent-loop T012 added a core `InterruptModule`, `InterruptResumeMode`, pause
+  result/exception, and persisted plan-entry checkpoint state with `nextPlanEntry`.
+  WorkstationProfile `kind: interrupt` maps from `spec.message`, `instructions`, `resumeFrom`, and
+  `exitCode` with defaults of `resumeFrom: next` and exit code `75`.
+- 2026-06-29: Apply mode now writes interrupt checkpoint state through the existing atomic JSON
+  state repository before stopping, returns CLI pause code `75`, and resumes a later run from a
+  saved `nextPlanEntry` within the manifest plan phase. Dry-run emits an interrupt/state-write
+  preview and does not create or modify state.
+
 Reference behavior from the pinned `binstaller` scan:
 
 - Apply mode wrote state before stopping and used exit code `75` by default.
@@ -893,7 +904,7 @@ policy, variable, host-facts, `when`, and skipped-reporting milestones recorded 
 9. `T009` - Extend binary downloads (complex feature, completed).
 10. `T010` - Extend scripts and commands (complex feature, completed).
 11. `T011` - Checkpoint installer kinds (validation, completed).
-12. `T012` - Add interrupt checkpoint model (complex feature).
+12. `T012` - Add interrupt checkpoint model (complex feature, completed).
 13. `T013` - Report interrupt resume state (complex feature).
 14. `T014` - Checkpoint interrupt resume (validation).
 15. `T015` - Add AUR package kind (moderate feature).

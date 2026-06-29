@@ -13,6 +13,7 @@ import dev.sysboot.core.DefaultShellModule;
 import dev.sysboot.core.DotbotModule;
 import dev.sysboot.core.FlatpakModule;
 import dev.sysboot.core.FlatpakRemoteModule;
+import dev.sysboot.core.InterruptModule;
 import dev.sysboot.core.ManualModule;
 import dev.sysboot.core.NerdFontModule;
 import dev.sysboot.core.OhMyZshModule;
@@ -103,6 +104,7 @@ public final class ListCommand implements Runnable {
       case ShellCommandModule ignored -> "📜 command";
       case AssertModule ignored -> "✓ assert";
       case ManualModule ignored -> "☐ manual";
+      case InterruptModule ignored -> "⏸ interrupt";
     };
   }
 
@@ -126,6 +128,7 @@ public final class ListCommand implements Runnable {
       case ShellCommandModule ignored -> "shell-command";
       case AssertModule ignored -> "assert";
       case ManualModule ignored -> "manual";
+      case InterruptModule ignored -> "interrupt";
     };
   }
 
@@ -149,6 +152,7 @@ public final class ListCommand implements Runnable {
       case ShellCommandModule sc -> sc.items().size() + " commands";
       case AssertModule am -> am.command();
       case ManualModule mm -> mm.message();
+      case InterruptModule im -> im.message();
     };
   }
 

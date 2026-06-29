@@ -6,6 +6,7 @@ import dev.sysboot.cli.error.ExitCode;
 import dev.sysboot.cli.option.GlobalOptions;
 import dev.sysboot.cli.output.StdoutExecutionEventListener;
 import dev.sysboot.core.BootstrapConfig;
+import dev.sysboot.core.ExecutionPausedException;
 import dev.sysboot.core.Phase;
 import dev.sysboot.executor.PhaseExecutionPlanner;
 import java.util.Arrays;
@@ -99,7 +100,11 @@ public final class ApplyCommand implements Runnable {
       if (dryRun) {
         context.orchestrator().dryRun(filtered, listener);
       } else {
-        context.orchestrator().execute(filtered, listener);
+        try {
+          context.orchestrator().execute(filtered, listener);
+        } catch (ExecutionPausedException e) {
+          throw new CliFailureException(ExitCode.PAUSED, e.getMessage(), e);
+        }
       }
     } else {
       try {

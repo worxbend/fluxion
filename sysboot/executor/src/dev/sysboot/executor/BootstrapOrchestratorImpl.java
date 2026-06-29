@@ -10,8 +10,11 @@ import dev.sysboot.core.DefaultShellModule;
 import dev.sysboot.core.DotbotModule;
 import dev.sysboot.core.ExecutionEvent;
 import dev.sysboot.core.ExecutionEventListener;
+import dev.sysboot.core.ExecutionPausedException;
 import dev.sysboot.core.FlatpakModule;
 import dev.sysboot.core.FlatpakRemoteModule;
+import dev.sysboot.core.InterruptModule;
+import dev.sysboot.core.InterruptResumeMode;
 import dev.sysboot.core.ItemType;
 import dev.sysboot.core.ManualModule;
 import dev.sysboot.core.ModuleName;
@@ -19,6 +22,8 @@ import dev.sysboot.core.NerdFontModule;
 import dev.sysboot.core.OhMyZshModule;
 import dev.sysboot.core.PackageModule;
 import dev.sysboot.core.PacmanRepositoryModule;
+import dev.sysboot.core.PlanEntryStateEntry;
+import dev.sysboot.core.PlanEntryStatus;
 import dev.sysboot.core.Phase;
 import dev.sysboot.core.PhaseName;
 import dev.sysboot.core.PhaseStateEntry;
@@ -218,9 +223,15 @@ public final class BootstrapOrchestratorImpl implements BootstrapOrchestrator {
     List<Phase> ordered = planner.plan(config.phases());
     for (Phase phase : ordered) {
       listener.onEvent(ExecutionEvent.phaseStarted(phase.name()));
-      for (BootstrapModule module : phase.modules()) {
+      List<BootstrapModule> modules = phase.modules();
+      for (int index = 0; index < modules.size(); index++) {
+        BootstrapModule module = modules.get(index);
         listener.onEvent(ExecutionEvent.moduleStarted(module.name()));
-        dryRunModule(module, listener);
+        if (module instanceof InterruptModule interrupt) {
+          dryRunInterrupt(interrupt, nextModuleName(modules, index), listener);
+        } else {
+          dryRunModule(module, listener);
+        }
         listener.onEvent(ExecutionEvent.moduleCompleted(module.name()));
       }
       listener.onEvent(ExecutionEvent.phaseCompleted(phase.name()));
@@ -229,10 +240,21 @@ public final class BootstrapOrchestratorImpl implements BootstrapOrchestrator {
 
   private PhaseExecutionResult executePhase(
       Phase phase, ExecutionEventListener listener, ShellRunner phaseRunner) {
-    for (BootstrapModule module : phase.modules()) {
+    List<BootstrapModule> modules = phase.modules();
+    int startIndex = resumeStartIndex(modules);
+    for (int index = startIndex; index < modules.size(); index++) {
+      BootstrapModule module = modules.get(index);
       listener.onEvent(ExecutionEvent.moduleStarted(module.name()));
-      boolean moduleFailed = executeModule(module, listener, phaseRunner);
-      listener.onEvent(ExecutionEvent.moduleCompleted(module.name()));
+      boolean moduleFailed = false;
+      try {
+        if (module instanceof InterruptModule interrupt) {
+          executeInterrupt(interrupt, nextModuleName(modules, index), listener);
+        } else {
+          moduleFailed = executeModule(module, listener, phaseRunner);
+        }
+      } finally {
+        listener.onEvent(ExecutionEvent.moduleCompleted(module.name()));
+      }
       if (moduleFailed && !phase.continueOnModuleError()) {
         return PhaseExecutionResult.HARD_FAILURE;
       }
@@ -347,9 +369,24 @@ public final class BootstrapOrchestratorImpl implements BootstrapOrchestrator {
               listener);
       case AssertModule am -> executeAssert(am, listener, phaseRunner);
       case ManualModule mm -> executeManual(mm, listener, phaseRunner);
+      case InterruptModule ignored -> throw new IllegalStateException("Interrupt handled by phase");
       case PackageModule ignored -> throw new IllegalStateException("Package executor missing");
       case ZypperModule ignored -> throw new IllegalStateException("Zypper executor missing");
     };
+  }
+
+  private void executeInterrupt(
+      InterruptModule module,
+      Optional<ModuleName> followingModule,
+      ExecutionEventListener listener) {
+    String itemKey = module.name().value();
+    Optional<String> nextEntry = nextPlanEntry(module, followingModule);
+    listener.onEvent(ExecutionEvent.itemStarted(module.name(), itemKey));
+    var result = new StepResult.Paused(itemKey, module.message(), nextEntry, module.exitCode());
+    listener.onEvent(ExecutionEvent.itemCompleted(module.name(), itemKey, result));
+    recordInterrupt(module, nextEntry);
+    throw new ExecutionPausedException(
+        itemKey, interruptMessage(module, nextEntry), nextEntry, module.exitCode());
   }
 
   private boolean executeAssert(
@@ -609,9 +646,30 @@ public final class BootstrapOrchestratorImpl implements BootstrapOrchestrator {
               am.name(), am.name().value(), List.of(am.shell(), "-lc", am.command()), listener);
       case ManualModule mm ->
           emitDryRun(mm.name(), mm.name().value(), List.of("manual", mm.message()), listener);
+      case InterruptModule ignored -> throw new IllegalStateException("Interrupt handled by phase");
       case PackageModule ignored -> throw new IllegalStateException("Package executor missing");
       case ZypperModule ignored -> throw new IllegalStateException("Zypper executor missing");
     }
+  }
+
+  private void dryRunInterrupt(
+      InterruptModule module,
+      Optional<ModuleName> followingModule,
+      ExecutionEventListener listener) {
+    Optional<String> nextEntry = nextPlanEntry(module, followingModule);
+    emitDryRun(
+        module.name(),
+        module.name().value(),
+        List.of(
+            "interrupt",
+            module.name().value(),
+            "message=" + module.message(),
+            "resumeFrom=" + module.resumeFrom().name().toLowerCase(),
+            "exitCode=" + module.exitCode(),
+            "state-write",
+            "status=" + interruptStatus(module).name().toLowerCase(),
+            "nextPlanEntry=" + nextEntry.orElse("<complete>")),
+        listener);
   }
 
   private void emitSkipped(
@@ -661,6 +719,35 @@ public final class BootstrapOrchestratorImpl implements BootstrapOrchestrator {
         .flatMap(repo -> repo.load(profileName))
         .map(state -> state.isPhaseCompleted(phase.name().value(), fingerprint))
         .orElse(false);
+  }
+
+  private int resumeStartIndex(List<BootstrapModule> modules) {
+    Optional<String> nextEntry =
+        stateRepository
+            .flatMap(repo -> repo.load(profileName))
+            .flatMap(state -> state.nextPlanEntry());
+    if (nextEntry.isEmpty()) {
+      return 0;
+    }
+    for (int index = 0; index < modules.size(); index++) {
+      if (modules.get(index).name().value().equals(nextEntry.orElseThrow())) {
+        clearNextPlanEntry();
+        return index;
+      }
+    }
+    return 0;
+  }
+
+  private void clearNextPlanEntry() {
+    stateRepository.ifPresent(
+        repo ->
+            repo.load(profileName)
+                .map(dev.sysboot.core.BootstrapState::withoutNextPlanEntry)
+                .ifPresent(
+                    updated -> {
+                      repo.save(updated);
+                      skipEvaluator.refreshState(updated);
+                    }));
   }
 
   private ShellRunner selectShellRunner(RestartPolicy policy) {
@@ -729,6 +816,55 @@ public final class BootstrapOrchestratorImpl implements BootstrapOrchestrator {
           repo.save(updated);
           skipEvaluator.refreshState(updated);
         });
+  }
+
+  private Optional<ModuleName> nextModuleName(List<BootstrapModule> modules, int currentIndex) {
+    return currentIndex + 1 < modules.size()
+        ? Optional.of(modules.get(currentIndex + 1).name())
+        : Optional.empty();
+  }
+
+  private Optional<String> nextPlanEntry(
+      InterruptModule module, Optional<ModuleName> followingModule) {
+    if (module.resumeFrom() == InterruptResumeMode.CURRENT) {
+      return Optional.of(module.name().value());
+    }
+    return followingModule.map(ModuleName::value);
+  }
+
+  private PlanEntryStatus interruptStatus(InterruptModule module) {
+    return module.resumeFrom() == InterruptResumeMode.CURRENT
+        ? PlanEntryStatus.INTERRUPTED
+        : PlanEntryStatus.COMPLETED;
+  }
+
+  private void recordInterrupt(InterruptModule module, Optional<String> nextEntry) {
+    stateRepository.ifPresent(
+        repo -> {
+          var current =
+              repo.load(profileName)
+                  .orElse(dev.sysboot.core.BootstrapState.empty(profileName, "1.0.0"));
+          var updated =
+              current
+                  .withPlanEntry(
+                      new PlanEntryStateEntry(
+                          module.name().value(),
+                          interruptStatus(module),
+                          Instant.now(),
+                          Optional.of(module.message())))
+                  .withNextPlanEntry(nextEntry);
+          repo.save(updated);
+          skipEvaluator.refreshState(updated);
+        });
+  }
+
+  private String interruptMessage(InterruptModule module, Optional<String> nextEntry) {
+    String resumeTarget =
+        nextEntry.map(" Next plan entry: "::concat).orElse(" No next plan entry.");
+    if (module.instructions().isEmpty()) {
+      return module.message() + resumeTarget;
+    }
+    return module.message() + resumeTarget + " " + String.join(" ", module.instructions());
   }
 
   private enum PhaseExecutionResult {

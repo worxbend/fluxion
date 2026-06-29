@@ -8,6 +8,7 @@ import dev.sysboot.core.DefaultShellModule;
 import dev.sysboot.core.DotbotModule;
 import dev.sysboot.core.FlatpakModule;
 import dev.sysboot.core.FlatpakRemoteModule;
+import dev.sysboot.core.InterruptModule;
 import dev.sysboot.core.ManualModule;
 import dev.sysboot.core.NerdFontModule;
 import dev.sysboot.core.OhMyZshModule;
@@ -125,6 +126,13 @@ final class PhaseFingerprintCalculator {
         append(builder, "type", "manual");
         append(builder, "message", mm.message());
         append(builder, "probe", mm.probeCommand());
+      }
+      case InterruptModule im -> {
+        append(builder, "type", "interrupt");
+        append(builder, "message", im.message());
+        im.instructions().forEach(instruction -> append(builder, "instruction", instruction));
+        append(builder, "resumeFrom", im.resumeFrom().name());
+        append(builder, "exitCode", Integer.toString(im.exitCode()));
       }
     }
   }

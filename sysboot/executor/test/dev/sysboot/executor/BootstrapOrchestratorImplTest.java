@@ -21,6 +21,9 @@ import dev.sysboot.core.EventKind;
 import dev.sysboot.core.ExecutionEvent;
 import dev.sysboot.core.FlatpakModule;
 import dev.sysboot.core.FlatpakRemoteModule;
+import dev.sysboot.core.ExecutionPausedException;
+import dev.sysboot.core.InterruptModule;
+import dev.sysboot.core.InterruptResumeMode;
 import dev.sysboot.core.ManualModule;
 import dev.sysboot.core.ModuleName;
 import dev.sysboot.core.NerdFontConfig;
@@ -35,6 +38,7 @@ import dev.sysboot.core.Phase;
 import dev.sysboot.core.PhaseName;
 import dev.sysboot.core.PhaseStateEntry;
 import dev.sysboot.core.PhaseStatus;
+import dev.sysboot.core.PlanEntryStatus;
 import dev.sysboot.core.ProcessResult;
 import dev.sysboot.core.ProfileName;
 import dev.sysboot.core.RestartPolicy;
@@ -941,6 +945,102 @@ class BootstrapOrchestratorImplTest {
     assertThat(dryRun.wouldExecute()).containsExactly("/bin/bash", "-lc", "sudo pacman -Sy");
   }
 
+  @Test
+  void execute_whenInterruptReached_recordsCompletedWorkAndCheckpoint() {
+    var repository = new InMemoryStateRepository(BootstrapState.empty("test", "1.0.0"));
+    var config =
+        buildConfig(
+            List.of(
+                new PackageModule(
+                    new ModuleName("tools"),
+                    PackageManagerKind.DNF,
+                    List.of(new PackageName("git")),
+                    false),
+                interrupt("checkpoint", InterruptResumeMode.CURRENT),
+                new PackageModule(
+                    new ModuleName("after"),
+                    PackageManagerKind.DNF,
+                    List.of(new PackageName("curl")),
+                    false)));
+
+    org.assertj.core.api.Assertions.assertThatThrownBy(
+            () -> orchestrator(alwaysRun(), Optional.of(repository)).execute(config, ignored -> {}))
+        .isInstanceOf(ExecutionPausedException.class);
+
+    assertThat(repository.state().entries()).extracting(StateEntry::itemKey).containsExactly("git");
+    assertThat(repository.state().planEntryEntries())
+        .extracting(entry -> entry.entryName() + ":" + entry.status())
+        .containsExactly("checkpoint:" + PlanEntryStatus.INTERRUPTED);
+    assertThat(repository.state().nextPlanEntry()).contains("checkpoint");
+    verify(dnfExecutor, times(1)).install(any());
+  }
+
+  @Test
+  void dryRun_whenInterruptReached_previewsStateWriteWithoutSaving() {
+    var repository = new InMemoryStateRepository(BootstrapState.empty("test", "1.0.0"));
+    var config =
+        buildConfig(
+            List.of(
+                interrupt("checkpoint", InterruptResumeMode.NEXT),
+                new ManualModule(new ModuleName("after"), "continue", Optional.empty())));
+
+    List<ExecutionEvent> events = new ArrayList<>();
+    orchestrator(alwaysRun(), Optional.of(repository)).dryRun(config, events::add);
+
+    assertThat(repository.state().planEntryEntries()).isEmpty();
+    assertThat(repository.state().nextPlanEntry()).isEmpty();
+    assertThat(events)
+        .flatExtracting(event -> event.result().stream().toList())
+        .filteredOn(StepResult.DryRun.class::isInstance)
+        .extracting(result -> String.join(" ", ((StepResult.DryRun) result).wouldExecute()))
+        .anySatisfy(
+            preview ->
+                assertThat(preview)
+                    .contains("state-write")
+                    .contains("status=completed")
+                    .contains("nextPlanEntry=after"));
+  }
+
+  @Test
+  void execute_whenInterruptResumeFromNext_recordsFollowingEntryAsNextPlanEntry() {
+    var repository = new InMemoryStateRepository(BootstrapState.empty("test", "1.0.0"));
+    var config =
+        buildConfig(
+            List.of(
+                interrupt("checkpoint", InterruptResumeMode.NEXT),
+                new ManualModule(new ModuleName("after"), "continue", Optional.empty())));
+
+    org.assertj.core.api.Assertions.assertThatThrownBy(
+            () -> orchestrator(alwaysRun(), Optional.of(repository)).execute(config, ignored -> {}))
+        .isInstanceOf(ExecutionPausedException.class);
+
+    assertThat(repository.state().planEntryEntries().getFirst().status())
+        .isEqualTo(PlanEntryStatus.COMPLETED);
+    assertThat(repository.state().nextPlanEntry()).contains("after");
+  }
+
+  @Test
+  void execute_whenNextPlanEntrySaved_resumesAtThatEntry() {
+    var repository =
+        new InMemoryStateRepository(
+            BootstrapState.empty("test", "1.0.0").withNextPlanEntry(Optional.of("after")));
+    var config =
+        buildConfig(
+            List.of(
+                interrupt("checkpoint", InterruptResumeMode.NEXT),
+                new PackageModule(
+                    new ModuleName("after"),
+                    PackageManagerKind.DNF,
+                    List.of(new PackageName("curl")),
+                    false)));
+
+    orchestrator(alwaysRun(), Optional.of(repository)).execute(config, ignored -> {});
+
+    assertThat(repository.state().nextPlanEntry()).isEmpty();
+    assertThat(repository.state().entries()).extracting(StateEntry::itemKey).containsExactly("curl");
+    verify(dnfExecutor, times(1)).install(any());
+  }
+
   private BootstrapOrchestratorImpl orchestrator(
       SkipEvaluator skipEvaluator, Optional<StateRepository> stateRepository) {
     return new BootstrapOrchestratorImpl(
@@ -1023,6 +1123,11 @@ class BootstrapOrchestratorImplTest {
 
   private static List<String> dnfInstallCommand(PackageName packageName) {
     return List.of("sudo", "dnf", "install", "-y", packageName.value());
+  }
+
+  private static InterruptModule interrupt(String name, InterruptResumeMode resumeMode) {
+    return new InterruptModule(
+        new ModuleName(name), "Pause at " + name, List.of("Run the manual step"), resumeMode, 75);
   }
 
   private static AptRepositoryModule aptRepositoryModule() {

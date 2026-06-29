@@ -19,6 +19,8 @@ import dev.sysboot.core.CompiledBinaryModule;
 import dev.sysboot.core.DotbotModule;
 import dev.sysboot.core.FlatpakModule;
 import dev.sysboot.core.HostFactsProvider;
+import dev.sysboot.core.InterruptModule;
+import dev.sysboot.core.InterruptResumeMode;
 import dev.sysboot.core.ModuleName;
 import dev.sysboot.core.NerdFontConfig;
 import dev.sysboot.core.NerdFontModule;
@@ -138,7 +140,35 @@ final class WorkstationProfileConfigMapper {
       case "commands" -> Optional.of(shellCommandModule(entry, policy));
       case "nerd-fonts" -> Optional.of(nerdFontModule(entry));
       case "dotfiles-apply" -> Optional.of(dotbotModule(entry));
+      case "interrupt" -> Optional.of(interruptModule(entry));
       default -> Optional.empty();
+    };
+  }
+
+  private InterruptModule interruptModule(PlanEntryDocument entry) {
+    PlanSpecDocument spec = entry.spec().orElse(null);
+    String name = planName(entry);
+    return new InterruptModule(
+        new ModuleName(name),
+        interruptMessage(name, spec),
+        spec == null ? List.of() : spec.instructions(),
+        resumeMode(spec),
+        spec == null ? 75 : spec.exitCode().orElse(75));
+  }
+
+  private String interruptMessage(String name, PlanSpecDocument spec) {
+    if (spec == null || spec.message().isEmpty()) {
+      return "Execution paused by interrupt entry: " + name;
+    }
+    return spec.message().orElseThrow();
+  }
+
+  private InterruptResumeMode resumeMode(PlanSpecDocument spec) {
+    String raw = spec == null ? "next" : spec.resumeFrom().orElse("next");
+    return switch (raw.strip().toLowerCase(Locale.ROOT)) {
+      case "current" -> InterruptResumeMode.CURRENT;
+      case "next" -> InterruptResumeMode.NEXT;
+      default -> throw new IllegalArgumentException("Unsupported interrupt resumeFrom: " + raw);
     };
   }
 

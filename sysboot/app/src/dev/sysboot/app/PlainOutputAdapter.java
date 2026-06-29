@@ -67,6 +67,7 @@ public final class PlainOutputAdapter implements OutputAdapter {
                               "✗ " + f.item() + " (exit " + f.exitCode() + ")";
                           case StepResult.Skipped sk -> "○ " + sk.item() + "  already installed";
                           case StepResult.DryRun dr -> "~ " + dr.item() + "  [dry-run]";
+                          case StepResult.Paused p -> "⏸ " + p.item() + "  [paused]";
                         };
                     System.out.println("[fluxion]   " + label);
                   });

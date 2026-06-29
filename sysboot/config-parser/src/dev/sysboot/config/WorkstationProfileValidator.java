@@ -153,6 +153,7 @@ final class WorkstationProfileValidator {
     }
     validateInstallList(kind, path, entryName, spec, errors);
     validateInstallerSpec(kind, path, entryName, spec, errors);
+    validateInterruptSpec(kind, path, spec, errors);
     validatePackageActions(kind, path, entryName, spec, errors);
     if (spec != null) {
       validateChecksum(path + ".spec.checksum", spec.checksum().orElse(null), errors);
@@ -235,6 +236,30 @@ final class WorkstationProfileValidator {
       case "dotfiles-apply" -> validateDotfilesSpec(path, entryName, spec, errors);
       default -> {
       }
+    }
+  }
+
+  private void validateInterruptSpec(
+      String kind, String path, PlanSpecDocument spec, List<String> errors) {
+    if (!"interrupt".equals(kind) || spec == null) {
+      return;
+    }
+    spec.message().ifPresent(message -> requirePresent(path + ".spec.message", message, "interrupt", errors));
+    validatePresentItems(path + ".spec.instructions", spec.instructions(), errors);
+    spec.resumeFrom().ifPresent(value -> validateResumeFrom(path, value, errors));
+    spec.exitCode().ifPresent(value -> validateExitCode(path, value, errors));
+  }
+
+  private void validateResumeFrom(String path, String value, List<String> errors) {
+    String normalized = value.strip().toLowerCase(Locale.ROOT);
+    if (!Set.of("current", "next").contains(normalized)) {
+      errors.add(path + ".spec.resumeFrom must be either current or next");
+    }
+  }
+
+  private void validateExitCode(String path, int value, List<String> errors) {
+    if (value < 0 || value > 255) {
+      errors.add(path + ".spec.exitCode must be between 0 and 255");
     }
   }
 

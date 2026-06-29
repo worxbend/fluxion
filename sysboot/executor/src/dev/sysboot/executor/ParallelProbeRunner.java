@@ -9,6 +9,7 @@ import dev.sysboot.core.DotbotModule;
 import dev.sysboot.core.FlatpakModule;
 import dev.sysboot.core.FlatpakRemoteModule;
 import dev.sysboot.core.InstallationStatus;
+import dev.sysboot.core.InterruptModule;
 import dev.sysboot.core.ItemType;
 import dev.sysboot.core.ManualModule;
 import dev.sysboot.core.ModuleItem;
@@ -154,6 +155,8 @@ public final class ParallelProbeRunner {
             targets.add(new ModuleItem(am.name(), am.name().value(), ItemType.ASSERT));
         case ManualModule mm ->
             targets.add(new ModuleItem(mm.name(), mm.name().value(), ItemType.MANUAL));
+        case InterruptModule im ->
+            targets.add(new ModuleItem(im.name(), im.name().value(), ItemType.INTERRUPT));
       }
     }
     return List.copyOf(targets);

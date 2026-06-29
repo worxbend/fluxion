@@ -18,7 +18,8 @@ public sealed interface BootstrapModule
         ShellReloadModule,
         ShellCommandModule,
         AssertModule,
-        ManualModule {
+        ManualModule,
+        InterruptModule {
 
   ModuleName name();
 }

@@ -405,6 +405,49 @@ class CliExitCodeTest {
   }
 
   @Test
+  void dryRun_whenWorkstationProfileInterrupt_doesNotCreateStateFile() throws Exception {
+    Path config = writeWorkstationProfileWithInterrupt("next");
+    String originalHome = System.getProperty("user.home");
+    System.setProperty("user.home", tempDir.toString());
+    try {
+      CliResult result = executeCapturingSystemOut("dry-run", "--no-tui", "-c", config.toString());
+
+      assertThat(result.exitCode()).isEqualTo(ExitCode.SUCCESS.value());
+      assertThat(result.stdout())
+          .contains("DRY-RUN")
+          .contains("state-write")
+          .contains("nextPlanEntry=after-pause");
+      assertThat(result.stderr()).isEmpty();
+      assertThat(new JsonStateRepository(new ObjectMapper()).path("default")).doesNotExist();
+    } finally {
+      System.setProperty("user.home", originalHome);
+    }
+  }
+
+  @Test
+  void apply_whenWorkstationProfileInterrupt_writesStateAndReturnsPauseCode() throws Exception {
+    Path config = writeWorkstationProfileWithInterrupt("next");
+    String originalHome = System.getProperty("user.home");
+    System.setProperty("user.home", tempDir.toString());
+    try {
+      CliResult result =
+          executeCapturingSystemOut("apply", "--no-tui", "-c", config.toString(), "--yes");
+
+      assertThat(result.exitCode()).isEqualTo(ExitCode.PAUSED.value());
+      assertThat(result.stdout()).contains("PAUSED").contains("Log out before continuing.");
+      assertThat(result.stderr()).contains("Error: Log out before continuing.");
+      BootstrapState state =
+          new JsonStateRepository(new ObjectMapper()).load("default").orElseThrow();
+      assertThat(state.nextPlanEntry()).contains("after-pause");
+      assertThat(state.planEntryEntries())
+          .extracting(entry -> entry.entryName() + ":" + entry.status())
+          .containsExactly("pause-login:COMPLETED");
+    } finally {
+      System.setProperty("user.home", originalHome);
+    }
+  }
+
+  @Test
   void graph_outputsMermaidPhaseDag() throws Exception {
     Path config = writeDependentPhaseConfig();
 
@@ -1064,6 +1107,38 @@ class CliExitCodeTest {
               spec:
                 packages: [git]
         """);
+    return config;
+  }
+
+  private Path writeWorkstationProfileWithInterrupt(String resumeFrom) throws IOException {
+    Path config = tempDir.resolve("workstation-interrupt-" + resumeFrom + ".yaml");
+    Files.writeString(
+        config,
+        """
+        apiVersion: initkit.io/v1alpha1
+        kind: WorkstationProfile
+        metadata:
+          name: workstation-interrupt-test
+        spec:
+          target:
+            os:
+              distribution: fedora
+              release: "44"
+          plan:
+            - name: pause-login
+              kind: interrupt
+              spec:
+                message: Log out before continuing.
+                instructions:
+                  - Run fluxion apply again.
+                resumeFrom: %s
+            - name: after-pause
+              kind: commands
+              spec:
+                commands:
+                  - ["echo", "after"]
+        """
+            .formatted(resumeFrom));
     return config;
   }
 

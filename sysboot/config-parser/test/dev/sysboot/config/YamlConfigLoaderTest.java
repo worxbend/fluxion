@@ -15,6 +15,8 @@ import dev.sysboot.core.FlatpakRemoteModule;
 import dev.sysboot.core.FlatpakRemoteSourceSetup;
 import dev.sysboot.core.HostFacts;
 import dev.sysboot.core.HostFactsProvider;
+import dev.sysboot.core.InterruptModule;
+import dev.sysboot.core.InterruptResumeMode;
 import dev.sysboot.core.ManualModule;
 import dev.sysboot.core.NerdFontModule;
 import dev.sysboot.core.OsTarget;
@@ -343,6 +345,43 @@ class YamlConfigLoaderTest {
     assertThat(module.actions().get(1).args()).containsExactly("ffmpeg-free", "ffmpeg");
     assertThat(module.packages()).extracting(packageName -> packageName.value())
         .containsExactly("ripgrep");
+  }
+
+  @Test
+  void load_whenWorkstationProfileInterruptPresent_mapsCheckpointModule(@TempDir Path tmpDir)
+      throws IOException {
+    Path config =
+        writeConfig(
+            tmpDir,
+            """
+            apiVersion: initkit.io/v1alpha1
+            kind: WorkstationProfile
+            metadata:
+              name: interrupt-test
+            spec:
+              target:
+                os:
+                  distribution: fedora
+                  release: "44"
+              plan:
+                - name: pause-for-login
+                  kind: interrupt
+                  spec:
+                    message: Log out and back in before continuing.
+                    instructions:
+                      - Start a fresh shell session.
+                    resumeFrom: current
+                    exitCode: 75
+            """);
+
+    BootstrapConfig result = loader.load(config);
+
+    var module = (InterruptModule) result.phases().getFirst().modules().getFirst();
+    assertThat(module.name().value()).isEqualTo("pause-for-login");
+    assertThat(module.message()).isEqualTo("Log out and back in before continuing.");
+    assertThat(module.instructions()).containsExactly("Start a fresh shell session.");
+    assertThat(module.resumeFrom()).isEqualTo(InterruptResumeMode.CURRENT);
+    assertThat(module.exitCode()).isEqualTo(75);
   }
 
   @Test

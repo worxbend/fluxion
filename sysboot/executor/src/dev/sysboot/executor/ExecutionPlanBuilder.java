@@ -9,6 +9,7 @@ import dev.sysboot.core.DefaultShellModule;
 import dev.sysboot.core.DotbotModule;
 import dev.sysboot.core.FlatpakModule;
 import dev.sysboot.core.FlatpakRemoteModule;
+import dev.sysboot.core.InterruptModule;
 import dev.sysboot.core.ItemType;
 import dev.sysboot.core.ManualModule;
 import dev.sysboot.core.ModuleItem;
@@ -215,6 +216,8 @@ public final class ExecutionPlanBuilder {
           List.of(new ModuleItem(am.name(), am.name().value(), ItemType.ASSERT));
       case ManualModule mm ->
           List.of(new ModuleItem(mm.name(), mm.name().value(), ItemType.MANUAL));
+      case InterruptModule im ->
+          List.of(new ModuleItem(im.name(), im.name().value(), ItemType.INTERRUPT));
       case PackageModule ignored -> throw new IllegalStateException("Package executor missing");
       case ZypperModule ignored -> throw new IllegalStateException("Zypper executor missing");
     };
@@ -248,6 +251,7 @@ public final class ExecutionPlanBuilder {
       case ShellCommandModule ignored -> "shell-command";
       case AssertModule ignored -> "assert";
       case ManualModule ignored -> "manual";
+      case InterruptModule ignored -> "interrupt";
     };
   }
 }

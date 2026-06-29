@@ -79,6 +79,12 @@ public final class StdoutExecutionEventListener implements ExecutionEventListene
       case StepResult.DryRun d ->
           System.out.println(
               Ansi.AUTO.string("@|cyan DRY-RUN|@: " + String.join(" ", d.wouldExecute())));
+      case StepResult.Paused p ->
+          System.out.println(
+              Ansi.AUTO.string(
+                  "@|bold,yellow PAUSED|@: "
+                      + p.message()
+                      + p.nextPlanEntry().map(next -> " (next: " + next + ")").orElse("")));
     }
   }
 }
