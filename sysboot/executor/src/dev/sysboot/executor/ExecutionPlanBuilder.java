@@ -95,6 +95,10 @@ public final class ExecutionPlanBuilder {
   }
 
   private Optional<List<String>> commandPreview(BootstrapModule module, ModuleItem item) {
+    if (module instanceof PackageModule packageModule
+        && item.itemType() == ItemType.PACKAGE_ACTION) {
+      return packageActionCommand(packageModule, item);
+    }
     if (module instanceof FlatpakModule flatpakModule) {
       return Optional.of(List.of("flatpak", "install", "-y", flatpakModule.remote(), item.key()));
     }
@@ -120,6 +124,23 @@ public final class ExecutionPlanBuilder {
                 packageManagerRegistry
                     .forKind(kind)
                     .installCommand(new dev.sysboot.core.PackageName(item.key())));
+  }
+
+  private Optional<List<String>> packageActionCommand(PackageModule module, ModuleItem item) {
+    return actionIndex(item.key())
+        .map(module.actions()::get)
+        .map(action -> packageManagerRegistry.forKind(module.packageManager()).actionCommand(action));
+  }
+
+  private Optional<Integer> actionIndex(String key) {
+    if (!key.startsWith("action[") || !key.endsWith("]")) {
+      return Optional.empty();
+    }
+    try {
+      return Optional.of(Integer.parseInt(key.substring("action[".length(), key.length() - 1)));
+    } catch (NumberFormatException e) {
+      return Optional.empty();
+    }
   }
 
   private List<String> flatpakRemoteCommand(FlatpakRemoteModule module) {

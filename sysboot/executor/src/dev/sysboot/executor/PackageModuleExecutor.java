@@ -5,6 +5,7 @@ import dev.sysboot.core.ExecutionEvent;
 import dev.sysboot.core.ExecutionEventListener;
 import dev.sysboot.core.ItemType;
 import dev.sysboot.core.ModuleItem;
+import dev.sysboot.core.PackageManagerAction;
 import dev.sysboot.core.PackageModule;
 import dev.sysboot.core.PackageName;
 import dev.sysboot.core.SkipDecision;
@@ -28,12 +29,20 @@ final class PackageModuleExecutor implements ModuleExecutor {
   @Override
   public List<ModuleItem> items(BootstrapModule module) {
     PackageModule packageModule = asPackageModule(module);
-    return packageModule.packages().stream()
+    var items = new java.util.ArrayList<ModuleItem>();
+    for (int index = 0; index < packageModule.actions().size(); index++) {
+      PackageManagerAction action = packageModule.actions().get(index);
+      items.add(
+          ModuleItem.packageActionItem(
+              packageModule.name(), action.itemKey(index), action, packageModule.packageManager()));
+    }
+    packageModule.packages().stream()
         .map(
             packageName ->
                 ModuleItem.packageItem(
                     packageModule.name(), packageName.value(), packageModule.packageManager()))
-        .toList();
+        .forEach(items::add);
+    return List.copyOf(items);
   }
 
   @Override
@@ -42,6 +51,16 @@ final class PackageModuleExecutor implements ModuleExecutor {
     PackageModule packageModule = asPackageModule(module);
     var executor = executorRegistry.forKind(packageModule.packageManager());
     boolean anyFailed = false;
+    for (int index = 0; index < packageModule.actions().size(); index++) {
+      PackageManagerAction action = packageModule.actions().get(index);
+      StepResult result = executeAction(packageModule, action, index, executor, listener);
+      if (result instanceof StepResult.Failure) {
+        if (!packageModule.continueOnError()) {
+          return true;
+        }
+        anyFailed = true;
+      }
+    }
     for (PackageName packageName : packageModule.packages()) {
       ModuleItem item =
           ModuleItem.packageItem(
@@ -76,6 +95,10 @@ final class PackageModuleExecutor implements ModuleExecutor {
   public void dryRun(BootstrapModule module, ExecutionEventListener listener) {
     PackageModule packageModule = asPackageModule(module);
     var executor = executorRegistry.forKind(packageModule.packageManager());
+    for (int index = 0; index < packageModule.actions().size(); index++) {
+      PackageManagerAction action = packageModule.actions().get(index);
+      emitDryRun(packageModule, action.itemKey(index), executor.actionCommand(action), listener);
+    }
     packageModule
         .packages()
         .forEach(
@@ -93,6 +116,19 @@ final class PackageModuleExecutor implements ModuleExecutor {
       case ZypperModule zypperModule -> zypperModule.asPackageModule();
       default -> throw new IllegalArgumentException("Unsupported package module: " + module);
     };
+  }
+
+  private StepResult executeAction(
+      PackageModule module,
+      PackageManagerAction action,
+      int index,
+      dev.sysboot.core.PackageManagerExecutor executor,
+      ExecutionEventListener listener) {
+    String item = action.itemKey(index);
+    listener.onEvent(ExecutionEvent.itemStarted(module.name(), item));
+    StepResult result = executor.runAction(action);
+    listener.onEvent(ExecutionEvent.itemCompleted(module.name(), item, result));
+    return result;
   }
 
   private void emitDryRun(

@@ -14,6 +14,7 @@ import dev.sysboot.core.FlatpakModule;
 import dev.sysboot.core.HostFactsProvider;
 import dev.sysboot.core.ModuleName;
 import dev.sysboot.core.OsTarget;
+import dev.sysboot.core.PackageManagerAction;
 import dev.sysboot.core.PackageManagerKind;
 import dev.sysboot.core.PackageModule;
 import dev.sysboot.core.PackageName;
@@ -118,7 +119,11 @@ final class WorkstationProfileConfigMapper {
       PlanEntryDocument entry, PackageManagerKind kind, BootstrapPolicy policy) {
     PlanSpecDocument spec = requireField(entry.spec().orElse(null), planName(entry) + ".spec");
     return new PackageModule(
-        new ModuleName(planName(entry)), kind, packageNames(spec), continueOnError(entry, policy));
+        new ModuleName(planName(entry)),
+        kind,
+        packageNames(spec),
+        packageActions(spec),
+        continueOnError(entry, policy));
   }
 
   private boolean continueOnError(PlanEntryDocument entry, BootstrapPolicy policy) {
@@ -131,6 +136,15 @@ final class WorkstationProfileConfigMapper {
 
   private List<PackageName> packageNames(PlanSpecDocument spec) {
     return spec.packages().stream().map(PackageName::new).toList();
+  }
+
+  private List<PackageManagerAction> packageActions(PlanSpecDocument spec) {
+    return spec.actions().stream()
+        .map(
+            action ->
+                new PackageManagerAction(
+                    action.action().orElseThrow().toLowerCase(Locale.ROOT), action.args()))
+        .toList();
   }
 
   private FlatpakModule flatpakModule(PlanEntryDocument entry) {

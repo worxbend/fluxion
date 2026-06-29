@@ -9,6 +9,9 @@ public final class PlanSpecDocument {
   @JsonProperty("packages")
   private List<String> packages;
 
+  @JsonProperty("actions")
+  private List<PackageActionDocument> actions;
+
   @JsonProperty("apps")
   private List<String> apps;
 
@@ -53,6 +56,10 @@ public final class PlanSpecDocument {
 
   public List<String> packages() {
     return DocumentDefaults.list(packages);
+  }
+
+  public List<PackageActionDocument> actions() {
+    return DocumentDefaults.list(actions);
   }
 
   public List<String> apps() {

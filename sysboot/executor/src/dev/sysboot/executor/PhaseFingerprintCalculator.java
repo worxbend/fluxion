@@ -133,7 +133,14 @@ final class PhaseFingerprintCalculator {
     append(builder, "type", "packages");
     append(builder, "packageManager", module.packageManager().name());
     append(builder, "continueOnError", module.continueOnError());
+    module.actions().forEach(action -> appendPackageAction(builder, action));
     module.packages().forEach(pkg -> append(builder, "package", pkg.value()));
+  }
+
+  private void appendPackageAction(
+      StringBuilder builder, dev.sysboot.core.PackageManagerAction action) {
+    append(builder, "action", action.action());
+    action.args().forEach(arg -> append(builder, "actionArg", arg));
   }
 
   private void appendAptRepository(StringBuilder builder, AptRepositoryModule module) {

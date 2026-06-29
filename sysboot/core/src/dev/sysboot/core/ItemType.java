@@ -1,6 +1,7 @@
 package dev.sysboot.core;
 
 public enum ItemType {
+  PACKAGE_ACTION,
   PACKAGE,
   APT_REPOSITORY,
   RPM_REPOSITORY,

@@ -12,6 +12,7 @@ import dev.sysboot.core.ManualModule;
 import dev.sysboot.core.ModuleName;
 import dev.sysboot.core.OsTarget;
 import dev.sysboot.core.PackageManagerExecutor;
+import dev.sysboot.core.PackageManagerAction;
 import dev.sysboot.core.PackageManagerKind;
 import dev.sysboot.core.PackageModule;
 import dev.sysboot.core.PackageName;
@@ -80,6 +81,25 @@ class ExecutionPlanBuilderTest {
     assertPlanItem(plan, 2, "fd", PackageManagerKind.PACMAN);
     assertPlanItem(plan, 3, "htop", PackageManagerKind.ZYPPER);
     assertFlatpakPlanItem(plan, 4, "org.mozilla.firefox");
+  }
+
+  @Test
+  void build_whenWorkstationProfilePackageActionsPresent_ordersActionsBeforePackages(
+      @TempDir Path tmpDir) throws IOException {
+    Path configFile = tmpDir.resolve("config.yaml");
+    Files.writeString(configFile, workstationProfileWithPackageActions());
+    BootstrapConfig config = new YamlConfigLoader().load(configFile);
+    var builder = new ExecutionPlanBuilder(new PackageManagerExecutorRegistry(List.of(dnf())));
+
+    ExecutionPlan plan = builder.build(config);
+
+    ExecutionPlan.Module module = plan.phases().getFirst().modules().getFirst();
+    assertThat(module.items()).extracting(item -> item.item().key())
+        .containsExactly("action[0]", "git");
+    assertThat(module.items().get(0).commandPreview().orElseThrow())
+        .containsExactly("sudo", "dnf", "check-update");
+    assertThat(module.items().get(1).commandPreview().orElseThrow())
+        .containsExactly("sudo", "dnf", "install", "-y", "git");
   }
 
   @Test
@@ -400,6 +420,11 @@ class ExecutionPlanBuilderTest {
       }
 
       @Override
+      public List<String> actionCommand(PackageManagerAction action) {
+        return List.of("sudo", kind.name().toLowerCase(), action.action());
+      }
+
+      @Override
       public List<String> installCommand(PackageName packageName) {
         return List.of("sudo", kind.name().toLowerCase(), "install", "-y", packageName.value());
       }
@@ -473,11 +498,36 @@ class ExecutionPlanBuilderTest {
         """;
   }
 
+  private static String workstationProfileWithPackageActions() {
+    return """
+        apiVersion: initkit.io/v1alpha1
+        kind: WorkstationProfile
+        metadata:
+          name: package-action-test
+        spec:
+          target:
+            os:
+              distribution: fedora
+              release: "44"
+          plan:
+            - name: dnf-base
+              kind: dnf-packages
+              spec:
+                actions: [check-update]
+                packages: [git]
+        """;
+  }
+
   private static PackageManagerExecutor dnf() {
     return new PackageManagerExecutor() {
       @Override
       public boolean supports(PackageManagerKind kind) {
         return kind == PackageManagerKind.DNF;
+      }
+
+      @Override
+      public List<String> actionCommand(PackageManagerAction action) {
+        return List.of("sudo", "dnf", action.action());
       }
 
       @Override

@@ -523,6 +523,14 @@ Reference behavior from the pinned `binstaller` scan:
 - Command generation preserved direct argv boundaries; shell was used only for cases like SDKMAN
   initialization.
 
+Progress:
+
+- 2026-06-29: T005 added WorkstationProfile `spec.actions` support for `apt-packages`,
+  `dnf-packages`, `pacman-packages`, and `zypper-packages`. Supported actions now map into typed
+  package-manager actions, validate unsupported action names with plan-entry field paths, render in
+  execution plans before package items, and dry-run/apply through the same action-before-install
+  order.
+
 Plan kinds:
 
 - `apt-packages`
@@ -846,7 +854,7 @@ policy, variable, host-facts, `when`, and skipped-reporting milestones recorded 
 2. `T002` - Map source setup modules (complex feature).
 3. `T003` - Plan source setup prelude (complex feature, completed).
 4. `T004` - Checkpoint source prelude (validation, completed).
-5. `T005` - Add package manager actions (complex feature).
+5. `T005` - Add package manager actions (complex feature, completed).
 6. `T006` - Verify package item isolation (moderate fix).
 7. `T007` - Checkpoint package behavior (validation).
 8. `T008` - Map basic installer kinds (complex feature).

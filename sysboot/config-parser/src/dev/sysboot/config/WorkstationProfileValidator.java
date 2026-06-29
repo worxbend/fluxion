@@ -1,6 +1,7 @@
 package dev.sysboot.config;
 
 import dev.sysboot.config.yaml.contract.PlanEntryDocument;
+import dev.sysboot.config.yaml.contract.PackageActionDocument;
 import dev.sysboot.config.yaml.contract.PlanSpecDocument;
 import dev.sysboot.config.yaml.contract.PolicyDocument;
 import dev.sysboot.config.yaml.contract.WorkstationChecksumDocument;
@@ -23,6 +24,13 @@ final class WorkstationProfileValidator {
   private static final Set<String> PACKAGE_PLAN_KINDS =
       Set.of("apt-packages", "dnf-packages", "pacman-packages", "zypper-packages");
   private static final Set<String> APP_PLAN_KINDS = Set.of("flatpak-packages");
+  private static final Map<String, Set<String>> SUPPORTED_PACKAGE_ACTIONS =
+      Map.of(
+          "apt-packages", Set.of("update", "upgrade", "dist-upgrade"),
+          "dnf-packages",
+              Set.of("check-update", "upgrade", "swap", "groupupdate", "group-update"),
+          "pacman-packages", Set.of("sync-upgrade", "syu", "upgrade"),
+          "zypper-packages", Set.of("refresh", "update", "dup", "dup-from"));
   private static final Set<String> SUPPORTED_PLAN_KINDS =
       Set.of(
           "apt-packages",
@@ -101,7 +109,9 @@ final class WorkstationProfileValidator {
     validatePlanName(entry.name().orElse(null), path, names, errors);
     entry.kind()
         .ifPresentOrElse(
-            kind -> validatePlanKind(kind, path, entry.spec().orElse(null), errors),
+            kind ->
+                validatePlanKind(
+                    kind, path, entry.name().orElse("<unnamed>"), entry.spec().orElse(null), errors),
             () -> errors.add(path + ".kind is required"));
   }
 
@@ -124,7 +134,7 @@ final class WorkstationProfileValidator {
   }
 
   private void validatePlanKind(
-      String rawKind, String path, PlanSpecDocument spec, List<String> errors) {
+      String rawKind, String path, String entryName, PlanSpecDocument spec, List<String> errors) {
     if (isBlank(rawKind)) {
       errors.add(path + ".kind must not be blank");
       return;
@@ -134,14 +144,15 @@ final class WorkstationProfileValidator {
       errors.add(path + ".kind unsupported plan kind '" + rawKind + "'");
       return;
     }
-    validateInstallList(kind, path, spec, errors);
+    validateInstallList(kind, path, entryName, spec, errors);
+    validatePackageActions(kind, path, entryName, spec, errors);
     if (spec != null) {
       validateChecksum(path + ".spec.checksum", spec.checksum().orElse(null), errors);
     }
   }
 
   private void validateInstallList(
-      String kind, String path, PlanSpecDocument spec, List<String> errors) {
+      String kind, String path, String entryName, PlanSpecDocument spec, List<String> errors) {
     if (PACKAGE_PLAN_KINDS.contains(kind)) {
       List<String> packages = spec == null ? List.of() : spec.packages();
       validateNonEmptyItems(path + ".spec.packages", packages, errors);
@@ -149,6 +160,45 @@ final class WorkstationProfileValidator {
     if (APP_PLAN_KINDS.contains(kind)) {
       validateAppItems(path, spec, errors);
     }
+  }
+
+  private void validatePackageActions(
+      String kind, String path, String entryName, PlanSpecDocument spec, List<String> errors) {
+    if (!PACKAGE_PLAN_KINDS.contains(kind) || spec == null) {
+      return;
+    }
+    Set<String> supported = SUPPORTED_PACKAGE_ACTIONS.get(kind);
+    for (int index = 0; index < spec.actions().size(); index++) {
+      validatePackageAction(kind, path, entryName, supported, spec.actions().get(index), index, errors);
+    }
+  }
+
+  private void validatePackageAction(
+      String kind,
+      String path,
+      String entryName,
+      Set<String> supported,
+      PackageActionDocument action,
+      int index,
+      List<String> errors) {
+    String actionPath = path + ".spec.actions[" + index + "]";
+    String rawAction = action.action().orElse(null);
+    if (isBlank(rawAction)) {
+      errors.add(actionPath + ".action for plan entry '" + entryName + "' must not be blank");
+      return;
+    }
+    String normalized = rawAction.strip().toLowerCase(Locale.ROOT);
+    if (!supported.contains(normalized)) {
+      errors.add(
+          actionPath
+              + ".action for plan entry '"
+              + entryName
+              + "' unsupported action '"
+              + rawAction
+              + "' for "
+              + kind);
+    }
+    validatePresentItems(actionPath + ".args", action.args(), errors);
   }
 
   private void validateAppItems(String path, PlanSpecDocument spec, List<String> errors) {

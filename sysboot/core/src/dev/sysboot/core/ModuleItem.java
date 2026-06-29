@@ -27,4 +27,10 @@ public record ModuleItem(
     return new ModuleItem(
         moduleName, packageName, packageName, ItemType.PACKAGE, Optional.of(packageManager));
   }
+
+  public static ModuleItem packageActionItem(
+      ModuleName moduleName, String itemKey, PackageManagerAction action, PackageManagerKind kind) {
+    return new ModuleItem(
+        moduleName, itemKey, action.action(), ItemType.PACKAGE_ACTION, Optional.of(kind));
+  }
 }

@@ -270,6 +270,12 @@
     "allDeclaredConstructors": true
   },
   {
+    "name": "dev.sysboot.config.yaml.contract.PackageActionDocument",
+    "allDeclaredFields": true,
+    "allDeclaredMethods": true,
+    "allDeclaredConstructors": true
+  },
+  {
     "name": "dev.sysboot.config.yaml.contract.PlanEntryDocument",
     "allDeclaredFields": true,
     "allDeclaredMethods": true,

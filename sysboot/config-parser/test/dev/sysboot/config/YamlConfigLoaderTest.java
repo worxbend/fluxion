@@ -307,6 +307,43 @@ class YamlConfigLoaderTest {
   }
 
   @Test
+  void load_whenWorkstationProfilePackageActionsPresent_mapsActionsBeforePackages(
+      @TempDir Path tmpDir) throws IOException {
+    Path config =
+        writeConfig(
+            tmpDir,
+            """
+            apiVersion: initkit.io/v1alpha1
+            kind: WorkstationProfile
+            metadata:
+              name: action-test
+            spec:
+              target:
+                os:
+                  distribution: fedora
+                  release: "44"
+              plan:
+                - name: dnf-base
+                  kind: dnf-packages
+                  spec:
+                    actions:
+                      - check-update
+                      - action: swap
+                        args: [ffmpeg-free, ffmpeg]
+                    packages: [ripgrep]
+            """);
+
+    BootstrapConfig result = loader.load(config);
+
+    var module = (PackageModule) result.phases().getFirst().modules().getFirst();
+    assertThat(module.actions()).extracting(action -> action.action())
+        .containsExactly("check-update", "swap");
+    assertThat(module.actions().get(1).args()).containsExactly("ffmpeg-free", "ffmpeg");
+    assertThat(module.packages()).extracting(packageName -> packageName.value())
+        .containsExactly("ripgrep");
+  }
+
+  @Test
   void load_whenWorkstationProfileSourcesPresent_mapsRelevantSourceSetups(@TempDir Path tmpDir)
       throws IOException {
     Path config =
@@ -709,6 +746,38 @@ class YamlConfigLoaderTest {
         .hasMessageContaining("spec.plan[0].kind")
         .hasMessageContaining("snap-packages")
         .hasMessageContaining("unsupported plan kind");
+  }
+
+  @Test
+  void load_whenWorkstationProfilePackageActionUnsupported_reportsEntryNameAndFieldPath(
+      @TempDir Path tmpDir) throws IOException {
+    Path config =
+        writeConfig(
+            tmpDir,
+            """
+            apiVersion: initkit.io/v1alpha1
+            kind: WorkstationProfile
+            metadata:
+              name: developer-workstation
+            spec:
+              target:
+                os:
+                  distribution: fedora
+                  release: "44"
+              plan:
+                - name: dnf-base
+                  kind: dnf-packages
+                  spec:
+                    actions:
+                      - action: autoremove
+                    packages: [ripgrep]
+            """);
+
+    assertThatThrownBy(() -> loader.load(config))
+        .isInstanceOf(ConfigLoadException.class)
+        .hasMessageContaining("spec.plan[0].spec.actions[0].action")
+        .hasMessageContaining("dnf-base")
+        .hasMessageContaining("unsupported action 'autoremove'");
   }
 
   @Test
