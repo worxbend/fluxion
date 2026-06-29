@@ -687,6 +687,10 @@ Progress:
   rejects saved state for a different manifest plan before apply work starts, and added
   `apply --reset-state` as the explicit reset path. Plain interrupt output now shows the pause
   reason, instructions, state path, next plan entry, and resume command.
+- 2026-06-29: Agent-loop T014 completed the interrupt/resume validation checkpoint. `cd sysboot &&
+  ./mill executor.test`, `cd sysboot && ./mill cli.test`, `cd sysboot && ./mill tui.test`,
+  `cd sysboot && ./mill integration-tests.test`, and `cd sysboot && ./mill __.test` all passed.
+  No stale-state, dry-run mutation, CLI, TUI, integration, or full JVM regression was found.
 
 Reference behavior from the pinned `binstaller` scan:
 
@@ -913,7 +917,7 @@ policy, variable, host-facts, `when`, and skipped-reporting milestones recorded 
 11. `T011` - Checkpoint installer kinds (validation, completed).
 12. `T012` - Add interrupt checkpoint model (complex feature, completed).
 13. `T013` - Report interrupt resume state (complex feature, completed).
-14. `T014` - Checkpoint interrupt resume (validation).
+14. `T014` - Checkpoint interrupt resume (validation, completed).
 15. `T015` - Add AUR package kind (moderate feature).
 16. `T016` - Add cargo package kind (complex feature).
 17. `T017` - Add SDKMAN package kind (complex feature).
