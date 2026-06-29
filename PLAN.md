@@ -340,6 +340,11 @@ Progress:
 - 2026-06-29: T013 preserved skipped WorkstationProfile plan entries on `BootstrapConfig` with
   stable reasons, exposes them through `ExecutionPlan`, and reports them in plain `plan` output,
   dry-run/apply `--no-tui` event output, and disabled TUI selection rows.
+- 2026-06-29: VALIDATION-16 passed the host-filtering/reporting checkpoint. `just verify`,
+  `./mill cli.assembly`, `./mill cli.nativeImage`, and `just native-smoke` all completed
+  successfully. No regressions were found and no in-scope fixes were needed. Remaining risk is
+  limited to later feature work: source setup, package/source ordering, interrupt/resume parity,
+  and non-package WorkstationProfile installer kinds.
 
 Tasks:
 
