@@ -22,6 +22,7 @@ import dev.sysboot.core.RpmRepositoryModule;
 import dev.sysboot.core.ShellCommandModule;
 import dev.sysboot.core.ShellReloadModule;
 import dev.sysboot.core.ShellScriptModule;
+import dev.sysboot.core.SourceSetup;
 import dev.sysboot.core.ToolchainModule;
 import dev.sysboot.core.ZypperModule;
 import java.util.List;
@@ -32,18 +33,38 @@ public final class ExecutionPlanBuilder {
   private final PackageManagerExecutorRegistry packageManagerRegistry;
   private final ModuleExecutorRegistry moduleExecutorRegistry;
   private final PhaseExecutionPlanner phasePlanner;
+  private final SourceSetupExecutor sourceSetupExecutor;
 
   public ExecutionPlanBuilder(PackageManagerExecutorRegistry packageManagerRegistry) {
     this.packageManagerRegistry = packageManagerRegistry;
     this.moduleExecutorRegistry =
         new ModuleExecutorRegistry(List.of(new PackageModuleExecutor(packageManagerRegistry)));
     this.phasePlanner = new PhaseExecutionPlanner();
+    this.sourceSetupExecutor =
+        new SourceSetupExecutor(
+            new AptRepositoryInstaller(new DefaultShellRunner()),
+            new RpmRepositoryInstaller(new DefaultShellRunner()),
+            new PacmanRepositoryInstaller(new DefaultShellRunner()),
+            new ZypperRepositoryInstaller(new DefaultShellRunner()),
+            new FlatpakRemoteInstaller(new DefaultShellRunner()));
   }
 
   public ExecutionPlan build(BootstrapConfig config) {
+    List<ExecutionPlan.Module> sourceSetups =
+        config.sourceSetups().stream().map(this::sourceSetup).toList();
     List<ExecutionPlan.Phase> phases =
         phasePlanner.plan(config.phases()).stream().map(this::phase).toList();
-    return new ExecutionPlan(config.profileName().value(), phases, config.skippedPlanEntries());
+    return new ExecutionPlan(
+        config.profileName().value(), sourceSetups, phases, config.skippedPlanEntries());
+  }
+
+  private ExecutionPlan.Module sourceSetup(SourceSetup setup) {
+    var item = sourceSetupExecutor.item(setup);
+    return new ExecutionPlan.Module(
+        setup.name().value(),
+        "source-setup",
+        List.of(
+            new ExecutionPlan.Item(item, Optional.of(sourceSetupExecutor.commandPreview(setup)))));
   }
 
   private ExecutionPlan.Phase phase(Phase phase) {

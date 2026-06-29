@@ -316,6 +316,21 @@ class CliExitCodeTest {
   }
 
   @Test
+  void plan_whenWorkstationProfileHasSources_showsSourceCommandsBeforePackages() throws Exception {
+    Path config = writeWorkstationProfileWithDnfSource();
+
+    CliResult result = execute("plan", "--show-commands", "-c", config.toString());
+
+    assertThat(result.exitCode()).isEqualTo(ExitCode.SUCCESS.value());
+    assertThat(result.stdout()).contains("Source setup:");
+    assertThat(result.stdout())
+        .containsSubsequence(
+            "$ /bin/bash -lc printf %s '[docker]",
+            "$ sudo dnf install -y git");
+    assertThat(result.stderr()).isEmpty();
+  }
+
+  @Test
   void plan_whenFormatTable_outputsRows() throws Exception {
     Path config = writeConfig();
 
@@ -1018,6 +1033,36 @@ class CliExitCodeTest {
                 distribution: no-such-os
               spec:
                 packages: [curl]
+        """);
+    return config;
+  }
+
+  private Path writeWorkstationProfileWithDnfSource() throws IOException {
+    Path config = tempDir.resolve("workstation-source.yaml");
+    Files.writeString(
+        config,
+        """
+        apiVersion: initkit.io/v1alpha1
+        kind: WorkstationProfile
+        metadata:
+          name: workstation-source-test
+        spec:
+          target:
+            os:
+              distribution: fedora
+              release: "44"
+          sources:
+            dnf:
+              - name: docker
+                spec:
+                  id: docker
+                  baseUrl: https://download.docker.com/linux/fedora/$releasever/stable
+                  gpgCheck: false
+          plan:
+            - name: tools
+              kind: dnf-packages
+              spec:
+                packages: [git]
         """);
     return config;
   }

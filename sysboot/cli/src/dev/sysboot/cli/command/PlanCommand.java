@@ -76,6 +76,7 @@ public final class PlanCommand implements Runnable {
     var out = spec.commandLine().getOut();
     out.println("Execution plan for: " + plan.profileName());
     out.println();
+    writeTextSourceSetups(plan);
 
     for (int i = 0; i < plan.phases().size(); i++) {
       ExecutionPlan.Phase phase = plan.phases().get(i);
@@ -105,19 +106,12 @@ public final class PlanCommand implements Runnable {
     var out = spec.commandLine().getOut();
     out.printf("%-22s %-24s %-35s %s%n", "PHASE", "MODULE", "ITEM", "STATUS");
     out.println("-".repeat(100));
+    for (ExecutionPlan.Module module : plan.sourceSetups()) {
+      writeTableModule("source-setup", module, probeResults);
+    }
     for (ExecutionPlan.Phase phase : plan.phases()) {
       for (ExecutionPlan.Module module : phase.modules()) {
-        for (ExecutionPlan.Item item : module.items()) {
-          out.printf(
-              "%-22s %-24s %-35s %s%n",
-              phase.name(),
-              module.name(),
-              item.item().displayName(),
-              computeSkipLabel(item.item().key(), probeResults));
-          if (showCommands && item.commandPreview().isPresent()) {
-            out.printf("%-22s %-24s %-35s $ %s%n", "", "", "", commandPreview(item));
-          }
-        }
+        writeTableModule(phase.name(), module, probeResults);
       }
     }
     for (SkippedPlanEntry skipped : plan.skippedEntries()) {
@@ -130,6 +124,7 @@ public final class PlanCommand implements Runnable {
   private void writeTreePlan(ExecutionPlan plan, Map<String, InstallationStatus> probeResults) {
     var out = spec.commandLine().getOut();
     out.println("Execution plan for: " + plan.profileName());
+    writeTreeSourceSetups(plan, probeResults);
     for (ExecutionPlan.Phase phase : plan.phases()) {
       out.printf("└─ %s [%s]%n", phase.name(), dependencyLabel(phase));
       for (ExecutionPlan.Module module : phase.modules()) {
@@ -163,6 +158,9 @@ public final class PlanCommand implements Runnable {
     var output = new LinkedHashMap<String, Object>();
     output.put("profileName", plan.profileName());
     output.put(
+        "sourceSetups",
+        plan.sourceSetups().stream().map(module -> jsonModule(module, probeResults)).toList());
+    output.put(
         "phases", plan.phases().stream().map(phase -> jsonPhase(phase, probeResults)).toList());
     output.put("skippedEntries", plan.skippedEntries().stream().map(this::jsonSkipped).toList());
     return output;
@@ -178,6 +176,59 @@ public final class PlanCommand implements Runnable {
       out.printf("  • %-35s %s%n", skipped.name(), skipped.reason());
     }
     out.println();
+  }
+
+  private void writeTextSourceSetups(ExecutionPlan plan) {
+    var out = spec.commandLine().getOut();
+    if (plan.sourceSetups().isEmpty()) {
+      return;
+    }
+    out.println("Source setup:");
+    for (ExecutionPlan.Module module : plan.sourceSetups()) {
+      for (ExecutionPlan.Item item : module.items()) {
+        out.printf("  • %-35s would run%n", item.item().displayName());
+        if (showCommands && item.commandPreview().isPresent()) {
+          out.printf("    $ %s%n", commandPreview(item));
+        }
+      }
+    }
+    out.println();
+  }
+
+  private void writeTableModule(
+      String phase, ExecutionPlan.Module module, Map<String, InstallationStatus> probeResults) {
+    var out = spec.commandLine().getOut();
+    for (ExecutionPlan.Item item : module.items()) {
+      out.printf(
+          "%-22s %-24s %-35s %s%n",
+          phase,
+          module.name(),
+          item.item().displayName(),
+          computeSkipLabel(item.item().key(), probeResults));
+      if (showCommands && item.commandPreview().isPresent()) {
+        out.printf("%-22s %-24s %-35s $ %s%n", "", "", "", commandPreview(item));
+      }
+    }
+  }
+
+  private void writeTreeSourceSetups(
+      ExecutionPlan plan, Map<String, InstallationStatus> probeResults) {
+    var out = spec.commandLine().getOut();
+    if (plan.sourceSetups().isEmpty()) {
+      return;
+    }
+    out.println("└─ source setup");
+    for (ExecutionPlan.Module module : plan.sourceSetups()) {
+      out.printf("   └─ %s (%s)%n", module.name(), module.type());
+      for (ExecutionPlan.Item item : module.items()) {
+        out.printf(
+            "      └─ %s - %s%n",
+            item.item().displayName(), computeSkipLabel(item.item().key(), probeResults));
+        if (showCommands && item.commandPreview().isPresent()) {
+          out.printf("         $ %s%n", commandPreview(item));
+        }
+      }
+    }
   }
 
   private void writeSkippedTree(List<SkippedPlanEntry> skippedEntries) {

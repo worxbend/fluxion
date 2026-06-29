@@ -22,6 +22,7 @@ import dev.sysboot.core.ProfileName;
 import dev.sysboot.core.RestartPolicy;
 import dev.sysboot.core.SkippedPlanEntry;
 import dev.sysboot.core.RpmRepositoryModule;
+import dev.sysboot.core.RpmRepositorySourceSetup;
 import dev.sysboot.core.StepResult;
 import java.io.IOException;
 import java.net.URI;
@@ -79,6 +80,39 @@ class ExecutionPlanBuilderTest {
     assertPlanItem(plan, 2, "fd", PackageManagerKind.PACMAN);
     assertPlanItem(plan, 3, "htop", PackageManagerKind.ZYPPER);
     assertFlatpakPlanItem(plan, 4, "org.mozilla.firefox");
+  }
+
+  @Test
+  void build_whenSourceSetupsPresent_placesPreludeBeforePackagePlan() {
+    var builder = new ExecutionPlanBuilder(new PackageManagerExecutorRegistry(List.of(dnf())));
+    var phase =
+        new Phase(
+            new PhaseName("base"),
+            "",
+            List.of(
+                new PackageModule(
+                    new ModuleName("tools"),
+                    PackageManagerKind.DNF,
+                    List.of(new PackageName("git")),
+                    true)),
+            List.of(),
+            new RestartPolicy.None(),
+            false);
+    BootstrapConfig config =
+        BootstrapConfig.builder()
+            .profileName(new ProfileName("test"))
+            .target(new OsTarget.FedoraTarget("44"))
+            .sourceSetups(List.of(dnfSourceSetup()))
+            .addPhase(phase)
+            .build();
+
+    ExecutionPlan plan = builder.build(config);
+
+    assertThat(plan.sourceSetups()).hasSize(1);
+    assertThat(plan.sourceSetups().getFirst().items().getFirst().item().key())
+        .isEqualTo("/etc/yum.repos.d/docker.repo");
+    assertThat(plan.phases().getFirst().modules().getFirst().items().getFirst().item().key())
+        .isEqualTo("git");
   }
 
   @Test
@@ -345,6 +379,17 @@ class ExecutionPlanBuilderTest {
         dnf(),
         packageExecutor(PackageManagerKind.PACMAN),
         packageExecutor(PackageManagerKind.ZYPPER));
+  }
+
+  private static RpmRepositorySourceSetup dnfSourceSetup() {
+    return new RpmRepositorySourceSetup(
+        new ModuleName("docker"),
+        "docker",
+        URI.create("https://download.docker.com/linux/fedora/$releasever/stable"),
+        Path.of("/etc/yum.repos.d/docker.repo"),
+        Optional.empty(),
+        true,
+        false);
   }
 
   private static PackageManagerExecutor packageExecutor(PackageManagerKind kind) {

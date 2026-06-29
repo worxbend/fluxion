@@ -32,6 +32,7 @@ import dev.sysboot.core.ShellRunner;
 import dev.sysboot.core.ShellScriptModule;
 import dev.sysboot.core.SkipDecision;
 import dev.sysboot.core.SkippedPlanEntry;
+import dev.sysboot.core.SourceSetup;
 import dev.sysboot.core.StateEntry;
 import dev.sysboot.core.StateRepository;
 import dev.sysboot.core.StepResult;
@@ -69,6 +70,7 @@ public final class BootstrapOrchestratorImpl implements BootstrapOrchestrator {
   private final PhaseFingerprintCalculator fingerprintCalculator;
   private final ShellRunner primaryRunner;
   private final DefaultShellRunner baseRunner;
+  private final SourceSetupExecutor sourceSetupExecutor;
   private static final Duration CHECK_TIMEOUT = Duration.ofMinutes(5);
 
   public BootstrapOrchestratorImpl(
@@ -114,6 +116,13 @@ public final class BootstrapOrchestratorImpl implements BootstrapOrchestrator {
     this.fingerprintCalculator = new PhaseFingerprintCalculator();
     this.primaryRunner = primaryRunner;
     this.baseRunner = baseRunner;
+    this.sourceSetupExecutor =
+        new SourceSetupExecutor(
+            aptRepositoryInstaller,
+            rpmRepositoryInstaller,
+            pacmanRepositoryInstaller,
+            new ZypperRepositoryInstaller(primaryRunner),
+            flatpakRemoteInstaller);
   }
 
   /** Backward-compat constructor for tests (no new executors, no phases). */
@@ -150,6 +159,9 @@ public final class BootstrapOrchestratorImpl implements BootstrapOrchestrator {
   @Override
   public void execute(BootstrapConfig config, ExecutionEventListener listener) {
     emitSkippedPlanEntries(config.skippedPlanEntries(), listener);
+    if (executeSourceSetups(config, listener) == PhaseExecutionResult.HARD_FAILURE) {
+      return;
+    }
     List<Phase> ordered = planner.plan(config.phases());
     Set<PhaseName> failed = new HashSet<>();
     Set<PhaseName> blocked = new HashSet<>();
@@ -202,6 +214,7 @@ public final class BootstrapOrchestratorImpl implements BootstrapOrchestrator {
   @Override
   public void dryRun(BootstrapConfig config, ExecutionEventListener listener) {
     emitSkippedPlanEntries(config.skippedPlanEntries(), listener);
+    dryRunSourceSetups(config.sourceSetups(), listener);
     List<Phase> ordered = planner.plan(config.phases());
     for (Phase phase : ordered) {
       listener.onEvent(ExecutionEvent.phaseStarted(phase.name()));
@@ -225,6 +238,45 @@ public final class BootstrapOrchestratorImpl implements BootstrapOrchestrator {
       }
     }
     return PhaseExecutionResult.COMPLETED;
+  }
+
+  private PhaseExecutionResult executeSourceSetups(
+      BootstrapConfig config, ExecutionEventListener listener) {
+    boolean continueOnFailure = config.policy().continueOnErrorDefault().orElse(false);
+    for (SourceSetup setup : config.sourceSetups()) {
+      boolean failed = executeSourceSetup(setup, listener);
+      if (failed && !continueOnFailure) {
+        return PhaseExecutionResult.HARD_FAILURE;
+      }
+    }
+    return PhaseExecutionResult.COMPLETED;
+  }
+
+  private boolean executeSourceSetup(SourceSetup setup, ExecutionEventListener listener) {
+    var item = sourceSetupExecutor.item(setup);
+    listener.onEvent(ExecutionEvent.moduleStarted(setup.name()));
+    listener.onEvent(ExecutionEvent.itemStarted(setup.name(), item.key()));
+    SkipDecision decision = skipEvaluator.evaluate(item);
+    if (decision instanceof SkipDecision.Skip skip) {
+      emitSkipped(setup.name(), item.key(), skip, listener);
+      listener.onEvent(ExecutionEvent.moduleCompleted(setup.name()));
+      return false;
+    }
+    StepResult result = sourceSetupExecutor.execute(setup);
+    listener.onEvent(ExecutionEvent.itemCompleted(setup.name(), item.key(), result));
+    recordSuccess(setup.name(), item.key(), item.itemType(), result);
+    listener.onEvent(ExecutionEvent.moduleCompleted(setup.name()));
+    return result instanceof StepResult.Failure;
+  }
+
+  private void dryRunSourceSetups(
+      List<SourceSetup> sourceSetups, ExecutionEventListener listener) {
+    for (SourceSetup setup : sourceSetups) {
+      var item = sourceSetupExecutor.item(setup);
+      listener.onEvent(ExecutionEvent.moduleStarted(setup.name()));
+      emitDryRun(setup.name(), item.key(), sourceSetupExecutor.commandPreview(setup), listener);
+      listener.onEvent(ExecutionEvent.moduleCompleted(setup.name()));
+    }
   }
 
   private boolean executeModule(

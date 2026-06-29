@@ -457,6 +457,12 @@ Progress:
   `apt-repository`, `rpm-repository`, `pacman-repository`, and `flatpak-remote` step mapping remains
   unchanged. Source setup execution ordering, dry-run prelude rendering, and failure gating remain
   deferred to T003.
+- 2026-06-29: T003 wires `BootstrapConfig.sourceSetups()` into a generated prelude before normal
+  phase execution and dry-run output. The execution plan now exposes source setup entries before
+  phases so `plan --show-commands` previews repository/remote setup before package installs. Source
+  setup failures stop package execution by default; an explicit manifest-level
+  `continueOnError: true` policy allows continuation. Successful source setup records repository or
+  remote item state, not package item state.
 
 Reference behavior from the pinned `binstaller` scan:
 
@@ -834,7 +840,7 @@ policy, variable, host-facts, `when`, and skipped-reporting milestones recorded 
 
 1. `T001` - Decode source setup specs (moderate feature).
 2. `T002` - Map source setup modules (complex feature).
-3. `T003` - Plan source setup prelude (complex feature).
+3. `T003` - Plan source setup prelude (complex feature, completed).
 4. `T004` - Checkpoint source prelude (validation).
 5. `T005` - Add package manager actions (complex feature).
 6. `T006` - Verify package item isolation (moderate fix).

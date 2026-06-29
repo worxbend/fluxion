@@ -7,16 +7,25 @@ import java.util.Objects;
 import java.util.Optional;
 
 public record ExecutionPlan(
-    String profileName, List<ExecutionPlan.Phase> phases, List<SkippedPlanEntry> skippedEntries) {
+    String profileName,
+    List<ExecutionPlan.Module> sourceSetups,
+    List<ExecutionPlan.Phase> phases,
+    List<SkippedPlanEntry> skippedEntries) {
 
   public ExecutionPlan {
     Objects.requireNonNull(profileName);
+    sourceSetups = List.copyOf(Objects.requireNonNull(sourceSetups));
     phases = List.copyOf(Objects.requireNonNull(phases));
     skippedEntries = List.copyOf(Objects.requireNonNull(skippedEntries));
   }
 
+  public ExecutionPlan(
+      String profileName, List<ExecutionPlan.Phase> phases, List<SkippedPlanEntry> skippedEntries) {
+    this(profileName, List.of(), phases, skippedEntries);
+  }
+
   public ExecutionPlan(String profileName, List<ExecutionPlan.Phase> phases) {
-    this(profileName, phases, List.of());
+    this(profileName, List.of(), phases, List.of());
   }
 
   public record Phase(

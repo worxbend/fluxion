@@ -9,6 +9,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import dev.sysboot.core.AptRepositoryModule;
+import dev.sysboot.core.BootstrapPolicy;
 import dev.sysboot.core.AssertModule;
 import dev.sysboot.core.BootstrapConfig;
 import dev.sysboot.core.BootstrapState;
@@ -31,6 +32,7 @@ import dev.sysboot.core.ProcessResult;
 import dev.sysboot.core.ProfileName;
 import dev.sysboot.core.RestartPolicy;
 import dev.sysboot.core.RpmRepositoryModule;
+import dev.sysboot.core.RpmRepositorySourceSetup;
 import dev.sysboot.core.ShellRunner;
 import dev.sysboot.core.StateEntry;
 import dev.sysboot.core.StateRepository;
@@ -306,6 +308,71 @@ class BootstrapOrchestratorImplTest {
         events.stream().flatMap(event -> event.result().stream()).findFirst().orElseThrow();
     assertThat(skipped).isInstanceOf(StepResult.Skipped.class);
     assertThat(((StepResult.Skipped) skipped).reason()).contains("when.distribution");
+  }
+
+  @Test
+  void dryRun_whenSourceSetupConfigured_emitsSourceBeforePackage() {
+    when(rpmRepositoryInstaller.addCommand(any()))
+        .thenReturn(List.of("/bin/bash", "-lc", "sudo dnf makecache --refresh"));
+    var config =
+        buildConfig(
+            List.of(dnfSourceSetup()),
+            List.of(
+                new PackageModule(
+                    new ModuleName("tools"),
+                    PackageManagerKind.DNF,
+                    List.of(new PackageName("git")),
+                    true)));
+
+    List<ExecutionEvent> events = new ArrayList<>();
+    orchestrator.dryRun(config, events::add);
+
+    assertThat(events.stream().flatMap(event -> event.result().stream()).toList())
+        .extracting(StepResult::item)
+        .containsSubsequence("/etc/yum.repos.d/docker.repo", "git");
+  }
+
+  @Test
+  void execute_whenRequiredSourceSetupFails_doesNotInstallPackages() {
+    when(rpmRepositoryInstaller.add(any()))
+        .thenReturn(
+            new StepResult.Failure(
+                "/etc/yum.repos.d/docker.repo", "failed", 1, Duration.ZERO));
+    var stateRepository = new InMemoryStateRepository(BootstrapState.empty("test", "1.0.0"));
+    orchestrator = orchestrator(alwaysRun(), Optional.of(stateRepository));
+
+    orchestrator.execute(configWithSourceAndPackage(BootstrapPolicy.empty()), ignored -> {});
+
+    verify(dnfExecutor, never()).install(any());
+    assertThat(stateRepository.state().entries()).isEmpty();
+  }
+
+  @Test
+  void execute_whenSourceSetupFailsAndPolicyAllowsContinuation_installsPackages() {
+    when(rpmRepositoryInstaller.add(any()))
+        .thenReturn(
+            new StepResult.Failure(
+                "/etc/yum.repos.d/docker.repo", "failed", 1, Duration.ZERO));
+    var policy = new BootstrapPolicy(Optional.empty(), Optional.of(true), Optional.empty());
+
+    orchestrator.execute(configWithSourceAndPackage(policy), ignored -> {});
+
+    verify(dnfExecutor).install(new PackageName("git"));
+  }
+
+  @Test
+  void execute_whenSourceSetupSucceeds_recordsRepositoryStateBeforePackageState() {
+    var stateRepository = new InMemoryStateRepository(BootstrapState.empty("test", "1.0.0"));
+    when(rpmRepositoryInstaller.add(any()))
+        .thenReturn(new StepResult.Success("/etc/yum.repos.d/docker.repo", Duration.ZERO));
+    orchestrator = orchestrator(alwaysRun(), Optional.of(stateRepository));
+
+    orchestrator.execute(configWithSourceAndPackage(BootstrapPolicy.empty()), ignored -> {});
+
+    assertThat(stateRepository.state().entries())
+        .extracting(StateEntry::itemType)
+        .containsExactly(
+            dev.sysboot.core.ItemType.RPM_REPOSITORY, dev.sysboot.core.ItemType.PACKAGE);
   }
 
   @Test
@@ -731,6 +798,44 @@ class BootstrapOrchestratorImplTest {
             .target(new OsTarget.FedoraTarget("41"));
     modules.forEach(builder::addModule);
     return builder.build();
+  }
+
+  private static BootstrapConfig buildConfig(
+      List<dev.sysboot.core.SourceSetup> sourceSetups,
+      List<dev.sysboot.core.BootstrapModule> modules) {
+    var builder =
+        BootstrapConfig.builder()
+            .profileName(new ProfileName("test"))
+            .target(new OsTarget.FedoraTarget("41"))
+            .sourceSetups(sourceSetups);
+    modules.forEach(builder::addModule);
+    return builder.build();
+  }
+
+  private static BootstrapConfig configWithSourceAndPackage(BootstrapPolicy policy) {
+    return BootstrapConfig.builder()
+        .profileName(new ProfileName("test"))
+        .target(new OsTarget.FedoraTarget("41"))
+        .policy(policy)
+        .sourceSetups(List.of(dnfSourceSetup()))
+        .addModule(
+            new PackageModule(
+                new ModuleName("tools"),
+                PackageManagerKind.DNF,
+                List.of(new PackageName("git")),
+                true))
+        .build();
+  }
+
+  private static RpmRepositorySourceSetup dnfSourceSetup() {
+    return new RpmRepositorySourceSetup(
+        new ModuleName("docker"),
+        "docker",
+        URI.create("https://download.docker.com/linux/fedora/$releasever/$basearch/stable"),
+        Path.of("/etc/yum.repos.d/docker.repo"),
+        Optional.of(URI.create("https://download.docker.com/linux/fedora/gpg")),
+        true,
+        true);
   }
 
   private static BootstrapConfig buildPhasedConfig(List<Phase> phases) {
