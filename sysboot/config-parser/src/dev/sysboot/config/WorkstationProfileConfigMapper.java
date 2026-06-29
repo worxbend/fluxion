@@ -129,6 +129,7 @@ final class WorkstationProfileConfigMapper {
   private Optional<BootstrapModule> mapPlanModule(PlanEntryDocument entry, BootstrapPolicy policy) {
     return switch (planKind(entry)) {
       case "apt-packages" -> Optional.of(packageModule(entry, PackageManagerKind.APT, policy));
+      case "aur-packages" -> Optional.of(packageModule(entry, aurPackageManager(entry), policy));
       case "dnf-packages" -> Optional.of(packageModule(entry, PackageManagerKind.DNF, policy));
       case "pacman-packages" ->
           Optional.of(packageModule(entry, PackageManagerKind.PACMAN, policy));
@@ -181,6 +182,16 @@ final class WorkstationProfileConfigMapper {
         packageNames(spec),
         packageActions(spec),
         continueOnError(entry, policy));
+  }
+
+  private PackageManagerKind aurPackageManager(PlanEntryDocument entry) {
+    PlanSpecDocument spec = requireField(entry.spec().orElse(null), planName(entry) + ".spec");
+    String packageManager = spec.packageManager().orElseThrow().strip().toLowerCase(Locale.ROOT);
+    return switch (packageManager) {
+      case "paru" -> PackageManagerKind.PARU;
+      case "yay" -> PackageManagerKind.YAY;
+      default -> throw new IllegalArgumentException("Unsupported AUR helper: " + packageManager);
+    };
   }
 
   private boolean continueOnError(PlanEntryDocument entry, BootstrapPolicy policy) {

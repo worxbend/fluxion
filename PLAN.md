@@ -539,10 +539,17 @@ Progress:
   config-parser.test`, `./mill executor.test`, and `./mill __.test` all passed with no code fixes
   required. Remaining risk moves to pending installer-kind work, especially dry-run previews for
   downloads, scripts, commands, dotfiles, and filesystem-like mutations.
+- 2026-06-29: T015 added WorkstationProfile `aur-packages` support as a package-like kind over
+  existing `paru` and `yay` executors. `spec.packageManager` is required and restricted to
+  `paru`/`yay`, package lists are validated through the package-kind path, dry-run/plan command
+  previews use the existing helper argv conventions, and existing package item isolation still
+  attempts later helper packages after a middle failure. `./mill config-parser.test`,
+  `./mill executor.test`, and `git diff --check` passed.
 
 Plan kinds:
 
 - `apt-packages`
+- `aur-packages`
 - `pacman-packages`
 - `dnf-packages`
 - `zypper-packages`
@@ -551,7 +558,6 @@ Plan kinds:
 Also evaluate:
 
 - `snap-packages` as a new package-like executor if Snap support remains desired.
-- `aur-packages` as a typed alias over `paru`/`yay` behavior.
 
 Rules:
 
@@ -918,7 +924,7 @@ policy, variable, host-facts, `when`, and skipped-reporting milestones recorded 
 12. `T012` - Add interrupt checkpoint model (complex feature, completed).
 13. `T013` - Report interrupt resume state (complex feature, completed).
 14. `T014` - Checkpoint interrupt resume (validation, completed).
-15. `T015` - Add AUR package kind (moderate feature).
+15. `T015` - Add AUR package kind (moderate feature, completed).
 16. `T016` - Add cargo package kind (complex feature).
 17. `T017` - Add SDKMAN package kind (complex feature).
 18. `T018` - Add file write kind (complex feature).

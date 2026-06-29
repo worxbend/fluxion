@@ -301,13 +301,42 @@ class YamlConfigLoaderTest {
     BootstrapConfig result = loader.load(config);
 
     assertThat(result.phases()).hasSize(1);
-    assertThat(result.phases().getFirst().modules()).hasSize(5);
+    assertThat(result.phases().getFirst().modules()).hasSize(6);
     assertPackageModule(result, 0, "apt-base", PackageManagerKind.APT, "curl", "git");
     assertPackageModule(result, 1, "dnf-base", PackageManagerKind.DNF, "ripgrep");
-    assertPackageModule(result, 2, "pacman-base", PackageManagerKind.PACMAN, "fd");
-    assertPackageModule(result, 3, "zypper-base", PackageManagerKind.ZYPPER, "htop");
+    assertPackageModule(result, 2, "aur-apps", PackageManagerKind.PARU, "visual-studio-code-bin");
+    assertPackageModule(result, 3, "pacman-base", PackageManagerKind.PACMAN, "fd");
+    assertPackageModule(result, 4, "zypper-base", PackageManagerKind.ZYPPER, "htop");
     assertFlatpakModule(
-        result, 4, "desktop-apps", "fedora", "org.mozilla.firefox", "com.slack.Slack");
+        result, 5, "desktop-apps", "fedora", "org.mozilla.firefox", "com.slack.Slack");
+  }
+
+  @Test
+  void load_whenWorkstationProfileAurPackageUsesYay_mapsYayPackageModule(
+      @TempDir Path tmpDir) throws IOException {
+    Path config =
+        writeConfig(
+            tmpDir,
+            """
+            apiVersion: initkit.io/v1alpha1
+            kind: WorkstationProfile
+            metadata:
+              name: aur-test
+            spec:
+              target:
+                os:
+                  distribution: arch
+              plan:
+                - name: aur-apps
+                  kind: aur-packages
+                  spec:
+                    packageManager: yay
+                    packages: [google-chrome]
+            """);
+
+    BootstrapConfig result = loader.load(config);
+
+    assertPackageModule(result, 0, "aur-apps", PackageManagerKind.YAY, "google-chrome");
   }
 
   @Test
@@ -817,7 +846,8 @@ class YamlConfigLoaderTest {
     BootstrapConfig result = new YamlConfigLoader(hostFacts).load(config);
 
     assertThat(result.modules()).extracting(module -> module.name().value())
-        .containsExactly("apt-base", "dnf-base", "pacman-base", "zypper-base", "desktop-apps");
+        .containsExactly(
+            "apt-base", "dnf-base", "aur-apps", "pacman-base", "zypper-base", "desktop-apps");
   }
 
   @Test
@@ -997,6 +1027,11 @@ class YamlConfigLoaderTest {
                   kind: dnf-packages
                   spec:
                     packages: []
+                - name: aur
+                  kind: aur-packages
+                  spec:
+                    packageManager: pacman
+                    packages: []
                 - name: apps
                   kind: flatpak-packages
                   spec:
@@ -1013,10 +1048,13 @@ class YamlConfigLoaderTest {
         .isInstanceOf(ConfigLoadException.class)
         .hasMessageContaining("spec.plan[0].spec.packages")
         .hasMessageContaining("at least one item")
-        .hasMessageContaining("spec.plan[1].spec.apps")
-        .hasMessageContaining("spec.plan[2].spec.checksum.algorithm")
+        .hasMessageContaining("spec.plan[1].spec.packages")
+        .hasMessageContaining("spec.plan[1].spec.packageManager")
+        .hasMessageContaining("unsupported AUR helper 'pacman'")
+        .hasMessageContaining("spec.plan[2].spec.apps")
+        .hasMessageContaining("spec.plan[3].spec.checksum.algorithm")
         .hasMessageContaining("sha1")
-        .hasMessageContaining("spec.plan[2].spec.checksum.value");
+        .hasMessageContaining("spec.plan[3].spec.checksum.value");
   }
 
   @Test
@@ -1641,6 +1679,11 @@ class YamlConfigLoaderTest {
               kind: dnf-packages
               spec:
                 packages: [ripgrep]
+            - name: aur-apps
+              kind: aur-packages
+              spec:
+                packageManager: paru
+                packages: [visual-studio-code-bin]
             - name: pacman-base
               kind: pacman-packages
               spec:

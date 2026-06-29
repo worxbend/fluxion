@@ -27,7 +27,7 @@ final class WorkstationProfileValidator {
   private static final Pattern SHA_256_HEX = Pattern.compile("[0-9a-fA-F]{64}");
   private static final Pattern FILE_MODE = Pattern.compile("[0-7]{3,4}");
   private static final Set<String> PACKAGE_PLAN_KINDS =
-      Set.of("apt-packages", "dnf-packages", "pacman-packages", "zypper-packages");
+      Set.of("apt-packages", "aur-packages", "dnf-packages", "pacman-packages", "zypper-packages");
   private static final Set<String> APP_PLAN_KINDS = Set.of("flatpak-packages");
   private static final Set<String> INSTALLER_PLAN_KINDS =
       Set.of("binary-downloads", "shell-scripts", "commands", "nerd-fonts", "dotfiles-apply");
@@ -36,11 +36,13 @@ final class WorkstationProfileValidator {
           "apt-packages", Set.of("update", "upgrade", "dist-upgrade"),
           "dnf-packages",
               Set.of("check-update", "upgrade", "swap", "groupupdate", "group-update"),
+          "aur-packages", Set.of(),
           "pacman-packages", Set.of("sync-upgrade", "syu", "upgrade"),
           "zypper-packages", Set.of("refresh", "update", "dup", "dup-from"));
   private static final Set<String> SUPPORTED_PLAN_KINDS =
       Set.of(
           "apt-packages",
+          "aur-packages",
           "dnf-packages",
           "pacman-packages",
           "zypper-packages",
@@ -152,6 +154,7 @@ final class WorkstationProfileValidator {
       return;
     }
     validateInstallList(kind, path, entryName, spec, errors);
+    validateAurPackageManager(kind, path, spec, errors);
     validateInstallerSpec(kind, path, entryName, spec, errors);
     validateInterruptSpec(kind, path, spec, errors);
     validatePackageActions(kind, path, entryName, spec, errors);
@@ -179,6 +182,22 @@ final class WorkstationProfileValidator {
     Set<String> supported = SUPPORTED_PACKAGE_ACTIONS.get(kind);
     for (int index = 0; index < spec.actions().size(); index++) {
       validatePackageAction(kind, path, entryName, supported, spec.actions().get(index), index, errors);
+    }
+  }
+
+  private void validateAurPackageManager(
+      String kind, String path, PlanSpecDocument spec, List<String> errors) {
+    if (!"aur-packages".equals(kind)) {
+      return;
+    }
+    String rawPackageManager = spec == null ? null : spec.packageManager().orElse(null);
+    if (isBlank(rawPackageManager)) {
+      errors.add(path + ".spec.packageManager must be one of paru, yay");
+      return;
+    }
+    String packageManager = rawPackageManager.strip().toLowerCase(Locale.ROOT);
+    if (!Set.of("paru", "yay").contains(packageManager)) {
+      errors.add(path + ".spec.packageManager unsupported AUR helper '" + rawPackageManager + "'");
     }
   }
 

@@ -13,6 +13,9 @@ public final class PlanSpecDocument {
   @JsonProperty("packages")
   private List<String> packages;
 
+  @JsonProperty("packageManager")
+  private String packageManager;
+
   @JsonProperty("actions")
   private List<PackageActionDocument> actions;
 
@@ -162,6 +165,10 @@ public final class PlanSpecDocument {
 
   public List<String> packages() {
     return DocumentDefaults.list(packages);
+  }
+
+  public Optional<String> packageManager() {
+    return DocumentDefaults.optional(packageManager);
   }
 
   public List<PackageActionDocument> actions() {

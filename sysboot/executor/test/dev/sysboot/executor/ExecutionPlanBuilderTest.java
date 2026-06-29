@@ -75,12 +75,14 @@ class ExecutionPlanBuilderTest {
 
     assertThat(plan.profileName()).isEqualTo("package-plan-test");
     assertThat(plan.phases().getFirst().modules()).extracting(ExecutionPlan.Module::name)
-        .containsExactly("apt-base", "dnf-base", "pacman-base", "zypper-base", "desktop-apps");
+        .containsExactly(
+            "apt-base", "dnf-base", "aur-apps", "pacman-base", "zypper-base", "desktop-apps");
     assertPlanItem(plan, 0, "curl", PackageManagerKind.APT);
     assertPlanItem(plan, 1, "ripgrep", PackageManagerKind.DNF);
-    assertPlanItem(plan, 2, "fd", PackageManagerKind.PACMAN);
-    assertPlanItem(plan, 3, "htop", PackageManagerKind.ZYPPER);
-    assertFlatpakPlanItem(plan, 4, "org.mozilla.firefox");
+    assertAurPlanItem(plan, 2, "visual-studio-code-bin");
+    assertPlanItem(plan, 3, "fd", PackageManagerKind.PACMAN);
+    assertPlanItem(plan, 4, "htop", PackageManagerKind.ZYPPER);
+    assertFlatpakPlanItem(plan, 5, "org.mozilla.firefox");
   }
 
   @Test
@@ -383,6 +385,14 @@ class ExecutionPlanBuilderTest {
         .containsExactly("sudo", kind.name().toLowerCase(), "install", "-y", key);
   }
 
+  private static void assertAurPlanItem(ExecutionPlan plan, int moduleIndex, String key) {
+    ExecutionPlan.Item item =
+        plan.phases().getFirst().modules().get(moduleIndex).items().getFirst();
+    assertThat(item.item().key()).isEqualTo(key);
+    assertThat(item.item().packageManager()).contains(PackageManagerKind.PARU);
+    assertThat(item.commandPreview().orElseThrow()).containsExactly("paru", "-S", "--noconfirm", key);
+  }
+
   private static void assertFlatpakPlanItem(ExecutionPlan plan, int moduleIndex, String key) {
     ExecutionPlan.Module module = plan.phases().getFirst().modules().get(moduleIndex);
     ExecutionPlan.Item item = module.items().getFirst();
@@ -396,6 +406,9 @@ class ExecutionPlanBuilderTest {
   private static List<PackageManagerExecutor> packageExecutors() {
     return List.of(
         packageExecutor(PackageManagerKind.APT),
+        new ParuPackageInstaller(
+            (command, environment, timeout) -> new dev.sysboot.core.ProcessResult(0, "", "", Duration.ZERO),
+            prompt -> Optional.empty()),
         dnf(),
         packageExecutor(PackageManagerKind.PACMAN),
         packageExecutor(PackageManagerKind.ZYPPER));
@@ -456,6 +469,11 @@ class ExecutionPlanBuilderTest {
               kind: dnf-packages
               spec:
                 packages: [ripgrep]
+            - name: aur-apps
+              kind: aur-packages
+              spec:
+                packageManager: paru
+                packages: [visual-studio-code-bin]
             - name: pacman-base
               kind: pacman-packages
               spec:
