@@ -20,6 +20,21 @@ At least one job, phase, or legacy module is required. When `jobs` is present an
 
 ---
 
+## Schema compatibility
+
+Fluxion's stable config schema is the current `profile`/`os`/`jobs` form with `steps` inside each
+job. This schema remains supported.
+
+Legacy `phases` and flat top-level `modules` configs also remain supported for compatibility:
+`phases` is treated as an alias for `jobs`, and top-level `modules` is used only when neither
+`jobs` nor `phases` is present.
+
+Kubernetes-style `apiVersion`/`kind: WorkstationProfile` manifests are planned and experimental.
+They are not the stable Fluxion config schema yet, and their details may change until that path has
+parser, validation, dry-run, state, and TUI support comparable to `jobs`/`steps`.
+
+---
+
 ## `os` object
 
 | Field | Type | Required | Values |

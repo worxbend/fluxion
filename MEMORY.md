@@ -4,28 +4,43 @@ Persistent project context for future sessions.
 
 ## Current Understanding
 
-The active project is `sysboot`, located under `sysboot/`. It is a Java 25 Mill YAML multi-module project that builds a Linux system bootstrap CLI/TUI and optional GraalVM native binary.
+The active project lives under `sysboot/`, but the user-facing product and command name is
+`fluxion`. It is a Java 25 Mill YAML multi-module project that builds a Linux workstation bootstrap
+CLI/TUI and optional GraalVM native binary.
 
-The old root-level Gradle Java app appears removed in the current worktree. The current root contains `SKILL.md` and `sysboot/` as untracked files. Avoid reverting, cleaning, or replacing this state without explicit user direction.
+The old root-level Gradle Java app was removed before the current planning work. Avoid reverting,
+cleaning, or replacing that state without explicit user direction.
 
 ## Product Summary
 
-`sysboot` lets users declare a Linux development environment in YAML and then applies it idempotently. It supports package installation, Flatpak apps, shell scripts, downloaded compiled binaries, probes for installed state, skip logic, per-item execution events, and persisted state.
+`fluxion` lets users declare a Linux development environment in YAML and then applies it
+idempotently. It supports package installation, Flatpak apps, shell scripts, downloaded compiled
+binaries, probes for installed state, skip logic, per-item execution events, and persisted state.
 
 Primary user commands are exposed through Picocli:
 
+- `apply`
 - `run`
 - `dry-run`
 - `validate`
+- `lint`
 - `list`
+- `plan`
+- `graph`
+- `diff`
+- `explain`
 - `status`
 - `state`
+- `generate`
+- `snapshot`
+- `import`
+- `doctor`
 
 The CLI entry point is `dev.sysboot.cli.Main`.
 
 ## Technical Stack
 
-- Java 24
+- Java 25
 - Mill 1.1.6 YAML build in `sysboot/build.mill.yaml` plus module `package.mill.yaml` files
 - Picocli 4.7.6
 - Jackson YAML 2.17.2
@@ -33,7 +48,7 @@ The CLI entry point is `dev.sysboot.cli.Main`.
 - pty4j
 - SLF4J and Logback
 - JUnit 5, AssertJ, Mockito
-- GraalVM native-image task at `mill cli.nativeImage`
+- GraalVM native-image task through `./mill cli.nativeImage`
 
 ## Source Map
 
@@ -64,39 +79,44 @@ Public APIs should use value objects and domain result types instead of raw stri
 - `BootstrapOrchestratorImpl.recordSuccess(...)` passes `null` for an error field in `StateEntry`; this may conflict with the repository's no-null preference depending on the `StateEntry` contract.
 - `dryRunModule(...)` emits DNF-like package commands for generic `PackageModule`, even when the configured package manager may be apt, pacman, paru, yay, or zypper. Verify whether this is intentional before relying on dry-run output.
 - `.mill-version` exists under `sysboot/` and is pinned to `1.1.6`.
-- The parser supports `phases`, `dependsOn`, and `restartPolicy`, but `BootstrapOrchestratorImpl` currently executes `config.modules()` as a flattened list and does not use `PhaseExecutionPlanner`.
-- `PhaseExecutionPlanner` exists and performs topological sorting plus blocked-phase computation, but it is not wired into `ApplicationContext` or the orchestrator.
-- `BootstrapModule` permits newer module types (`DotbotModule`, `DefaultShellModule`, `OhMyZshModule`, `ToolchainModule`, `NerdFontModule`, `ShellReloadModule`). Executors for several exist in `executor`, but `BootstrapOrchestratorImpl` and `ParallelProbeRunner` only switch over packages, flatpaks, shell scripts, compiled binaries, and `ZypperModule`.
+- The stable config schema is `profile`/`os`/`jobs` with `steps`; legacy `phases` and top-level
+  `modules` remain supported for compatibility.
+- `BootstrapOrchestratorImpl` uses `PhaseExecutionPlanner` for ordered phase execution.
+- `BootstrapModule` permits package, Flatpak, repository, shell, compiled-binary, dotfiles, shell,
+  toolchain, assertion, and manual checkpoint module types. Package modules use the `ModuleExecutor`
+  foundation; other module types still have direct orchestrator dispatch and can be migrated
+  incrementally.
 - `initial-prompts.md` exists at `/home/worxbend/Worxpace/fluxion/initial-prompts.md`. It contains older prompt sections plus an authoritative "SYSBOOT — Master Engineering Prompt (v2)" section starting around line 2890.
-- `gh` and `jq` are installed (`gh` 2.93.0, `jq` 1.8.1). `mill` was not installed on `PATH`, so tests could not be run in this environment at analysis time.
+- `gh` and `jq` are installed (`gh` 2.93.0, `jq` 1.8.1).
 
-## Intended Product From initial-prompts.md
+## Manifest Direction
 
-The authoritative target is a GraalVM native binary named `sysboot` that automates full Linux workstation post-install setup from declarative YAML. It is not meant to be Ansible, a package manager, a dotfiles manager, or a font manager; it delegates dotfiles to `dotbot-go` and fonts to `nerdfont-install`.
+The current stable Fluxion schema is `jobs`/`steps`. A Kubernetes-style
+`apiVersion: initkit.io/v1alpha1`, `kind: WorkstationProfile` manifest is planned as an
+experimental second config frontend, not as a replacement for the Java 25 Fluxion implementation.
+Keep `jobs`/`steps`, legacy `phases`, and legacy flat `modules` backward-compatible while that
+manifest path is added.
 
-The real target architecture is phase-based, not a flat module list:
+The intended manifest behavior to layer onto the current implementation includes:
 
-- Config declares an OS target and a DAG of phases.
-- Each phase declares modules plus `dependsOn`, `continueOnModuleError`, and `restartPolicy`.
-- `restartPolicy` can be `none`, `prompt-logout`, or `requires-new-shell`.
-- Execution must topologically sort phases, detect cycles at validation time, mark dependent phases blocked after hard failures, and persist completed phases.
-- Re-running with `--skip-already-installed` must skip completed phases/items from state and continue after logout/restart interruptions.
+- Kubernetes-style top-level `apiVersion`, `kind`, `metadata`, and `spec`.
+- Informational `spec.target.os`, with execution selection coming from host facts and `when`.
+- Global `spec.policy`, `spec.vars`, `spec.sources`, and ordered `spec.plan` entries.
+- Per-entry `execution`, conditional execution through `when`, and explicit interrupt checkpoints.
 
-The master prompt expects these core ports in `core` under a port package: `BootstrapOrchestrator`, `ConfigLoader`, `ConfigValidator`, `PackageManagerExecutor`, `ModuleExecutor`, `ShellRunner`, `PtyShellRunner`, `StateRepository`, `SkipPolicy`, `ExecutionEventListener`, `SudoPasswordProvider`, and `OutputAdapter`.
-
-Expected CLI surface includes `run`, `dry-run`, `validate`, `plan`, `status`, `state show/reset/forget/path`, and `generate`, with run options for `--phase`, `--from-phase`, `--skip-already-installed`, `--re-probe`, `--dry-run`, `--parallel-phases`, `--no-tui`, and `--verbose`.
-
-The canonical configs are phase-based workstation profiles: `fedora-workstation.yaml`, `arch-workstation.yaml`, and `opensuse-workstation.yaml`.
+Do not rename the product away from `fluxion`, replace the current Java implementation, or make the
+experimental manifest the preferred schema until it reaches feature parity for validation, dry-run,
+state, and TUI display.
 
 ## Useful Commands
 
 From `sysboot/`:
 
 ```bash
-mill __.test
-mill config-parser.test
-mill executor.test
-mill cli.assembly
+./mill __.test
+./mill config-parser.test
+./mill executor.test
+./mill cli.assembly
 java -jar out/cli/assembly.dest/out.jar validate -c config/example-fedora.yaml
 java -jar out/cli/assembly.dest/out.jar run -c config/example-fedora.yaml --no-tui
 ```
@@ -104,7 +124,7 @@ java -jar out/cli/assembly.dest/out.jar run -c config/example-fedora.yaml --no-t
 Native image:
 
 ```bash
-mill cli.nativeImage
+./mill cli.nativeImage
 ./out/cli/nativeImage.dest/native-executable --help
 ```
 

@@ -1,134 +1,261 @@
-# Fluxion
+<p align="center">
+  <img src="sysboot/docs/assets/banner.svg" alt="Fluxion banner" width="100%">
+</p>
 
-Fluxion is a YAML-driven Linux workstation bootstrapper. It installs packages, Flatpaks and their
-remotes, scripts, dotfiles, shell tooling, Nerd Fonts, and prebuilt binaries from one declarative
-profile, then records state so reruns can skip work safely.
+<p align="center">
+  <a href="https://github.com/worxbend/fluxion/actions/workflows/release.yml"><img alt="Release" src="https://github.com/worxbend/fluxion/actions/workflows/release.yml/badge.svg"></a>
+  <a href="https://github.com/worxbend/fluxion/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/worxbend/fluxion/actions/workflows/ci.yml/badge.svg"></a>
+  <img alt="Java 25" src="https://img.shields.io/badge/Java-25-f89820?logo=openjdk&logoColor=white">
+  <img alt="Mill" src="https://img.shields.io/badge/Mill-1.1.6-5b5bd6">
+  <img alt="GraalVM" src="https://img.shields.io/badge/GraalVM-native%20ready-f2a900?logo=graalvm&logoColor=111111">
+  <img alt="Linux" src="https://img.shields.io/badge/Linux-workstation%20bootstrap-2ea44f?logo=linux&logoColor=white">
+</p>
 
-The active codebase lives in `sysboot/` and uses Java 25 with Mill 1.1.6.
+<p align="center">
+  <b>Turn a fresh Linux machine into your machine.</b><br>
+  One YAML file. One preview. One run. CLI or TUI. No mystery bash soup.
+</p>
 
-## What It Does
+---
 
-- Boots Fedora, Arch, openSUSE, Debian, and Ubuntu-style workstations from YAML.
-- Supports `dnf`, `pacman`, `paru`, `yay`, `apt`, `zypper`, and Flatpak.
-- Runs phase/job DAGs with dependency ordering and restart checkpoints.
-- Installs packages one by one so one failed package does not block unrelated work.
-- Supports plain CLI output and a TUI path.
-- Builds as a fat JAR or GraalVM native Linux binary.
+## What Is Fluxion?
 
-## Build
+`fluxion` is a friendly workstation bootstrapper.
 
-```bash
-cd sysboot
-./mill __.test
-./mill cli.assembly
-./mill cli.nativeImage
-```
+You write a YAML profile that says:
 
-The assembled JAR is:
+- which packages you want
+- which installer should handle them: `apt`, `dnf`, `pacman`, `zypper`, Flatpak, direct binary downloads, shell installers, Nerd Fonts, dotfiles, or commands
+- which jobs depend on other jobs
+- where restart or logout checkpoints belong
+- what should be skipped when state or live probes show it is already installed
 
-```bash
-sysboot/out/cli/assembly.dest/out.jar
-```
+Then Fluxion shows you what it is about to do and runs the matching work for the current machine.
 
-The native binary is:
+Think of it like:
 
-```bash
-sysboot/out/cli/nativeImage.dest/native-executable
-```
+> "Here is my developer laptop recipe. Please apply only the parts that make sense on this distro."
 
-## Run
+## Why It Exists
 
-From the repo:
+Fresh machines are exciting for about five minutes. Then you remember you need Git, Zsh, Docker,
+Flatpak apps, `kubectl`, Rust, fonts, dotfiles, shell setup, and that one command you always forget.
 
-```bash
-cd sysboot
-java -jar out/cli/assembly.dest/out.jar validate -c config/example-fedora.yaml --no-tui
-java -jar out/cli/assembly.dest/out.jar plan -c config/example-fedora.yaml --no-tui
-java -jar out/cli/assembly.dest/out.jar generate --os fedora --profile starter --output /tmp/starter.yaml
-java -jar out/cli/assembly.dest/out.jar import packages --from-host --output /tmp/packages.yaml
-java -jar out/cli/assembly.dest/out.jar import flatpaks --from-host --output /tmp/flatpaks.yaml
-java -jar out/cli/assembly.dest/out.jar apply -c config/example-fedora.yaml --no-tui
-```
+Fluxion makes that boring setup repeatable without turning your dotfiles repo into a giant pile of
+shell scripts.
 
-Native:
+## The Vibe
 
-```bash
-cd sysboot
-./out/cli/nativeImage.dest/native-executable --help
-./out/cli/nativeImage.dest/native-executable validate -c config/example-fedora.yaml --no-tui
-```
+- Simple YAML instead of custom bash logic everywhere
+- Dry-run first so you can inspect the plan before touching the machine
+- Distro-aware package steps for Ubuntu, Debian, Fedora, Arch/EndeavourOS, and openSUSE
+- Many installer kinds in one profile
+- State files for interrupt/resume flows
+- Plain CLI output for scripts and CI
+- Interactive TUI for picking jobs, steps, and entries
+- Native Linux binary via GraalVM release workflow
 
-## Commands
+## Tiny Example
 
-```text
-apply      apply a profile
-run        alias for apply
-dry-run    show what would be executed
-validate   validate YAML
-lint       score profile quality and safety
-list       list configured modules
-plan       show phase order and planned work
-graph      render the phase dependency graph
-diff       show host changes needed
-explain    explain why a phase or item runs
-status     show current status
-state      show/reset/forget/path persisted state
-generate   create a starter YAML profile
-snapshot   write a host inventory JSON
-import     generate profile fragments from this host
-doctor     check host readiness for a profile
-```
-
-## Config
-
-Profiles live in YAML. Example:
+Current stable profiles use `jobs` and `steps`:
 
 ```yaml
-profile: fedora-workstation
+profile: my-laptop
 os:
   type: fedora
   release: "44"
 
 jobs:
-  - name: system-foundation
+  - name: base-cli
     restartPolicy:
       type: none
     steps:
       - type: packages
-        name: core-cli
+        name: core-tools
         packageManager: dnf
         packages:
+          - "@development-tools"
           - git
           - curl
-          - neovim
+          - jq
+          - zsh
 
-  - name: desktop-apps
-    dependsOn: [system-foundation]
-    steps:
-      - type: flatpak
-        name: desktop-flatpaks
-        remote: flathub
-        appIds:
-          - com.spotify.Client
+      - type: compiled-binary
+        name: kubectl
+        binaryName: kubectl
+        url: https://dl.k8s.io/release/v1.30.2/bin/linux/amd64/kubectl
+        installPath: /usr/local/bin/kubectl
 ```
 
-Full schema: `sysboot/docs/config-schema.md`.
+Package managers install one item at a time. If `git` works but `some-wrong-name` fails, Fluxion
+still attempts the next package and reports the partial failure clearly.
 
-Example profiles: `sysboot/config/`.
+Fluxion is also being planned toward a Kubernetes-style `WorkstationProfile` manifest. See
+[PLAN.md](PLAN.md) for that schema roadmap.
 
-More docs:
+## Install
 
-- `sysboot/docs/commands.md`
-- `sysboot/docs/architecture.md`
-- `sysboot/docs/enhancements.md`
+Native Linux builds are published from tags by GitHub Actions.
 
-## Development Notes
-
-Module direction is:
+Release archives are named like:
 
 ```text
-cli -> app -> tui -> executor -> config-parser -> core
+fluxion-v0.0.1-all.jar
+fluxion-v0.0.1-linux-amd64.tar.gz
+fluxion-v0.0.1-checksums.sha256
 ```
 
-Keep build/test commands rooted in `sysboot/`. Repository planning and follow-up work lives in
-the root `TODO.md`.
+When a release archive is unpacked and `fluxion` is on `PATH`:
+
+```bash
+fluxion --help
+fluxion validate -c ~/.config/fluxion/default.yaml --no-tui
+```
+
+If you are hacking on the repo, you do not need a global Mill install. The checked-in
+`sysboot/mill` launcher is enough.
+
+## Run It
+
+Preview an example without changing your machine:
+
+```bash
+cd sysboot
+./mill cli.run dry-run -c config/example-fedora.yaml --no-tui
+```
+
+Apply it:
+
+```bash
+cd sysboot
+./mill cli.run apply -c config/example-fedora.yaml
+```
+
+Force plain output:
+
+```bash
+cd sysboot
+./mill cli.run apply -c config/example-fedora.yaml --no-tui
+```
+
+Run only selected jobs:
+
+```bash
+cd sysboot
+./mill cli.run apply -c config/example-fedora.yaml --phase system-foundation --no-tui
+```
+
+Resume from a job:
+
+```bash
+cd sysboot
+./mill cli.run apply -c config/example-fedora.yaml --from-phase development --skip-already-installed
+```
+
+Show the saved state path:
+
+```bash
+fluxion state path default
+```
+
+## Native Binary Workflow
+
+From a release download:
+
+```bash
+fluxion dry-run -c config/example-fedora.yaml --no-tui
+fluxion apply -c config/example-fedora.yaml
+```
+
+From source:
+
+```bash
+cd sysboot
+./mill cli.run --help
+./mill cli.run apply --help
+./mill cli.run validate --help
+```
+
+Build a native image locally when GraalVM 25 is installed:
+
+```bash
+cd sysboot
+./mill cli.nativeImage
+```
+
+The native binary lands at:
+
+```bash
+sysboot/out/cli/nativeImage.dest/native-executable
+```
+
+## Build From Source
+
+Requirements:
+
+- JDK 25
+- Linux for real package-manager workflows
+- GraalVM 25 only if you want native-image locally
+
+Common development commands:
+
+```bash
+cd sysboot
+./mill __.compile
+./mill __.test
+./mill cli.run --help
+./mill cli.run validate -c config/example-fedora.yaml --no-tui
+```
+
+Release checks:
+
+```bash
+just verify
+just native-metadata-check
+cd sysboot
+./mill cli.assembly
+./mill cli.nativeImage
+```
+
+## Docs
+
+- [Command reference](sysboot/docs/commands.md)
+- [Config schema](sysboot/docs/config-schema.md)
+- [Developer guide](sysboot/docs/development.md)
+- [Testing guide](sysboot/docs/testing.md)
+- [Architecture overview](sysboot/docs/architecture.md)
+- [Native image notes](sysboot/docs/native-image.md)
+- [Release checklist](sysboot/docs/release.md)
+
+Copy-pasteable examples:
+
+- [Fedora](sysboot/config/example-fedora.yaml)
+- [Arch / EndeavourOS](sysboot/config/example-arch.yaml)
+- [openSUSE](sysboot/config/example-opensuse.yaml)
+
+## Project Status
+
+Fluxion is young, useful, and still moving fast. The current stable schema is the `jobs`/`steps`
+profile format documented in `sysboot/docs/config-schema.md`. The planned Kubernetes-style manifest
+API is tracked in [PLAN.md](PLAN.md).
+
+Use dry-run. Read the plan. Then let it run.
+
+## Contributing
+
+Small, boring improvements are welcome:
+
+- clearer docs
+- more distro examples
+- better validation messages
+- more installer kinds
+- sharper TUI details
+- safer execution edges
+
+Start with [sysboot/CONTRIBUTING.md](sysboot/CONTRIBUTING.md).
+
+---
+
+<p align="center">
+  <b>Fluxion</b> - because "new laptop day" should feel fun, not like archaeology.
+</p>
