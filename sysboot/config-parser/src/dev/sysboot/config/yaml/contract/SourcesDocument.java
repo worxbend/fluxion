@@ -20,6 +20,9 @@ public final class SourcesDocument {
   @JsonProperty("pacman")
   private List<SourceDocument> pacman;
 
+  @JsonProperty("zypper")
+  private List<SourceDocument> zypper;
+
   @JsonProperty("flatpak")
   private List<SourceDocument> flatpak;
 
@@ -41,6 +44,10 @@ public final class SourcesDocument {
 
   public List<SourceDocument> pacman() {
     return DocumentDefaults.list(pacman);
+  }
+
+  public List<SourceDocument> zypper() {
+    return DocumentDefaults.list(zypper);
   }
 
   public List<SourceDocument> flatpak() {

@@ -303,6 +303,128 @@ class YamlConfigLoaderTest {
   }
 
   @Test
+  void load_whenWorkstationProfileSourcesPresent_keepsJobsAndStepsMapping(@TempDir Path tmpDir)
+      throws IOException {
+    Path config =
+        writeConfig(
+            tmpDir,
+            """
+            apiVersion: initkit.io/v1alpha1
+            kind: WorkstationProfile
+            metadata:
+              name: source-test
+            spec:
+              target:
+                os:
+                  distribution: fedora
+                  release: "44"
+              sources:
+                apt:
+                  - name: docker-apt
+                    spec:
+                      source: deb [arch=amd64] https://download.docker.com/linux/debian bookworm stable
+                      sourceList: /etc/apt/sources.list.d/docker.list
+                      signingKeyUrl: https://download.docker.com/linux/debian/gpg
+                      keyring: /etc/apt/keyrings/docker.gpg
+                      checksum:
+                        algorithm: sha256
+                        value: "0000000000000000000000000000000000000000000000000000000000000000"
+                dnf:
+                  - name: docker-dnf
+                    spec:
+                      id: docker
+                      baseUrl: https://download.docker.com/linux/fedora/$releasever/$basearch/stable
+                      repoFile: /etc/yum.repos.d/docker.repo
+                      gpgKeyUrl: https://download.docker.com/linux/fedora/gpg
+                      gpgCheck: true
+                zypper:
+                  - name: packman
+                    spec:
+                      id: packman
+                      baseUrl: https://ftp.gwdg.de/pub/linux/misc/packman/suse/openSUSE_Tumbleweed/
+                      repoFile: /etc/zypp/repos.d/packman.repo
+                      gpgKeyUrl: https://example.com/packman.asc
+                flatpak:
+                  - name: flathub
+                    spec:
+                      remote: flathub
+                      url: https://flathub.org/repo/flathub.flatpakrepo
+                      system: false
+              plan:
+                - name: dnf-base
+                  kind: dnf-packages
+                  spec:
+                    packages: [ripgrep]
+            """);
+
+    BootstrapConfig result = loader.load(config);
+
+    assertPackageModule(result, 0, "dnf-base", PackageManagerKind.DNF, "ripgrep");
+    assertThat(result.sourceSetups()).isEmpty();
+  }
+
+  @Test
+  void load_whenWorkstationProfileSourcesInvalid_reportsSectionFieldPaths(@TempDir Path tmpDir)
+      throws IOException {
+    Path config =
+        writeConfig(
+            tmpDir,
+            """
+            apiVersion: initkit.io/v1alpha1
+            kind: WorkstationProfile
+            metadata:
+              name: invalid-source-test
+            spec:
+              target:
+                os:
+                  distribution: fedora
+                  release: "44"
+              sources:
+                apt:
+                  - name: " "
+                    spec:
+                      signingKeyUrl: relative/key
+                      keyring: relative/keyring.gpg
+                      checksum:
+                        algorithm: sha1
+                        value: nope
+                dnf:
+                  - name: docker
+                    spec:
+                      id: " "
+                      baseUrl: relative/repo
+                      gpgCheck: true
+                zypper:
+                  - name: packman
+                    spec:
+                      id: packman
+                      gpgKeyUrl: relative/key.asc
+                flatpak:
+                  - name: flathub
+                    spec:
+                      remote: " "
+                      url: relative.flatpakrepo
+              plan: []
+            """);
+
+    assertThatThrownBy(() -> loader.load(config))
+        .isInstanceOf(ConfigLoadException.class)
+        .hasMessageContaining("spec.sources.apt[0].name")
+        .hasMessageContaining("spec.sources.apt[0].spec.source")
+        .hasMessageContaining("spec.sources.apt[0].spec.signingKeyUrl")
+        .hasMessageContaining("spec.sources.apt[0].spec.keyring")
+        .hasMessageContaining("spec.sources.apt[0].spec.checksum.algorithm")
+        .hasMessageContaining("spec.sources.apt[0].spec.checksum.value")
+        .hasMessageContaining("spec.sources.dnf[0].spec.id")
+        .hasMessageContaining("spec.sources.dnf[0].spec.baseUrl")
+        .hasMessageContaining("spec.sources.dnf[0].spec.gpgKeyUrl")
+        .hasMessageContaining("spec.sources.zypper[0].spec.baseUrl")
+        .hasMessageContaining("spec.sources.zypper[0].spec.gpgKeyUrl")
+        .hasMessageContaining("spec.sources.flatpak[0].spec.remote")
+        .hasMessageContaining("spec.sources.flatpak[0].spec.url");
+  }
+
+  @Test
   void load_whenWorkstationProfileWhenMatchesFakeHostFacts_selectsExpectedEntries(
       @TempDir Path tmpDir) throws IOException {
     assertSelectedModules(tmpDir, facts("debian", "12", "bookworm"), "apt-base");

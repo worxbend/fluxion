@@ -56,6 +56,9 @@ public final class SourceSpecDocument {
   @JsonProperty("gpgCheck")
   private Boolean gpgCheck;
 
+  @JsonProperty("system")
+  private Boolean system;
+
   @JsonProperty("checksum")
   private WorkstationChecksumDocument checksum;
 
@@ -125,6 +128,10 @@ public final class SourceSpecDocument {
 
   public Optional<Boolean> gpgCheck() {
     return DocumentDefaults.optional(gpgCheck);
+  }
+
+  public Optional<Boolean> system() {
+    return DocumentDefaults.optional(system);
   }
 
   public Optional<WorkstationChecksumDocument> checksum() {

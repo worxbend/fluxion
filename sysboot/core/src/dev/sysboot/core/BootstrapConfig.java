@@ -13,18 +13,21 @@ public final class BootstrapConfig {
   private final BootstrapPolicy policy;
   private final List<Phase> phases;
   private final List<SkippedPlanEntry> skippedPlanEntries;
+  private final List<SourceSetup> sourceSetups;
 
   private BootstrapConfig(
       ProfileName profileName,
       OsTarget target,
       BootstrapPolicy policy,
       List<Phase> phases,
-      List<SkippedPlanEntry> skippedPlanEntries) {
+      List<SkippedPlanEntry> skippedPlanEntries,
+      List<SourceSetup> sourceSetups) {
     this.profileName = profileName;
     this.target = target;
     this.policy = policy;
     this.phases = List.copyOf(phases);
     this.skippedPlanEntries = List.copyOf(skippedPlanEntries);
+    this.sourceSetups = List.copyOf(sourceSetups);
   }
 
   public ProfileName profileName() {
@@ -47,6 +50,10 @@ public final class BootstrapConfig {
     return skippedPlanEntries;
   }
 
+  public List<SourceSetup> sourceSetups() {
+    return sourceSetups;
+  }
+
   /** Flattened view of all modules across all phases — used by probing and legacy code. */
   public List<BootstrapModule> modules() {
     return phases.stream().flatMap(p -> p.modules().stream()).toList();
@@ -64,6 +71,7 @@ public final class BootstrapConfig {
     private final List<Phase> phases = new ArrayList<>();
     private final List<BootstrapModule> pendingModules = new ArrayList<>();
     private final List<SkippedPlanEntry> skippedPlanEntries = new ArrayList<>();
+    private final List<SourceSetup> sourceSetups = new ArrayList<>();
 
     public Builder profileName(ProfileName name) {
       this.profileName = Objects.requireNonNull(name);
@@ -102,6 +110,11 @@ public final class BootstrapConfig {
       return this;
     }
 
+    public Builder sourceSetups(List<SourceSetup> entries) {
+      entries.forEach(entry -> sourceSetups.add(Objects.requireNonNull(entry)));
+      return this;
+    }
+
     public BootstrapConfig build() {
       Objects.requireNonNull(profileName, "Profile name is required");
       Objects.requireNonNull(target, "OS target is required");
@@ -125,7 +138,8 @@ public final class BootstrapConfig {
       }
       validateUniquePhaseNames(allPhases);
       validateUniqueModuleNames(allPhases);
-      return new BootstrapConfig(profileName, target, policy, allPhases, skippedPlanEntries);
+      return new BootstrapConfig(
+          profileName, target, policy, allPhases, skippedPlanEntries, sourceSetups);
     }
 
     private void validateUniqueNames(List<BootstrapModule> mods) {

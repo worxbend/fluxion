@@ -118,6 +118,59 @@ the user explicitly asks for a language/build migration:
 - Do not change the module direction.
 - Do not introduce Spring, CDI, Quarkus, runtime DI, service locators, Gradle, Maven, or SBT.
 
+## Pinned Reference Implementation Scan
+
+Reference scanned on 2026-06-29:
+`https://github.com/worxbend/binstaller/tree/4cf05d75fd2905af30497e2d1e41c4b5a3416e78`.
+
+Use this commit as a behavioral reference for the WorkstationProfile migration, not as a code or
+build-system template. The repository is the older Scala/Mill `initkit` implementation. Fluxion
+stays Java 25, Jackson YAML, current Mill YAML modules, and the existing dependency direction.
+
+Important scanned files:
+
+- `docs/config-structure.md` documents the intended manifest shape and field semantics.
+- `config/src/initkit/config/Manifest.scala`, `ManifestSpec.scala`, `PlanEntry.scala`,
+  `PackageSpec.scala`, `InstallerSpec.scala`, `Sources.scala`, and `Policy.scala` define the
+  config contract.
+- `ManifestLoader.scala`, `ManifestValidator.scala`, `PackageSpecDecoder.scala`, and
+  `InstallerSpecDecoder.scala` show raw-YAML decoding, kind-specific validation, plan-name
+  uniqueness checks, supported execution modes, checksum validation, and state-path separation.
+- `core/src/initkit/core/ManifestVariableResolver.scala` resolves `${...}` tokens across metadata,
+  target, sources, plan entries, raw specs, `when`, and nested `spec.vars`; it reports unresolved
+  and cyclic variables with field paths and plan-entry context.
+- `host/src/initkit/host/HostDetector.scala` and `HostFacts.scala`, plus
+  `core/src/initkit/core/ConditionEvaluator.scala` and `PlanSelector.scala`, implement host facts,
+  `when.os`, `when.commandExists`, `--only`, `--skip`, and already-completed filtering.
+- `SourceSetup.scala` and `ExecutionWithSourceSetup.scala` generate and run a source-setup prelude
+  only when selected package entries need it, before package installation, with dry-run actions and
+  failure short-circuiting.
+- `ExecutionContracts.scala`, `ExecutionEngine.scala`, and `ExecutionState.scala` model execution
+  policy, plan-operation summaries, state identity/fingerprints, per-entry statuses, dry-run as
+  non-mutating, and interrupt exit code `75`.
+- `CommandContracts.scala` keeps direct argv commands separate from shell commands and redacts
+  sensitive arguments, environment values, URLs, tokens, and password-like text.
+- `PackageManagerInstallers.scala` generates one command per package item, supports package
+  manager actions before installs, and attempts all package commands before reporting aggregate
+  failure.
+- `ApplyCommand.scala`, `CliLaunchContext.scala`, `CliRendering.scala`, `TuiExecution.scala`, and
+  `TuiViewModel.scala` show how CLI/TUI reporting was backed by the same engine results.
+
+Scan-derived implementation guidance for Fluxion:
+
+- Keep DTO decoding and domain mapping separate. Use typed Java records for stable contract fields,
+  but preserve raw spec access only where a kind-specific decoder genuinely needs it.
+- Preserve direct-command vs shell-command boundaries so dry-run output and redaction can stay
+  accurate.
+- Treat source setup as a generated prelude, not a normal user plan entry, unless Fluxion's current
+  module model makes a typed synthetic phase simpler.
+- Keep dry-run non-mutating across source setup, package installs, file writes, downloads, and
+  interrupts.
+- Record skipped entries and state transitions explicitly enough for CLI, TUI, and resume behavior
+  to agree.
+- Prefer the old repo's behavior tests as acceptance inspiration, but rewrite them around Fluxion's
+  Java modules and existing fake shell/download/sudo boundaries.
+
 ## Compatibility Strategy
 
 Support both schemas during the transition:
@@ -167,6 +220,12 @@ Progress:
 - 2026-06-29: T001 cleaned stale compatibility planning notes in `MEMORY.md` and added an explicit
   schema compatibility section to `sysboot/docs/config-schema.md`. Stable `jobs`/`steps`, legacy
   `phases`/`modules`, and planned experimental `WorkstationProfile` status are now documented.
+- 2026-06-29: Scanned the pinned `worxbend/binstaller` reference implementation at commit
+  `4cf05d75fd2905af30497e2d1e41c4b5a3416e78` and added plan notes for the actual prior
+  WorkstationProfile implementation. The scan covers manifest contracts, validators, variable
+  resolution, host facts, source setup, package command generation, state/interrupt behavior,
+  command redaction, and CLI/TUI reporting. The result is behavioral guidance only; Fluxion remains
+  Java 25 with the existing Mill YAML module layout.
 
 Tasks:
 
@@ -383,6 +442,29 @@ cd sysboot
 
 Goal: run `spec.sources` before matching package plan entries.
 
+Progress:
+
+- 2026-06-29: T001 decoded and validated WorkstationProfile `spec.sources.apt`, `dnf`,
+  `zypper`, and `flatpak` sections in the parser path. Valid source sections now load alongside
+  existing package plan mappings, while invalid source names, required source fields, HTTP(S) URL
+  fields, absolute path fields, `gpgCheck`/`gpgKeyUrl`, and SHA-256 checksum objects report
+  section-specific field paths. `SourceSpecDocument` now includes Flatpak `system`; existing
+  native reflection metadata covers the DTO through declared-field registration. Mapping source
+  sections into executable setup remains deferred to T002.
+
+Reference behavior from the pinned `binstaller` scan:
+
+- `SourceSetupGenerator` selected only source sections that matched the active system package
+  manager or available Flatpak command.
+- Apt generated optional GPG-key setup, source-list writes under `/etc/apt/sources.list.d/`, and
+  an `aptUpdateBeforeInstall` flag consumed by package installs.
+- DNF generated RPM key imports, release-package installs, `.repo` file writes under
+  `/etc/yum.repos.d/`, and custom source commands.
+- Zypper generated RPM key imports, `zypper addrepo`, and custom source commands.
+- Flatpak generated `flatpak remote-add --if-not-exists` by default.
+- Source setup ran as a prelude only when selected package entries needed it; source failure stopped
+  package execution before package state was written.
+
 Tasks:
 
 - Decode `spec.sources.apt`, `dnf`, `zypper`, and `flatpak`.
@@ -413,6 +495,17 @@ cd sysboot
 ### M6 - Package Plan Kinds
 
 Goal: support desired package entry kinds without weakening current package-item isolation.
+
+Reference behavior from the pinned `binstaller` scan:
+
+- Package kinds decoded to typed specs for `apt`, `pacman`, `dnf`, `zypper`, `flatpak`, `snap`,
+  `aur`, `cargo`, and `sdkman`.
+- Apt, pacman, dnf, and zypper accepted optional package-manager actions before item installs.
+- Flatpak preserved `remote` and user/system scope.
+- Package execution generated one command per package item and attempted every command before
+  returning an aggregate failure.
+- Command generation preserved direct argv boundaries; shell was used only for cases like SDKMAN
+  initialization.
 
 Plan kinds:
 
@@ -453,6 +546,21 @@ cd sysboot
 
 Goal: map desired installer kinds onto existing Fluxion modules or add focused new modules.
 
+Reference behavior from the pinned `binstaller` scan:
+
+- `binary-downloads` supported URL downloads, destination/mode, SHA-256/SHA-512 checksums,
+  `zip`/`tar.gz`/`tar.xz` archive extraction, selected archive paths, `stripComponents`, and
+  optional symlinks.
+- `shell-scripts` supported URL script downloads, stdin/file download mode, `creates`, args, cwd,
+  env with sensitivity, interactive/unattended mode, cleanup, timeout, allowed exit codes, and
+  optional sudo.
+- `commands` supported named shell commands, optional sudo, cwd, env with sensitivity, `creates`,
+  `unless`, allowed exit codes, confirmation text, timeout, and item-level `when`.
+- `file-writes` supported content writes with optional sudo, owner, group, mode, and item-level
+  `when`.
+- `dotfiles-apply` represented git repository checkout plus dotbot config/preview data.
+- `nerd-fonts` represented a tool invocation, generated config, and optional preview command.
+
 Kinds to support first:
 
 - `binary-downloads` -> current `compiled-binary`, extended for multiple items.
@@ -461,6 +569,7 @@ Kinds to support first:
 - `dotfiles-apply` -> current `dotbot`.
 - `commands` -> structured `shell-command`.
 - `interrupt` -> explicit checkpoint semantics.
+- `file-writes` -> add after commands if direct file support is still needed before M9.
 
 Desired extensions:
 
@@ -507,6 +616,15 @@ cd sysboot
 ### M8 - Interrupt And Resume Parity
 
 Goal: support explicit `kind: interrupt` entries with separate state-file behavior.
+
+Reference behavior from the pinned `binstaller` scan:
+
+- Apply mode wrote state before stopping and used exit code `75` by default.
+- Dry-run emitted message and state-write preview actions but did not create or modify state.
+- `resumeFrom: current` marked the interrupt entry interrupted and resumed at the same entry.
+- `resumeFrom: next` marked the interrupt entry completed and advanced to the next open entry.
+- State tracked schema version, manifest identity, manifest fingerprint, timestamps,
+  `lastCompleted`, `nextPlanEntry`, and per-entry status/message.
 
 Tasks:
 
@@ -593,6 +711,7 @@ Plain CLI:
 - Show selected/skipped plan entries with reasons.
 - Show dry-run/live mode and state path.
 - Show final counts.
+- Preserve redacted command rendering for direct argv and shell commands.
 - Keep `--no-tui` parseable and free of cursor animation.
 
 TUI:
@@ -685,6 +804,9 @@ Integrity checks:
 
 ## Suggested Immediate Queue
 
+Reference: keep the pinned `binstaller` scan notes as behavioral guidance for the remaining
+WorkstationProfile tasks; do not port its Scala/Mill implementation directly.
+
 1. `P001` - Clean stale root planning/docs references.
 2. `P002` - Add `WorkstationProfile` DTOs and schema detection.
 3. `P003` - Add validation for `apiVersion`, `kind`, metadata, plan names, plan kinds, and
@@ -700,40 +822,36 @@ Integrity checks:
 
 ## Agent Loop Tasks
 
-Strict task queue is written to `.agent-loop/tasks.json`; validation defaults are in
-`.agent-loop/config.json`.
+Strict pending task queue is written to `.agent-loop/tasks.json`; validation defaults are in
+`.agent-loop/config.json`. The queue starts with remaining work after the completed parser,
+policy, variable, host-facts, `when`, and skipped-reporting milestones recorded above.
 
-1. `T001` - Clean compatibility planning docs (simple improvement).
-2. `T002` - Add WorkstationProfile DTOs (moderate feature).
-3. `T003` - Route manifest schema loading (moderate feature).
-4. `T004` - Map manifest identity and target (moderate feature).
-5. `T005` - Validate manifest contract (complex feature).
-6. `T006` - Checkpoint parser compatibility (validation).
-7. `T007` - Map package plan kinds (complex feature).
-8. `T008` - Plumb manifest policy defaults (moderate feature).
-9. `T009` - Add variable interpolation (complex feature).
-10. `T010` - Checkpoint manifest mapping (validation).
-11. `T011` - Add host facts boundary (moderate feature, completed).
-12. `T012` - Evaluate when conditions (complex feature, completed).
-13. `T013` - Report skipped plan entries (complex feature, completed).
-14. `T014` - Checkpoint host filtering (validation).
-15. `T015` - Decode source setup specs (moderate feature).
-16. `T016` - Plan source setup prelude (complex feature).
-17. `T017` - Enforce package item isolation (moderate feature).
-18. `T018` - Checkpoint sources and packages (validation).
-19. `T019` - Map basic installer kinds (complex feature).
-20. `T020` - Extend binary downloads (complex feature).
-21. `T021` - Extend scripts and commands (complex feature).
-22. `T022` - Checkpoint installer kinds (validation).
-23. `T023` - Add interrupt checkpoint model (complex feature).
-24. `T024` - Wire interrupt resume reporting (complex feature).
-25. `T025` - Checkpoint interrupt resume (validation).
-26. `T026` - Add package-like parity kinds (complex feature).
-27. `T027` - Add file write parity kind (complex feature).
-28. `T028` - Polish CLI and TUI reporting (complex improvement).
-29. `T029` - Document WorkstationProfile schema (moderate improvement).
-30. `T030` - Add WorkstationProfile examples (moderate feature).
-31. `T031` - Run release readiness validation (complex validation).
+1. `T001` - Decode source setup specs (moderate feature).
+2. `T002` - Map source setup modules (complex feature).
+3. `T003` - Plan source setup prelude (complex feature).
+4. `T004` - Checkpoint source prelude (validation).
+5. `T005` - Add package manager actions (complex feature).
+6. `T006` - Verify package item isolation (moderate fix).
+7. `T007` - Checkpoint package behavior (validation).
+8. `T008` - Map basic installer kinds (complex feature).
+9. `T009` - Extend binary downloads (complex feature).
+10. `T010` - Extend scripts and commands (complex feature).
+11. `T011` - Checkpoint installer kinds (validation).
+12. `T012` - Add interrupt checkpoint model (complex feature).
+13. `T013` - Report interrupt resume state (complex feature).
+14. `T014` - Checkpoint interrupt resume (validation).
+15. `T015` - Add AUR package kind (moderate feature).
+16. `T016` - Add cargo package kind (complex feature).
+17. `T017` - Add SDKMAN package kind (complex feature).
+18. `T018` - Add file write kind (complex feature).
+19. `T019` - Checkpoint parity kinds (validation).
+20. `T020` - Polish plain CLI reporting (moderate improvement).
+21. `T021` - Polish TUI reporting (moderate improvement).
+22. `T022` - Checkpoint reporting parity (validation).
+23. `T023` - Document WorkstationProfile schema (moderate improvement).
+24. `T024` - Add WorkstationProfile examples (moderate feature).
+25. `T025` - Validate documentation examples (validation).
+26. `T026` - Run final release validation (complex validation).
 
 ## Engineering Rules For Every Task
 

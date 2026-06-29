@@ -3,9 +3,6 @@ package dev.sysboot.config;
 import dev.sysboot.config.yaml.contract.PlanEntryDocument;
 import dev.sysboot.config.yaml.contract.PlanSpecDocument;
 import dev.sysboot.config.yaml.contract.PolicyDocument;
-import dev.sysboot.config.yaml.contract.SourceDocument;
-import dev.sysboot.config.yaml.contract.SourceSpecDocument;
-import dev.sysboot.config.yaml.contract.SourcesDocument;
 import dev.sysboot.config.yaml.contract.WorkstationChecksumDocument;
 import dev.sysboot.config.yaml.contract.WorkstationProfileDocument;
 import java.nio.file.InvalidPathException;
@@ -40,6 +37,9 @@ final class WorkstationProfileValidator {
           "commands",
           "interrupt");
 
+  private final WorkstationProfileSourceValidator sourceValidator =
+      new WorkstationProfileSourceValidator();
+
   void validate(WorkstationProfileDocument document, Path manifestPath) {
     var errors = new ArrayList<String>();
     validateHeader(document, errors);
@@ -47,7 +47,9 @@ final class WorkstationProfileValidator {
     document
         .spec()
         .ifPresent(spec -> validateStatePath(spec.policy().orElse(null), manifestPath, errors));
-    document.spec().ifPresent(spec -> validateSources(spec.sources().orElse(null), errors));
+    document
+        .spec()
+        .ifPresent(spec -> sourceValidator.validate(spec.sources().orElse(null), errors));
     document.spec().ifPresent(spec -> validatePlan(spec.plan(), errors));
     if (!errors.isEmpty()) {
       throw new IllegalArgumentException(String.join("; ", errors));
@@ -81,18 +83,6 @@ final class WorkstationProfileValidator {
       return;
     }
     validateStatePath(rawStatePath, manifestPath, errors);
-  }
-
-  private void validateSources(SourcesDocument sources, List<String> errors) {
-    if (sources == null) {
-      return;
-    }
-    validateSourceChecksums("spec.sources.entries", sources.entries(), errors);
-    validateSourceChecksums("spec.sources.apt", sources.apt(), errors);
-    validateSourceChecksums("spec.sources.dnf", sources.dnf(), errors);
-    validateSourceChecksums("spec.sources.rpm", sources.rpm(), errors);
-    validateSourceChecksums("spec.sources.pacman", sources.pacman(), errors);
-    validateSourceChecksums("spec.sources.flatpak", sources.flatpak(), errors);
   }
 
   private void validatePlan(List<PlanEntryDocument> plan, List<String> errors) {
@@ -183,21 +173,6 @@ final class WorkstationProfileValidator {
       if (isBlank(values.get(index))) {
         errors.add(path + "[" + index + "] must not be blank");
       }
-    }
-  }
-
-  private void validateSourceChecksums(
-      String path, List<SourceDocument> sources, List<String> errors) {
-    for (int index = 0; index < sources.size(); index++) {
-      SourceSpecDocument spec = sources.get(index).spec().orElse(null);
-      validateSourceChecksum(path + "[" + index + "]", spec, errors);
-    }
-  }
-
-  private void validateSourceChecksum(
-      String path, SourceSpecDocument spec, List<String> errors) {
-    if (spec != null) {
-      validateChecksum(path + ".spec.checksum", spec.checksum().orElse(null), errors);
     }
   }
 
