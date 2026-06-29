@@ -35,7 +35,10 @@ final class BootstrapConfigSelectionFilter {
       throw new IllegalArgumentException("Select at least one job before running.");
     }
     var builder =
-        BootstrapConfig.builder().profileName(config.profileName()).target(config.target());
+        BootstrapConfig.builder()
+            .profileName(config.profileName())
+            .target(config.target())
+            .policy(config.policy());
     phases.forEach(builder::addPhase);
     return builder.build();
   }

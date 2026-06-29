@@ -161,7 +161,10 @@ public final class ApplyCommand implements Runnable {
     if (phases == config.phases()) return config;
 
     var builder =
-        BootstrapConfig.builder().profileName(config.profileName()).target(config.target());
+        BootstrapConfig.builder()
+            .profileName(config.profileName())
+            .target(config.target())
+            .policy(config.policy());
     phases.forEach(builder::addPhase);
     return builder.build();
   }

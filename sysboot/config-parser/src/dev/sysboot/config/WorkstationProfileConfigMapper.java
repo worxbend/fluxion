@@ -3,11 +3,13 @@ package dev.sysboot.config;
 import dev.sysboot.config.yaml.contract.MetadataDocument;
 import dev.sysboot.config.yaml.contract.PlanEntryDocument;
 import dev.sysboot.config.yaml.contract.PlanSpecDocument;
+import dev.sysboot.config.yaml.contract.PolicyDocument;
 import dev.sysboot.config.yaml.contract.TargetDocument;
 import dev.sysboot.config.yaml.contract.TargetOsDocument;
 import dev.sysboot.config.yaml.contract.WorkstationProfileDocument;
 import dev.sysboot.core.BootstrapConfig;
 import dev.sysboot.core.BootstrapModule;
+import dev.sysboot.core.BootstrapPolicy;
 import dev.sysboot.core.FlatpakModule;
 import dev.sysboot.core.ModuleName;
 import dev.sysboot.core.OsTarget;
@@ -37,44 +39,68 @@ final class WorkstationProfileConfigMapper {
     MetadataDocument metadata = requireField(document.metadata().orElse(null), "metadata");
     var spec = requireField(document.spec().orElse(null), "spec");
     TargetDocument target = spec.target().orElse(null);
+    BootstrapPolicy policy = mapPolicy(spec.policy());
     return BootstrapConfig.builder()
         .profileName(new ProfileName(requireField(metadata.name().orElse(null), "metadata.name")))
         .target(mapTarget(requireField(target, "spec.target")))
-        .addPhase(manifestPhase(spec.plan()))
+        .policy(policy)
+        .addPhase(manifestPhase(spec.plan(), policy))
         .build();
   }
 
-  private Phase manifestPhase(List<PlanEntryDocument> plan) {
+  private BootstrapPolicy mapPolicy(Optional<PolicyDocument> policy) {
+    return policy
+        .map(
+            value ->
+                new BootstrapPolicy(
+                    value.dryRun(), value.continueOnError(), value.requireSudo()))
+        .orElseGet(BootstrapPolicy::empty);
+  }
+
+  private Phase manifestPhase(List<PlanEntryDocument> plan, BootstrapPolicy policy) {
     return new Phase(
         new PhaseName("manifest-plan"),
         "WorkstationProfile plan",
-        mapPlanModules(plan),
+        mapPlanModules(plan, policy),
         List.of(),
         new RestartPolicy.None());
   }
 
-  private List<BootstrapModule> mapPlanModules(List<PlanEntryDocument> plan) {
+  private List<BootstrapModule> mapPlanModules(
+      List<PlanEntryDocument> plan, BootstrapPolicy policy) {
     var modules = new ArrayList<BootstrapModule>();
     for (PlanEntryDocument entry : plan) {
-      mapPlanModule(entry).ifPresent(modules::add);
+      mapPlanModule(entry, policy).ifPresent(modules::add);
     }
     return List.copyOf(modules);
   }
 
-  private Optional<BootstrapModule> mapPlanModule(PlanEntryDocument entry) {
+  private Optional<BootstrapModule> mapPlanModule(PlanEntryDocument entry, BootstrapPolicy policy) {
     return switch (planKind(entry)) {
-      case "apt-packages" -> Optional.of(packageModule(entry, PackageManagerKind.APT));
-      case "dnf-packages" -> Optional.of(packageModule(entry, PackageManagerKind.DNF));
-      case "pacman-packages" -> Optional.of(packageModule(entry, PackageManagerKind.PACMAN));
-      case "zypper-packages" -> Optional.of(packageModule(entry, PackageManagerKind.ZYPPER));
+      case "apt-packages" -> Optional.of(packageModule(entry, PackageManagerKind.APT, policy));
+      case "dnf-packages" -> Optional.of(packageModule(entry, PackageManagerKind.DNF, policy));
+      case "pacman-packages" ->
+          Optional.of(packageModule(entry, PackageManagerKind.PACMAN, policy));
+      case "zypper-packages" ->
+          Optional.of(packageModule(entry, PackageManagerKind.ZYPPER, policy));
       case "flatpak-packages" -> Optional.of(flatpakModule(entry));
       default -> Optional.empty();
     };
   }
 
-  private PackageModule packageModule(PlanEntryDocument entry, PackageManagerKind kind) {
+  private PackageModule packageModule(
+      PlanEntryDocument entry, PackageManagerKind kind, BootstrapPolicy policy) {
     PlanSpecDocument spec = requireField(entry.spec().orElse(null), planName(entry) + ".spec");
-    return new PackageModule(new ModuleName(planName(entry)), kind, packageNames(spec), true);
+    return new PackageModule(
+        new ModuleName(planName(entry)), kind, packageNames(spec), continueOnError(entry, policy));
+  }
+
+  private boolean continueOnError(PlanEntryDocument entry, BootstrapPolicy policy) {
+    return entry
+        .execution()
+        .flatMap(execution -> execution.continueOnError())
+        .or(policy::continueOnErrorDefault)
+        .orElse(true);
   }
 
   private List<PackageName> packageNames(PlanSpecDocument spec) {
@@ -83,7 +109,8 @@ final class WorkstationProfileConfigMapper {
 
   private FlatpakModule flatpakModule(PlanEntryDocument entry) {
     PlanSpecDocument spec = requireField(entry.spec().orElse(null), planName(entry) + ".spec");
-    return new FlatpakModule(new ModuleName(planName(entry)), spec.remote().orElse("flathub"), appIds(spec));
+    return new FlatpakModule(
+        new ModuleName(planName(entry)), spec.remote().orElse("flathub"), appIds(spec));
   }
 
   private List<String> appIds(PlanSpecDocument spec) {

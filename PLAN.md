@@ -229,6 +229,13 @@ Progress:
   `PackageManagerKind`; `flatpak-packages` creates a `FlatpakModule` using `remote` or `flathub`.
   Focused parser and executor planning tests passed for a manifest containing all supported
   package plan kinds.
+- 2026-06-29: T008 added narrow policy default plumbing. `BootstrapConfig` now carries optional
+  `BootstrapPolicy` defaults for WorkstationProfile `spec.policy.dryRun`, `continueOnError`, and
+  `requireSudo`; CLI/TUI config filtering preserves the policy without changing command-line
+  dry-run behavior. Package plan entries use entry `execution.continueOnError` first, then
+  `spec.policy.continueOnError`, then the existing package default. Flatpak plan entries remain
+  unchanged because the current core module has no continue-on-error field. Focused core, parser,
+  and executor tests passed.
 
 Tasks:
 

@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import java.util.List;
+import java.util.Optional;
 import org.junit.jupiter.api.Test;
 
 class BootstrapConfigBuilderTest {
@@ -28,7 +29,24 @@ class BootstrapConfigBuilderTest {
 
     assertThat(config.profileName()).isEqualTo(PROFILE);
     assertThat(config.target()).isEqualTo(TARGET);
+    assertThat(config.policy()).isEqualTo(BootstrapPolicy.empty());
     assertThat(config.modules()).hasSize(1);
+  }
+
+  @Test
+  void build_whenPolicyProvided_preservesPolicyDefaults() {
+    var policy =
+        new BootstrapPolicy(Optional.of(true), Optional.of(false), Optional.of(false));
+
+    var config =
+        BootstrapConfig.builder()
+            .profileName(PROFILE)
+            .target(TARGET)
+            .policy(policy)
+            .addModule(SAMPLE_MODULE)
+            .build();
+
+    assertThat(config.policy()).isEqualTo(policy);
   }
 
   @Test

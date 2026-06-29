@@ -6,6 +6,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import dev.sysboot.core.AptRepositoryModule;
 import dev.sysboot.core.AssertModule;
 import dev.sysboot.core.BootstrapConfig;
+import dev.sysboot.core.BootstrapPolicy;
 import dev.sysboot.core.CompiledBinaryModule;
 import dev.sysboot.core.FlatpakModule;
 import dev.sysboot.core.FlatpakRemoteModule;
@@ -59,6 +60,7 @@ class YamlConfigLoaderTest {
     assertThat(result.profileName().value()).isEqualTo("fedora-test");
     assertThat(result.target()).isInstanceOf(OsTarget.FedoraTarget.class);
     assertThat(((OsTarget.FedoraTarget) result.target()).release()).isEqualTo("41");
+    assertThat(result.policy()).isEqualTo(BootstrapPolicy.empty());
     assertThat(result.modules()).hasSize(2);
     assertThat(result.modules().getFirst()).isInstanceOf(PackageModule.class);
     assertThat(result.modules().get(1)).isInstanceOf(FlatpakModule.class);
@@ -485,6 +487,55 @@ class YamlConfigLoaderTest {
         .isInstanceOf(ConfigLoadException.class)
         .hasMessageContaining("spec.policy.statePath")
         .hasMessageContaining("must not equal the manifest path");
+  }
+
+  @Test
+  void load_whenWorkstationProfilePolicyPresent_mapsPolicyAndPackageDefaults(
+      @TempDir Path tmpDir) throws IOException {
+    Path config =
+        writeConfig(
+            tmpDir,
+            """
+            apiVersion: initkit.io/v1alpha1
+            kind: WorkstationProfile
+            metadata:
+              name: policy-test
+            spec:
+              policy:
+                dryRun: true
+                continueOnError: false
+                requireSudo: false
+              target:
+                os:
+                  distribution: fedora
+                  release: "44"
+              plan:
+                - name: dnf-default
+                  kind: dnf-packages
+                  spec:
+                    packages: [git]
+                - name: dnf-override
+                  kind: dnf-packages
+                  execution:
+                    continueOnError: true
+                  spec:
+                    packages: [curl]
+                - name: desktop-apps
+                  kind: flatpak-packages
+                  spec:
+                    apps: [org.mozilla.firefox]
+            """);
+
+    BootstrapConfig result = loader.load(config);
+
+    assertThat(result.policy().dryRunDefault()).contains(true);
+    assertThat(result.policy().continueOnErrorDefault()).contains(false);
+    assertThat(result.policy().requireSudoDefault()).contains(false);
+    var defaultedModule = (PackageModule) result.modules().get(0);
+    var overriddenModule = (PackageModule) result.modules().get(1);
+    assertThat(defaultedModule.continueOnError()).isFalse();
+    assertThat(overriddenModule.continueOnError()).isTrue();
+    assertThat(result.modules().get(2)).isInstanceOf(FlatpakModule.class);
   }
 
   @Test
