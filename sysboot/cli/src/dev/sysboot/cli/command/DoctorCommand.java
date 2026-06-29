@@ -19,6 +19,7 @@ import dev.sysboot.core.PackageModule;
 import dev.sysboot.core.PacmanRepositoryModule;
 import dev.sysboot.core.RpmRepositoryModule;
 import dev.sysboot.core.ShellCommandModule;
+import dev.sysboot.core.SdkmanModule;
 import dev.sysboot.core.ZypperModule;
 import dev.sysboot.executor.CompiledBinaryArtifactFormat;
 import dev.sysboot.executor.JsonStateRepository;
@@ -217,6 +218,7 @@ public final class DoctorCommand implements Runnable {
       case FlatpakRemoteModule frm -> addFlatpakRemoteChecks(frm, checks);
       case DefaultShellModule dsm -> checks.add(checkShellPath(dsm.shellPath()));
       case ShellCommandModule scm -> checks.add(checkRequiredCommand(scm.shell(), "shell"));
+      case SdkmanModule ignored -> addSdkmanChecks(checks);
       case AssertModule am -> checks.add(checkRequiredCommand(am.shell(), "assert shell"));
       case CompiledBinaryModule cbm -> addNetworkCheck(cbm, checks);
       default -> {}
@@ -228,6 +230,14 @@ public final class DoctorCommand implements Runnable {
     if (module.remote().equals("flathub")) {
       checks.add(Check.warn("flatpak remote", "verify Flathub is configured before run"));
     }
+  }
+
+  private void addSdkmanChecks(List<Check> checks) {
+    checks.add(checkRequiredCommand("/bin/bash", "SDKMAN shell"));
+    Path init = Path.of(System.getProperty("user.home"), ".sdkman", "bin", "sdkman-init.sh");
+    checks.add(Files.isRegularFile(init)
+        ? Check.pass("SDKMAN init", init.toString())
+        : Check.warn("SDKMAN init", init + " not found"));
   }
 
   private void addAptRepositoryChecks(AptRepositoryModule module, List<Check> checks) {

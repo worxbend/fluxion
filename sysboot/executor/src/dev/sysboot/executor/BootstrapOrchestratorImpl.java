@@ -36,6 +36,7 @@ import dev.sysboot.core.ShellCommandModule;
 import dev.sysboot.core.ShellReloadModule;
 import dev.sysboot.core.ShellRunner;
 import dev.sysboot.core.ShellScriptModule;
+import dev.sysboot.core.SdkmanModule;
 import dev.sysboot.core.SkipDecision;
 import dev.sysboot.core.SkippedPlanEntry;
 import dev.sysboot.core.SourceSetup;
@@ -101,7 +102,10 @@ public final class BootstrapOrchestratorImpl implements BootstrapOrchestrator {
       DefaultShellRunner baseRunner) {
     this.executorRegistry = executorRegistry;
     this.moduleExecutorRegistry =
-        new ModuleExecutorRegistry(List.of(new PackageModuleExecutor(executorRegistry)));
+        new ModuleExecutorRegistry(
+            List.of(
+                new PackageModuleExecutor(executorRegistry),
+                new SdkmanModuleExecutor(primaryRunner)));
     this.shellScriptExecutor = shellScriptExecutor;
     this.binaryInstaller = binaryInstaller;
     this.aptRepositoryInstaller = aptRepositoryInstaller;
@@ -372,6 +376,7 @@ public final class BootstrapOrchestratorImpl implements BootstrapOrchestrator {
       case AssertModule am -> executeAssert(am, listener, phaseRunner);
       case ManualModule mm -> executeManual(mm, listener, phaseRunner);
       case InterruptModule ignored -> throw new IllegalStateException("Interrupt handled by phase");
+      case SdkmanModule ignored -> throw new IllegalStateException("SDKMAN executor missing");
       case PackageModule ignored -> throw new IllegalStateException("Package executor missing");
       case ZypperModule ignored -> throw new IllegalStateException("Zypper executor missing");
     };
@@ -651,6 +656,7 @@ public final class BootstrapOrchestratorImpl implements BootstrapOrchestrator {
       case ManualModule mm ->
           emitDryRun(mm.name(), mm.name().value(), List.of("manual", mm.message()), listener);
       case InterruptModule ignored -> throw new IllegalStateException("Interrupt handled by phase");
+      case SdkmanModule ignored -> throw new IllegalStateException("SDKMAN executor missing");
       case PackageModule ignored -> throw new IllegalStateException("Package executor missing");
       case ZypperModule ignored -> throw new IllegalStateException("Zypper executor missing");
     }

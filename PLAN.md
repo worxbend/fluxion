@@ -551,6 +551,12 @@ Progress:
   item isolation now covers cargo so later crates are still attempted after a middle failure.
   `./mill __.compile`, `./mill config-parser.test`, `./mill executor.test`, and `git diff --check`
   passed.
+- 2026-06-29: T017 added typed WorkstationProfile `sdkman-packages` support with string or
+  `{candidate, version}` package entries. SDKMAN installs run through one explicit
+  `/bin/bash -lc 'source "$HOME/.sdkman/bin/sdkman-init.sh" && sdk install ...'` boundary per item,
+  dry-run and plan previews do not source SDKMAN or mutate state, and failure output uses the
+  existing sensitive-text redactor. `./mill config-parser.test`, `./mill executor.test`,
+  `./mill cli.assembly`, and `git diff --check` passed.
 
 Plan kinds:
 
@@ -931,7 +937,7 @@ policy, variable, host-facts, `when`, and skipped-reporting milestones recorded 
 14. `T014` - Checkpoint interrupt resume (validation, completed).
 15. `T015` - Add AUR package kind (moderate feature, completed).
 16. `T016` - Add cargo package kind (complex feature, completed).
-17. `T017` - Add SDKMAN package kind (complex feature).
+17. `T017` - Add SDKMAN package kind (complex feature, completed).
 18. `T018` - Add file write kind (complex feature).
 19. `T019` - Checkpoint parity kinds (validation).
 20. `T020` - Polish plain CLI reporting (moderate improvement).

@@ -18,6 +18,7 @@ import dev.sysboot.core.RpmRepositoryModule;
 import dev.sysboot.core.ShellCommandModule;
 import dev.sysboot.core.ShellReloadModule;
 import dev.sysboot.core.ShellScriptModule;
+import dev.sysboot.core.SdkmanModule;
 import dev.sysboot.core.ToolchainModule;
 import dev.sysboot.core.ZypperModule;
 import java.util.List;
@@ -56,6 +57,8 @@ final class SelectionEntryCatalog {
       case AssertModule assertModule -> List.of(assertModule.name().value());
       case ManualModule manualModule -> List.of(manualModule.name().value());
       case InterruptModule interruptModule -> List.of(interruptModule.name().value());
+      case SdkmanModule sdkmanModule ->
+          sdkmanModule.packages().stream().map(pkg -> pkg.itemKey()).toList();
     };
   }
 }

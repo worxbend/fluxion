@@ -23,6 +23,7 @@ import dev.sysboot.core.RpmRepositoryModule;
 import dev.sysboot.core.ShellCommandModule;
 import dev.sysboot.core.ShellReloadModule;
 import dev.sysboot.core.ShellScriptModule;
+import dev.sysboot.core.SdkmanModule;
 import dev.sysboot.core.ToolchainModule;
 import dev.sysboot.core.ZypperModule;
 import java.util.LinkedHashMap;
@@ -105,6 +106,7 @@ public final class ListCommand implements Runnable {
       case AssertModule ignored -> "✓ assert";
       case ManualModule ignored -> "☐ manual";
       case InterruptModule ignored -> "⏸ interrupt";
+      case SdkmanModule ignored -> "🧰 sdkman";
     };
   }
 
@@ -129,6 +131,7 @@ public final class ListCommand implements Runnable {
       case AssertModule ignored -> "assert";
       case ManualModule ignored -> "manual";
       case InterruptModule ignored -> "interrupt";
+      case SdkmanModule ignored -> "sdkman-packages";
     };
   }
 
@@ -153,6 +156,7 @@ public final class ListCommand implements Runnable {
       case AssertModule am -> am.command();
       case ManualModule mm -> mm.message();
       case InterruptModule im -> im.message();
+      case SdkmanModule sm -> sm.packages().size() + " SDKMAN packages";
     };
   }
 
@@ -162,6 +166,7 @@ public final class ListCommand implements Runnable {
       case FlatpakModule fm -> fm.appIds().size();
       case ShellCommandModule sc -> sc.items().size();
       case NerdFontModule nfm -> nfm.config().families().size();
+      case SdkmanModule sm -> sm.packages().size();
       default -> 1;
     };
   }

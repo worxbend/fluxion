@@ -80,6 +80,7 @@ class ExecutionPlanBuilderTest {
             "dnf-base",
             "aur-apps",
             "cargo-tools",
+            "sdkman-tools",
             "pacman-base",
             "zypper-base",
             "desktop-apps");
@@ -87,9 +88,10 @@ class ExecutionPlanBuilderTest {
     assertPlanItem(plan, 1, "ripgrep", PackageManagerKind.DNF);
     assertAurPlanItem(plan, 2, "visual-studio-code-bin");
     assertCargoPlanItem(plan, 3, "cargo-binstall");
-    assertPlanItem(plan, 4, "fd", PackageManagerKind.PACMAN);
-    assertPlanItem(plan, 5, "htop", PackageManagerKind.ZYPPER);
-    assertFlatpakPlanItem(plan, 6, "org.mozilla.firefox");
+    assertSdkmanPlanItem(plan, 4, "java@25.0.1-tem", "java", "25.0.1-tem");
+    assertPlanItem(plan, 5, "fd", PackageManagerKind.PACMAN);
+    assertPlanItem(plan, 6, "htop", PackageManagerKind.ZYPPER);
+    assertFlatpakPlanItem(plan, 7, "org.mozilla.firefox");
   }
 
   @Test
@@ -408,6 +410,22 @@ class ExecutionPlanBuilderTest {
     assertThat(item.commandPreview().orElseThrow()).containsExactly("cargo", "install", key);
   }
 
+  private static void assertSdkmanPlanItem(
+      ExecutionPlan plan, int moduleIndex, String key, String candidate, String version) {
+    ExecutionPlan.Item item =
+        plan.phases().getFirst().modules().get(moduleIndex).items().getFirst();
+    assertThat(item.item().key()).isEqualTo(key);
+    assertThat(item.item().itemType()).isEqualTo(ItemType.SDKMAN_PACKAGE);
+    assertThat(item.commandPreview().orElseThrow())
+        .containsExactly(
+            "/bin/bash",
+            "-lc",
+            "source \"$HOME/.sdkman/bin/sdkman-init.sh\" && sdk install "
+                + candidate
+                + " "
+                + version);
+  }
+
   private static void assertFlatpakPlanItem(ExecutionPlan plan, int moduleIndex, String key) {
     ExecutionPlan.Module module = plan.phases().getFirst().modules().get(moduleIndex);
     ExecutionPlan.Item item = module.items().getFirst();
@@ -496,6 +514,13 @@ class ExecutionPlanBuilderTest {
               kind: cargo-packages
               spec:
                 packages: [cargo-binstall]
+            - name: sdkman-tools
+              kind: sdkman-packages
+              spec:
+                packages:
+                  - candidate: java
+                    version: 25.0.1-tem
+                  - gradle
             - name: pacman-base
               kind: pacman-packages
               spec:

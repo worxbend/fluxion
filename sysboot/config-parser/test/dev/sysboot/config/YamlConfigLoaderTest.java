@@ -28,6 +28,7 @@ import dev.sysboot.core.RpmRepositoryModule;
 import dev.sysboot.core.RpmRepositorySourceSetup;
 import dev.sysboot.core.ShellCommandModule;
 import dev.sysboot.core.ShellScriptModule;
+import dev.sysboot.core.SdkmanModule;
 import dev.sysboot.core.ZypperRepositorySourceSetup;
 import java.io.IOException;
 import java.nio.file.Files;
@@ -301,15 +302,51 @@ class YamlConfigLoaderTest {
     BootstrapConfig result = loader.load(config);
 
     assertThat(result.phases()).hasSize(1);
-    assertThat(result.phases().getFirst().modules()).hasSize(7);
+    assertThat(result.phases().getFirst().modules()).hasSize(8);
     assertPackageModule(result, 0, "apt-base", PackageManagerKind.APT, "curl", "git");
     assertPackageModule(result, 1, "dnf-base", PackageManagerKind.DNF, "ripgrep");
     assertPackageModule(result, 2, "aur-apps", PackageManagerKind.PARU, "visual-studio-code-bin");
     assertPackageModule(result, 3, "cargo-tools", PackageManagerKind.CARGO, "cargo-binstall");
-    assertPackageModule(result, 4, "pacman-base", PackageManagerKind.PACMAN, "fd");
-    assertPackageModule(result, 5, "zypper-base", PackageManagerKind.ZYPPER, "htop");
+    assertSdkmanModule(result, 4, "sdkman-tools", "java@25.0.1-tem", "gradle");
+    assertPackageModule(result, 5, "pacman-base", PackageManagerKind.PACMAN, "fd");
+    assertPackageModule(result, 6, "zypper-base", PackageManagerKind.ZYPPER, "htop");
     assertFlatpakModule(
-        result, 6, "desktop-apps", "fedora", "org.mozilla.firefox", "com.slack.Slack");
+        result, 7, "desktop-apps", "fedora", "org.mozilla.firefox", "com.slack.Slack");
+  }
+
+  @Test
+  void load_whenWorkstationProfileSdkmanPackageInvalid_reportsCandidateAndVersionPaths(
+      @TempDir Path tmpDir) throws IOException {
+    Path config =
+        writeConfig(
+            tmpDir,
+            """
+            apiVersion: initkit.io/v1alpha1
+            kind: WorkstationProfile
+            metadata:
+              name: sdkman-test
+            spec:
+              target:
+                os:
+                  distribution: fedora
+                  release: "44"
+              plan:
+                - name: sdkman-tools
+                  kind: sdkman-packages
+                  spec:
+                    packages:
+                      - candidate: ""
+                        version: 25.0.1-tem
+                      - candidate: java
+                        version: "25;rm"
+            """);
+
+    assertThatThrownBy(() -> loader.load(config))
+        .isInstanceOf(ConfigLoadException.class)
+        .hasMessageContaining("spec.plan[0].spec.packages[0].candidate")
+        .hasMessageContaining("SDKMAN candidate must not be blank")
+        .hasMessageContaining("spec.plan[0].spec.packages[1].version")
+        .hasMessageContaining("unsafe shell characters");
   }
 
   @Test
@@ -852,6 +889,7 @@ class YamlConfigLoaderTest {
             "dnf-base",
             "aur-apps",
             "cargo-tools",
+            "sdkman-tools",
             "pacman-base",
             "zypper-base",
             "desktop-apps");
@@ -1631,6 +1669,15 @@ class YamlConfigLoaderTest {
     assertThat(module.appIds()).containsExactly(appIds);
   }
 
+  private static void assertSdkmanModule(
+      BootstrapConfig result, int index, String name, String... packages) {
+    assertThat(result.phases().getFirst().modules().get(index)).isInstanceOf(SdkmanModule.class);
+    var module = (SdkmanModule) result.phases().getFirst().modules().get(index);
+    assertThat(module.name().value()).isEqualTo(name);
+    assertThat(module.packages()).extracting(pkg -> pkg.itemKey()).containsExactly(packages);
+    assertThat(module.continueOnError()).isTrue();
+  }
+
   private static void assertAptSource(BootstrapConfig result, int index) {
     assertThat(result.sourceSetups().get(index)).isInstanceOf(AptRepositorySourceSetup.class);
     var source = (AptRepositorySourceSetup) result.sourceSetups().get(index);
@@ -1700,6 +1747,13 @@ class YamlConfigLoaderTest {
               kind: cargo-packages
               spec:
                 packages: [cargo-binstall]
+            - name: sdkman-tools
+              kind: sdkman-packages
+              spec:
+                packages:
+                  - candidate: java
+                    version: 25.0.1-tem
+                  - gradle
             - name: pacman-base
               kind: pacman-packages
               spec:

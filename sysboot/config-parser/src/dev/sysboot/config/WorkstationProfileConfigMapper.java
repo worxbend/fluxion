@@ -39,6 +39,8 @@ import dev.sysboot.core.ShellCommandModule;
 import dev.sysboot.core.ShellEnvironmentVariable;
 import dev.sysboot.core.ShellScriptItem;
 import dev.sysboot.core.ShellScriptModule;
+import dev.sysboot.core.SdkmanModule;
+import dev.sysboot.core.SdkmanPackage;
 import dev.sysboot.core.SkippedPlanEntry;
 import java.net.URI;
 import java.nio.file.Path;
@@ -135,6 +137,7 @@ final class WorkstationProfileConfigMapper {
       case "dnf-packages" -> Optional.of(packageModule(entry, PackageManagerKind.DNF, policy));
       case "pacman-packages" ->
           Optional.of(packageModule(entry, PackageManagerKind.PACMAN, policy));
+      case "sdkman-packages" -> Optional.of(sdkmanModule(entry, policy));
       case "zypper-packages" ->
           Optional.of(packageModule(entry, PackageManagerKind.ZYPPER, policy));
       case "flatpak-packages" -> Optional.of(flatpakModule(entry, policy));
@@ -215,6 +218,23 @@ final class WorkstationProfileConfigMapper {
                 new PackageManagerAction(
                     action.action().orElseThrow().toLowerCase(Locale.ROOT), action.args()))
         .toList();
+  }
+
+  private SdkmanModule sdkmanModule(PlanEntryDocument entry, BootstrapPolicy policy) {
+    PlanSpecDocument spec = requireField(entry.spec().orElse(null), planName(entry) + ".spec");
+    return new SdkmanModule(
+        new ModuleName(planName(entry)), sdkmanPackages(spec), continueOnError(entry, policy));
+  }
+
+  private List<SdkmanPackage> sdkmanPackages(PlanSpecDocument spec) {
+    return spec.packageItems().stream().map(this::sdkmanPackage).toList();
+  }
+
+  private SdkmanPackage sdkmanPackage(JsonNode node) {
+    if (node.isTextual()) {
+      return new SdkmanPackage(node.asText());
+    }
+    return new SdkmanPackage(text(node, "candidate").orElseThrow(), text(node, "version"));
   }
 
   private FlatpakModule flatpakModule(PlanEntryDocument entry, BootstrapPolicy policy) {

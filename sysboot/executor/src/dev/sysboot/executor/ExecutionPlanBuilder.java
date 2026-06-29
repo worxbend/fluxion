@@ -23,6 +23,7 @@ import dev.sysboot.core.RpmRepositoryModule;
 import dev.sysboot.core.ShellCommandModule;
 import dev.sysboot.core.ShellReloadModule;
 import dev.sysboot.core.ShellScriptModule;
+import dev.sysboot.core.SdkmanModule;
 import dev.sysboot.core.SourceSetup;
 import dev.sysboot.core.ToolchainModule;
 import dev.sysboot.core.ZypperModule;
@@ -39,7 +40,10 @@ public final class ExecutionPlanBuilder {
   public ExecutionPlanBuilder(PackageManagerExecutorRegistry packageManagerRegistry) {
     this.packageManagerRegistry = packageManagerRegistry;
     this.moduleExecutorRegistry =
-        new ModuleExecutorRegistry(List.of(new PackageModuleExecutor(packageManagerRegistry)));
+        new ModuleExecutorRegistry(
+            List.of(
+                new PackageModuleExecutor(packageManagerRegistry),
+                new SdkmanModuleExecutor(new DefaultShellRunner())));
     this.phasePlanner = new PhaseExecutionPlanner();
     this.sourceSetupExecutor =
         new SourceSetupExecutor(
@@ -117,6 +121,12 @@ public final class ExecutionPlanBuilder {
           .filter(command -> command.name().equals(item.key()))
           .findFirst()
           .map(command -> new ShellCommandExecutor(new DefaultShellRunner()).commandPreview(command));
+    }
+    if (module instanceof SdkmanModule sdkmanModule) {
+      return sdkmanModule.packages().stream()
+          .filter(pkg -> pkg.itemKey().equals(item.key()))
+          .findFirst()
+          .map(pkg -> new SdkmanModuleExecutor(new DefaultShellRunner()).commandPreview(pkg));
     }
     if (module instanceof AptRepositoryModule aptRepositoryModule) {
       return Optional.of(
@@ -218,6 +228,7 @@ public final class ExecutionPlanBuilder {
           List.of(new ModuleItem(mm.name(), mm.name().value(), ItemType.MANUAL));
       case InterruptModule im ->
           List.of(new ModuleItem(im.name(), im.name().value(), ItemType.INTERRUPT));
+      case SdkmanModule ignored -> throw new IllegalStateException("SDKMAN executor missing");
       case PackageModule ignored -> throw new IllegalStateException("Package executor missing");
       case ZypperModule ignored -> throw new IllegalStateException("Zypper executor missing");
     };
@@ -252,6 +263,7 @@ public final class ExecutionPlanBuilder {
       case AssertModule ignored -> "assert";
       case ManualModule ignored -> "manual";
       case InterruptModule ignored -> "interrupt";
+      case SdkmanModule ignored -> "sdkman-packages";
     };
   }
 }

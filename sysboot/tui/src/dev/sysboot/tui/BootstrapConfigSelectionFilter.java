@@ -22,6 +22,7 @@ import dev.sysboot.core.RpmRepositoryModule;
 import dev.sysboot.core.ShellCommandModule;
 import dev.sysboot.core.ShellReloadModule;
 import dev.sysboot.core.ShellScriptModule;
+import dev.sysboot.core.SdkmanModule;
 import dev.sysboot.core.ToolchainModule;
 import dev.sysboot.core.ZypperModule;
 import java.util.List;
@@ -103,7 +104,17 @@ final class BootstrapConfigSelectionFilter {
       case AssertModule assertModule -> Optional.of(assertModule);
       case ManualModule manualModule -> Optional.of(manualModule);
       case InterruptModule interruptModule -> Optional.of(interruptModule);
+      case SdkmanModule sdkmanModule -> filterSdkmanModule(sdkmanModule, entries);
     };
+  }
+
+  private Optional<BootstrapModule> filterSdkmanModule(SdkmanModule module, Set<String> entries) {
+    var packages =
+        module.packages().stream().filter(pkg -> entries.contains(pkg.itemKey())).toList();
+    if (packages.isEmpty()) {
+      return Optional.empty();
+    }
+    return Optional.of(new SdkmanModule(module.name(), packages, module.continueOnError()));
   }
 
   private Optional<BootstrapModule> filterPackageModule(PackageModule module, Set<String> entries) {

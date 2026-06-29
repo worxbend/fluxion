@@ -11,7 +11,7 @@ import java.util.Optional;
 public final class PlanSpecDocument {
 
   @JsonProperty("packages")
-  private List<String> packages;
+  private JsonNode packages;
 
   @JsonProperty("packageManager")
   private String packageManager;
@@ -164,7 +164,11 @@ public final class PlanSpecDocument {
   private List<String> families;
 
   public List<String> packages() {
-    return DocumentDefaults.list(packages);
+    return stringList(packages);
+  }
+
+  public List<JsonNode> packageItems() {
+    return nodeItems(packages);
   }
 
   public Optional<String> packageManager() {

@@ -22,6 +22,7 @@ import dev.sysboot.core.RpmRepositoryModule;
 import dev.sysboot.core.ShellCommandModule;
 import dev.sysboot.core.ShellReloadModule;
 import dev.sysboot.core.ShellScriptModule;
+import dev.sysboot.core.SdkmanModule;
 import dev.sysboot.core.ToolchainModule;
 import dev.sysboot.core.ZypperModule;
 import java.util.ArrayList;
@@ -157,6 +158,12 @@ public final class ParallelProbeRunner {
             targets.add(new ModuleItem(mm.name(), mm.name().value(), ItemType.MANUAL));
         case InterruptModule im ->
             targets.add(new ModuleItem(im.name(), im.name().value(), ItemType.INTERRUPT));
+        case SdkmanModule sm ->
+            sm.packages()
+                .forEach(
+                    pkg ->
+                        targets.add(
+                            new ModuleItem(sm.name(), pkg.itemKey(), ItemType.SDKMAN_PACKAGE)));
       }
     }
     return List.copyOf(targets);

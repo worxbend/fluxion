@@ -20,5 +20,6 @@ public enum ItemType {
   SHELL_COMMAND,
   ASSERT,
   MANUAL,
-  INTERRUPT
+  INTERRUPT,
+  SDKMAN_PACKAGE
 }

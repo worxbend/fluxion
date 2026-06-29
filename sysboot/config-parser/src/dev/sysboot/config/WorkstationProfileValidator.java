@@ -26,6 +26,7 @@ final class WorkstationProfileValidator {
   private static final String SUPPORTED_KIND = "WorkstationProfile";
   private static final Pattern SHA_256_HEX = Pattern.compile("[0-9a-fA-F]{64}");
   private static final Pattern FILE_MODE = Pattern.compile("[0-7]{3,4}");
+  private static final Pattern SDKMAN_VALUE = Pattern.compile("[A-Za-z0-9._+-]+");
   private static final Set<String> PACKAGE_PLAN_KINDS =
       Set.of(
           "apt-packages",
@@ -53,6 +54,7 @@ final class WorkstationProfileValidator {
           "cargo-packages",
           "dnf-packages",
           "pacman-packages",
+          "sdkman-packages",
           "zypper-packages",
           "flatpak-packages",
           "binary-downloads",
@@ -179,6 +181,46 @@ final class WorkstationProfileValidator {
     }
     if (APP_PLAN_KINDS.contains(kind)) {
       validateAppItems(path, spec, errors);
+    }
+    if ("sdkman-packages".equals(kind)) {
+      validateSdkmanItems(path, spec, errors);
+    }
+  }
+
+  private void validateSdkmanItems(String path, PlanSpecDocument spec, List<String> errors) {
+    if (spec == null || spec.packageItems().isEmpty()) {
+      errors.add(path + ".spec.packages must contain at least one item");
+      return;
+    }
+    for (int index = 0; index < spec.packageItems().size(); index++) {
+      validateSdkmanItem(
+          path + ".spec.packages[" + index + "]", spec.packageItems().get(index), errors);
+    }
+  }
+
+  private void validateSdkmanItem(String path, JsonNode item, List<String> errors) {
+    if (item.isTextual()) {
+      validateSdkmanValue(path, "candidate", item.asText(), errors);
+      return;
+    }
+    if (!item.isObject()) {
+      errors.add(path + " must be a candidate string or object");
+      return;
+    }
+    validateSdkmanValue(
+        path + ".candidate", "candidate", text(item, "candidate").orElse(null), errors);
+    text(item, "version")
+        .ifPresent(version -> validateSdkmanValue(path + ".version", "version", version, errors));
+  }
+
+  private void validateSdkmanValue(
+      String path, String label, String value, List<String> errors) {
+    if (isBlank(value)) {
+      errors.add(path + " SDKMAN " + label + " must not be blank");
+      return;
+    }
+    if (!SDKMAN_VALUE.matcher(value.strip()).matches()) {
+      errors.add(path + " SDKMAN " + label + " contains unsafe shell characters");
     }
   }
 

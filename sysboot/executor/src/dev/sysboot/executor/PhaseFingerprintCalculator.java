@@ -21,6 +21,7 @@ import dev.sysboot.core.RpmRepositoryModule;
 import dev.sysboot.core.ShellCommandModule;
 import dev.sysboot.core.ShellReloadModule;
 import dev.sysboot.core.ShellScriptModule;
+import dev.sysboot.core.SdkmanModule;
 import dev.sysboot.core.ToolchainModule;
 import dev.sysboot.core.ZypperModule;
 import java.nio.charset.StandardCharsets;
@@ -149,6 +150,11 @@ final class PhaseFingerprintCalculator {
         im.instructions().forEach(instruction -> append(builder, "instruction", instruction));
         append(builder, "resumeFrom", im.resumeFrom().name());
         append(builder, "exitCode", Integer.toString(im.exitCode()));
+      }
+      case SdkmanModule sm -> {
+        append(builder, "type", "sdkman-packages");
+        sm.packages().forEach(pkg -> append(builder, "package", pkg.itemKey()));
+        append(builder, "continueOnError", sm.continueOnError());
       }
     }
   }
