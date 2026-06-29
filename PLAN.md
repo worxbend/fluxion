@@ -325,6 +325,15 @@ cd sysboot
 
 Goal: skip plan entries based on the actual host, not only the informational target.
 
+Progress:
+
+- 2026-06-29: T011 added a small injectable host-facts boundary in `core` and a Linux adapter in
+  `executor`. `LinuxHostFactsProvider` reads `/etc/os-release` through an injectable path, detects
+  Linux distribution/version/codename, normalizes architectures such as `x86_64`/`amd64` to
+  `amd64` and `aarch64`/`arm64` to `arm64`, and checks command availability from `PATH`. Focused
+  tests prove the boundary can be faked and the adapter can be driven with fixture host data.
+  `when` evaluation is still pending in T012.
+
 Tasks:
 
 - Add a small host-facts service in `executor` or a new narrow core port with executor adapter.
@@ -686,7 +695,7 @@ Strict task queue is written to `.agent-loop/tasks.json`; validation defaults ar
 8. `T008` - Plumb manifest policy defaults (moderate feature).
 9. `T009` - Add variable interpolation (complex feature).
 10. `T010` - Checkpoint manifest mapping (validation).
-11. `T011` - Add host facts boundary (moderate feature).
+11. `T011` - Add host facts boundary (moderate feature, completed).
 12. `T012` - Evaluate when conditions (complex feature).
 13. `T013` - Report skipped plan entries (complex feature).
 14. `T014` - Checkpoint host filtering (validation).
