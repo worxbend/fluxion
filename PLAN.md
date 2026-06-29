@@ -650,6 +650,9 @@ Progress:
   allowed exit codes, sensitivity-aware env values, redaction for previews and shell failure text,
   and item-level `when` filtering. `confirm` is retained as item metadata for previews/fingerprints;
   it does not prompt interactively yet because Fluxion has no command-item confirmation service.
+- 2026-06-29: VALIDATION-12/T011 ran the installer-kind checkpoint. `just verify`,
+  `cd sysboot && ./mill cli.assembly`, `just native-smoke`, and `git diff --check` all passed. No
+  parser, executor, CLI, integration, assembly, native-image, or shipped-config regression was found.
 
 Acceptance:
 
@@ -889,7 +892,7 @@ policy, variable, host-facts, `when`, and skipped-reporting milestones recorded 
 8. `T008` - Map basic installer kinds (complex feature, completed).
 9. `T009` - Extend binary downloads (complex feature, completed).
 10. `T010` - Extend scripts and commands (complex feature, completed).
-11. `T011` - Checkpoint installer kinds (validation).
+11. `T011` - Checkpoint installer kinds (validation, completed).
 12. `T012` - Add interrupt checkpoint model (complex feature).
 13. `T013` - Report interrupt resume state (complex feature).
 14. `T014` - Checkpoint interrupt resume (validation).
