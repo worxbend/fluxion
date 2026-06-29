@@ -200,6 +200,11 @@ Progress:
   `apiVersion`/`kind`/`metadata.name`/empty `spec` fixture now deserializes directly into
   `WorkstationProfileDocument`, and GraalVM reflection metadata includes the new DTOs. Loader
   routing and mapping remain in T003/T004.
+- 2026-06-29: T003 added top-level schema detection in `YamlConfigLoader`. Legacy Fluxion
+  `profile`/`os` with `jobs`, `phases`, or `modules` still routes to `ConfigMapper`, while
+  `apiVersion: initkit.io/v1alpha1` plus `kind: WorkstationProfile` routes to the new
+  WorkstationProfile mapper path. Unknown root schemas now fail with an explicit schema error.
+  The WorkstationProfile mapper remains intentionally minimal until T004 maps identity and target.
 
 Tasks:
 

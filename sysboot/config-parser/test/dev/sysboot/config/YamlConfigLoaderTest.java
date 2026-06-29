@@ -19,6 +19,7 @@ import dev.sysboot.core.RpmRepositoryModule;
 import dev.sysboot.core.ShellCommandModule;
 import dev.sysboot.core.ShellScriptModule;
 import java.io.IOException;
+import java.net.URISyntaxException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import org.junit.jupiter.api.Test;
@@ -247,6 +248,36 @@ class YamlConfigLoaderTest {
     Path config = writeConfig(tmpDir, "this: is: not: valid: yaml: [[[");
 
     assertThatThrownBy(() -> loader.load(config)).isInstanceOf(ConfigLoadException.class);
+  }
+
+  @Test
+  void load_whenWorkstationProfileFixture_routesToManifestMapper() throws URISyntaxException {
+    Path config =
+        Path.of(getClass().getResource("/minimal-workstation-profile.yaml").toURI());
+
+    assertThatThrownBy(() -> loader.load(config))
+        .isInstanceOf(ConfigLoadException.class)
+        .hasMessageContaining("WorkstationProfile manifest mapping is not implemented yet")
+        .hasMessageNotContaining("Required field 'profile' is missing");
+  }
+
+  @Test
+  void load_whenTopLevelSchemaUnknown_throwsClearConfigError(@TempDir Path tmpDir)
+      throws IOException {
+    Path config =
+        writeConfig(
+            tmpDir,
+            """
+            name: unknown
+            packages:
+              - git
+            """);
+
+    assertThatThrownBy(() -> loader.load(config))
+        .isInstanceOf(ConfigLoadException.class)
+        .hasMessageContaining("Unknown config schema")
+        .hasMessageContaining("profile/os/jobs/phases/modules")
+        .hasMessageContaining("WorkstationProfile");
   }
 
   @Test
