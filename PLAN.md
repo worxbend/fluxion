@@ -219,6 +219,10 @@ Progress:
   package/app install lists, malformed SHA-256 checksum objects, and `spec.policy.statePath`
   equal to the manifest path now fail with field-path diagnostics. Plan entries are still
   validated only; T007 remains responsible for mapping package plan kinds into executable modules.
+- 2026-06-29: T006 checkpoint validation passed after T005. `./mill config-parser.test`,
+  `./mill executor.test.testOnly dev.sysboot.executor.ConfigValidatorTest`, and
+  `just native-metadata-check` all completed successfully. No parser compatibility regressions or
+  missing native metadata registrations were found, so no follow-up fix tasks were added.
 
 Tasks:
 
