@@ -36,6 +36,15 @@ public final class PlanSpecDocument {
   @JsonProperty("installPath")
   private String installPath;
 
+  @JsonProperty("destination")
+  private String destination;
+
+  @JsonProperty("config")
+  private String config;
+
+  @JsonProperty("configPath")
+  private String configPath;
+
   @JsonProperty("commands")
   private List<String> commands;
 
@@ -80,6 +89,18 @@ public final class PlanSpecDocument {
 
   public Optional<String> installPath() {
     return DocumentDefaults.optional(installPath);
+  }
+
+  public Optional<String> destination() {
+    return DocumentDefaults.optional(destination);
+  }
+
+  public Optional<String> config() {
+    return DocumentDefaults.optional(config);
+  }
+
+  public Optional<String> configPath() {
+    return DocumentDefaults.optional(configPath);
   }
 
   public List<String> commands() {

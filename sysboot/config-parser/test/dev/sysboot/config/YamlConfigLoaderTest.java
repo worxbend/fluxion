@@ -539,6 +539,106 @@ class YamlConfigLoaderTest {
   }
 
   @Test
+  void load_whenWorkstationProfileVarsPresent_interpolatesMappedPackageFields(
+      @TempDir Path tmpDir) throws IOException {
+    Path config =
+        writeConfig(
+            tmpDir,
+            """
+            apiVersion: initkit.io/v1alpha1
+            kind: WorkstationProfile
+            metadata:
+              name: interpolation-test
+            spec:
+              vars:
+                packageName: git
+                remoteName: fedora
+                browserApp: org.mozilla.firefox
+              target:
+                os:
+                  distribution: fedora
+                  release: "44"
+              plan:
+                - name: dnf-base
+                  kind: dnf-packages
+                  spec:
+                    packages:
+                      - ${packageName}
+                - name: desktop-apps
+                  kind: flatpak-packages
+                  spec:
+                    remote: ${remoteName}
+                    apps:
+                      - ${browserApp}
+            """);
+
+    BootstrapConfig result = loader.load(config);
+
+    assertPackageModule(result, 0, "dnf-base", PackageManagerKind.DNF, "git");
+    assertFlatpakModule(result, 1, "desktop-apps", "fedora", "org.mozilla.firefox");
+  }
+
+  @Test
+  void load_whenWorkstationProfileUnresolvedVariable_reportsFieldPathAndPlanName(
+      @TempDir Path tmpDir) throws IOException {
+    Path config =
+        writeConfig(
+            tmpDir,
+            """
+            apiVersion: initkit.io/v1alpha1
+            kind: WorkstationProfile
+            metadata:
+              name: interpolation-test
+            spec:
+              target:
+                os:
+                  distribution: fedora
+                  release: "44"
+              plan:
+                - name: setup
+                  kind: commands
+                  spec:
+                    commands:
+                      - "echo ${missing}"
+            """);
+
+    assertThatThrownBy(() -> loader.load(config))
+        .isInstanceOf(ConfigLoadException.class)
+        .hasMessageContaining("spec.plan[0].spec.commands[0]")
+        .hasMessageContaining("plan entry 'setup'")
+        .hasMessageContaining("${missing}");
+  }
+
+  @Test
+  void load_whenWorkstationProfileStatePathInterpolatesToManifest_reportsFieldPath(
+      @TempDir Path tmpDir) throws IOException {
+    Path config =
+        writeConfig(
+            tmpDir,
+            """
+            apiVersion: initkit.io/v1alpha1
+            kind: WorkstationProfile
+            metadata:
+              name: interpolation-test
+            spec:
+              vars:
+                manifestFile: config.yaml
+              policy:
+                statePath: ${manifestFile}
+              target:
+                os:
+                  distribution: fedora
+                  release: "44"
+              plan: []
+            """);
+
+    assertThatThrownBy(() -> loader.load(config))
+        .isInstanceOf(ConfigLoadException.class)
+        .hasMessageContaining("spec.policy.statePath")
+        .hasMessageContaining("must not equal the manifest path");
+  }
+
+  @Test
   void load_whenProfileFieldMissing_throwsConfigLoadException(@TempDir Path tmpDir)
       throws IOException {
     Path config =

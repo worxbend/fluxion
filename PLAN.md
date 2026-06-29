@@ -279,6 +279,16 @@ just native-metadata-check
 
 Goal: support `${name}` interpolation in new manifests without shell expansion.
 
+Progress:
+
+- 2026-06-29: T009 added parser-side WorkstationProfile interpolation before DTO binding and
+  validation. Runtime environment values such as `HOME` and `USER` take precedence, followed by
+  resolved `spec.vars`, then a small host-fact set (`host.os.name`, `host.os.arch`, `host.user`,
+  and `host.home`). Nested `spec.vars` are resolved first; unresolved or cyclic variables fail
+  with field-path diagnostics, and plan-scoped errors include the plan-entry name. The resolver
+  only replaces `${name}` tokens and leaves `$()`, backticks, globs, `$repo`, `$arch`, and other
+  shell text literal. Focused parser tests and a full JVM test rerun passed.
+
 Tasks:
 
 - Add a resolver boundary in `config-parser` or `executor` that runs before mapping to executable

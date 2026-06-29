@@ -16,12 +16,14 @@ public final class YamlConfigLoader implements ConfigLoader {
   private final ObjectMapper objectMapper;
   private final ConfigMapper configMapper;
   private final WorkstationProfileConfigMapper workstationProfileConfigMapper;
+  private final WorkstationProfileInterpolator workstationProfileInterpolator;
 
   public YamlConfigLoader() {
     this.objectMapper = new ObjectMapper(new YAMLFactory());
     this.objectMapper.findAndRegisterModules();
     this.configMapper = new ConfigMapper();
     this.workstationProfileConfigMapper = new WorkstationProfileConfigMapper();
+    this.workstationProfileInterpolator = new WorkstationProfileInterpolator();
   }
 
   @Override
@@ -49,8 +51,9 @@ public final class YamlConfigLoader implements ConfigLoader {
         yield configMapper.map(dto, configFile);
       }
       case WORKSTATION_PROFILE -> {
+        JsonNode interpolatedRoot = workstationProfileInterpolator.interpolate(root);
         WorkstationProfileDocument dto =
-            objectMapper.treeToValue(root, WorkstationProfileDocument.class);
+            objectMapper.treeToValue(interpolatedRoot, WorkstationProfileDocument.class);
         yield workstationProfileConfigMapper.map(dto, configFile);
       }
     };
