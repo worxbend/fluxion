@@ -2,7 +2,7 @@
 
 Implementation roadmap for the active repository.
 
-Last refreshed: 2026-06-29
+Last refreshed: 2026-06-30
 
 ## Repository Baseline
 
@@ -752,6 +752,15 @@ cd sysboot
 
 Goal: stop hiding repeated legacy bootstrap behavior inside opaque shell commands where typed
 support gives safer validation, preview, state, and TUI reporting.
+
+Progress:
+
+- 2026-06-30: VALIDATION-19 ran the configured checkpoint gate against the current completed
+  parity-kind work. `just verify`, `cd sysboot && ./mill cli.assembly`, `just native-smoke`,
+  `git diff --check`, and JSON syntax checks for `.agent-loop/tasks.json` plus
+  `sysboot/graal/reflect-config.json` all passed. No regressions were found and no code fixes were
+  needed. Remaining risk: `.agent-loop/tasks.json` still lists T018 `file-writes` and T019 parity
+  checkpoint work as pending, and no `file-writes` implementation is present yet.
 
 Add only after the `WorkstationProfile` path is stable:
 
