@@ -449,8 +449,14 @@ Progress:
   existing package plan mappings, while invalid source names, required source fields, HTTP(S) URL
   fields, absolute path fields, `gpgCheck`/`gpgKeyUrl`, and SHA-256 checksum objects report
   section-specific field paths. `SourceSpecDocument` now includes Flatpak `system`; existing
-  native reflection metadata covers the DTO through declared-field registration. Mapping source
-  sections into executable setup remains deferred to T002.
+  native reflection metadata covers the DTO through declared-field registration.
+- 2026-06-29: T002 maps selected WorkstationProfile source sections into core
+  `SourceSetup` records for APT repositories, DNF/RPM repositories, zypper repositories, and
+  Flatpak remotes. Source sections whose package manager is not present in the host-selected plan
+  are recorded as skipped entries with stable `*-source` kinds and reasons. The legacy
+  `apt-repository`, `rpm-repository`, `pacman-repository`, and `flatpak-remote` step mapping remains
+  unchanged. Source setup execution ordering, dry-run prelude rendering, and failure gating remain
+  deferred to T003.
 
 Reference behavior from the pinned `binstaller` scan:
 

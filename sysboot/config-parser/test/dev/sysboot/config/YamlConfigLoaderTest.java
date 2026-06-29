@@ -4,12 +4,14 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import dev.sysboot.core.AptRepositoryModule;
+import dev.sysboot.core.AptRepositorySourceSetup;
 import dev.sysboot.core.AssertModule;
 import dev.sysboot.core.BootstrapConfig;
 import dev.sysboot.core.BootstrapPolicy;
 import dev.sysboot.core.CompiledBinaryModule;
 import dev.sysboot.core.FlatpakModule;
 import dev.sysboot.core.FlatpakRemoteModule;
+import dev.sysboot.core.FlatpakRemoteSourceSetup;
 import dev.sysboot.core.HostFacts;
 import dev.sysboot.core.HostFactsProvider;
 import dev.sysboot.core.ManualModule;
@@ -19,8 +21,10 @@ import dev.sysboot.core.PackageModule;
 import dev.sysboot.core.PacmanRepositoryModule;
 import dev.sysboot.core.RestartPolicy;
 import dev.sysboot.core.RpmRepositoryModule;
+import dev.sysboot.core.RpmRepositorySourceSetup;
 import dev.sysboot.core.ShellCommandModule;
 import dev.sysboot.core.ShellScriptModule;
+import dev.sysboot.core.ZypperRepositorySourceSetup;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -303,7 +307,7 @@ class YamlConfigLoaderTest {
   }
 
   @Test
-  void load_whenWorkstationProfileSourcesPresent_keepsJobsAndStepsMapping(@TempDir Path tmpDir)
+  void load_whenWorkstationProfileSourcesPresent_mapsRelevantSourceSetups(@TempDir Path tmpDir)
       throws IOException {
     Path config =
         writeConfig(
@@ -337,6 +341,13 @@ class YamlConfigLoaderTest {
                       repoFile: /etc/yum.repos.d/docker.repo
                       gpgKeyUrl: https://download.docker.com/linux/fedora/gpg
                       gpgCheck: true
+                rpm:
+                  - name: rpmfusion
+                    spec:
+                      id: rpmfusion
+                      baseUrl: https://download1.rpmfusion.org/free/fedora/releases/$releasever/Everything/$basearch/os/
+                      gpgKeyUrl: https://rpmfusion.org/keys?action=AttachFile&do=get&target=RPM-GPG-KEY-rpmfusion-free-fedora
+                      gpgCheck: true
                 zypper:
                   - name: packman
                     spec:
@@ -351,16 +362,125 @@ class YamlConfigLoaderTest {
                       url: https://flathub.org/repo/flathub.flatpakrepo
                       system: false
               plan:
+                - name: apt-base
+                  kind: apt-packages
+                  spec:
+                    packages: [curl]
                 - name: dnf-base
                   kind: dnf-packages
                   spec:
                     packages: [ripgrep]
+                - name: zypper-base
+                  kind: zypper-packages
+                  spec:
+                    packages: [htop]
+                - name: desktop-apps
+                  kind: flatpak-packages
+                  spec:
+                    apps: [org.mozilla.firefox]
             """);
 
     BootstrapConfig result = loader.load(config);
 
-    assertPackageModule(result, 0, "dnf-base", PackageManagerKind.DNF, "ripgrep");
-    assertThat(result.sourceSetups()).isEmpty();
+    assertPackageModule(result, 0, "apt-base", PackageManagerKind.APT, "curl");
+    assertPackageModule(result, 1, "dnf-base", PackageManagerKind.DNF, "ripgrep");
+    assertPackageModule(result, 2, "zypper-base", PackageManagerKind.ZYPPER, "htop");
+    assertFlatpakModule(result, 3, "desktop-apps", "flathub", "org.mozilla.firefox");
+    assertThat(result.sourceSetups()).hasSize(5);
+    assertAptSource(result, 0);
+    assertRpmSource(result, 1, "docker-dnf", "/etc/yum.repos.d/docker.repo");
+    assertRpmSource(result, 2, "rpmfusion", "/etc/yum.repos.d/rpmfusion.repo");
+    assertZypperSource(result, 3);
+    assertFlatpakSource(result, 4);
+    assertThat(result.skippedPlanEntries()).isEmpty();
+  }
+
+  @Test
+  void load_whenWorkstationProfileSourcesIrrelevantToSelectedHost_skipsWithStableReason(
+      @TempDir Path tmpDir) throws IOException {
+    Path config =
+        writeConfig(
+            tmpDir,
+            """
+            apiVersion: initkit.io/v1alpha1
+            kind: WorkstationProfile
+            metadata:
+              name: source-skip-test
+            spec:
+              target:
+                os:
+                  distribution: fedora
+                  release: "44"
+              sources:
+                apt:
+                  - name: docker-apt
+                    spec:
+                      source: deb https://download.docker.com/linux/debian bookworm stable
+                dnf:
+                  - name: docker-dnf
+                    spec:
+                      id: docker
+                      baseUrl: https://download.docker.com/linux/fedora/$releasever/stable
+                      gpgKeyUrl: https://download.docker.com/linux/fedora/gpg
+                zypper:
+                  - name: packman
+                    spec:
+                      id: packman
+                      baseUrl: https://ftp.gwdg.de/pub/linux/misc/packman/suse/openSUSE_Tumbleweed/
+                      gpgKeyUrl: https://example.com/packman.asc
+                flatpak:
+                  - name: flathub
+                    spec:
+                      remote: flathub
+                      url: https://flathub.org/repo/flathub.flatpakrepo
+              plan:
+                - name: apt-base
+                  kind: apt-packages
+                  when:
+                    distribution: debian
+                  spec:
+                    packages: [curl]
+                - name: dnf-base
+                  kind: dnf-packages
+                  when:
+                    distribution: fedora
+                  spec:
+                    packages: [ripgrep]
+                - name: zypper-base
+                  kind: zypper-packages
+                  when:
+                    distribution: opensuse
+                  spec:
+                    packages: [htop]
+                - name: desktop-apps
+                  kind: flatpak-packages
+                  when:
+                    distribution: debian
+                  spec:
+                    apps: [org.mozilla.firefox]
+            """);
+    BootstrapConfig result =
+        new YamlConfigLoader(new FakeHostFactsProvider(facts("fedora", "44", ""), Set.of()))
+            .load(config);
+
+    assertThat(result.sourceSetups()).hasSize(1);
+    assertThat(result.sourceSetups().getFirst().name().value()).isEqualTo("docker-dnf");
+    assertThat(result.skippedPlanEntries())
+        .filteredOn(entry -> entry.kind().endsWith("-source"))
+        .extracting(entry -> entry.name(), entry -> entry.kind(), entry -> entry.reason())
+        .containsExactly(
+            org.assertj.core.groups.Tuple.tuple(
+                "docker-apt",
+                "apt-source",
+                "source section apt is not relevant to selected host package managers"),
+            org.assertj.core.groups.Tuple.tuple(
+                "packman",
+                "zypper-source",
+                "source section zypper is not relevant to selected host package managers"),
+            org.assertj.core.groups.Tuple.tuple(
+                "flathub",
+                "flatpak-source",
+                "source section flatpak is not relevant to selected host package managers"));
   }
 
   @Test
@@ -394,6 +514,10 @@ class YamlConfigLoaderTest {
                       id: " "
                       baseUrl: relative/repo
                       gpgCheck: true
+                rpm:
+                  - name: rpmfusion
+                    spec:
+                      baseUrl: relative/repo
                 zypper:
                   - name: packman
                     spec:
@@ -418,6 +542,9 @@ class YamlConfigLoaderTest {
         .hasMessageContaining("spec.sources.dnf[0].spec.id")
         .hasMessageContaining("spec.sources.dnf[0].spec.baseUrl")
         .hasMessageContaining("spec.sources.dnf[0].spec.gpgKeyUrl")
+        .hasMessageContaining("spec.sources.rpm[0].spec.id")
+        .hasMessageContaining("spec.sources.rpm[0].spec.baseUrl")
+        .hasMessageContaining("spec.sources.rpm[0].spec.gpgKeyUrl")
         .hasMessageContaining("spec.sources.zypper[0].spec.baseUrl")
         .hasMessageContaining("spec.sources.zypper[0].spec.gpgKeyUrl")
         .hasMessageContaining("spec.sources.flatpak[0].spec.remote")
@@ -1187,6 +1314,46 @@ class YamlConfigLoaderTest {
     assertThat(module.name().value()).isEqualTo(name);
     assertThat(module.remote()).isEqualTo(remote);
     assertThat(module.appIds()).containsExactly(appIds);
+  }
+
+  private static void assertAptSource(BootstrapConfig result, int index) {
+    assertThat(result.sourceSetups().get(index)).isInstanceOf(AptRepositorySourceSetup.class);
+    var source = (AptRepositorySourceSetup) result.sourceSetups().get(index);
+    assertThat(source.name().value()).isEqualTo("docker-apt");
+    assertThat(source.sourceListPath().toString()).isEqualTo("/etc/apt/sources.list.d/docker.list");
+    assertThat(source.signingKeyUrl()).hasValueSatisfying(url -> assertThat(url.toString())
+        .isEqualTo("https://download.docker.com/linux/debian/gpg"));
+    assertThat(source.keyringPath()).hasValue(Path.of("/etc/apt/keyrings/docker.gpg"));
+  }
+
+  private static void assertRpmSource(
+      BootstrapConfig result, int index, String name, String repoFile) {
+    assertThat(result.sourceSetups().get(index)).isInstanceOf(RpmRepositorySourceSetup.class);
+    var source = (RpmRepositorySourceSetup) result.sourceSetups().get(index);
+    assertThat(source.name().value()).isEqualTo(name);
+    assertThat(source.repositoryId()).isEqualTo(name.replace("-dnf", ""));
+    assertThat(source.repoFilePath().toString()).isEqualTo(repoFile);
+    assertThat(source.gpgKeyUrl()).isPresent();
+    assertThat(source.enabled()).isTrue();
+    assertThat(source.gpgCheck()).isTrue();
+  }
+
+  private static void assertZypperSource(BootstrapConfig result, int index) {
+    assertThat(result.sourceSetups().get(index)).isInstanceOf(ZypperRepositorySourceSetup.class);
+    var source = (ZypperRepositorySourceSetup) result.sourceSetups().get(index);
+    assertThat(source.name().value()).isEqualTo("packman");
+    assertThat(source.repositoryId()).isEqualTo("packman");
+    assertThat(source.repoFilePath().toString()).isEqualTo("/etc/zypp/repos.d/packman.repo");
+    assertThat(source.gpgKeyUrl()).isPresent();
+  }
+
+  private static void assertFlatpakSource(BootstrapConfig result, int index) {
+    assertThat(result.sourceSetups().get(index)).isInstanceOf(FlatpakRemoteSourceSetup.class);
+    var source = (FlatpakRemoteSourceSetup) result.sourceSetups().get(index);
+    assertThat(source.name().value()).isEqualTo("flathub");
+    assertThat(source.remote()).isEqualTo("flathub");
+    assertThat(source.url().toString()).isEqualTo("https://flathub.org/repo/flathub.flatpakrepo");
+    assertThat(source.system()).isFalse();
   }
 
   private static String workstationProfileWithAllPackageKinds() {

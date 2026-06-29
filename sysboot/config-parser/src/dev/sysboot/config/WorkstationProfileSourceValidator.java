@@ -24,7 +24,7 @@ final class WorkstationProfileSourceValidator {
     validateChecksums("spec.sources.entries", sources.entries(), errors);
     validateSources("spec.sources.apt", sources.apt(), this::validateAptSource, errors);
     validateSources("spec.sources.dnf", sources.dnf(), this::validateRpmSource, errors);
-    validateChecksums("spec.sources.rpm", sources.rpm(), errors);
+    validateSources("spec.sources.rpm", sources.rpm(), this::validateRpmSource, errors);
     validateChecksums("spec.sources.pacman", sources.pacman(), errors);
     validateSources("spec.sources.zypper", sources.zypper(), this::validateRpmSource, errors);
     validateSources("spec.sources.flatpak", sources.flatpak(), this::validateFlatpakSource, errors);
@@ -81,7 +81,7 @@ final class WorkstationProfileSourceValidator {
   }
 
   private void validateRequiredGpgKey(String path, SourceSpecDocument spec, List<String> errors) {
-    if (spec.gpgCheck().orElse(false) && isBlank(spec.gpgKeyUrl().orElse(null))) {
+    if (spec.gpgCheck().orElse(true) && isBlank(spec.gpgKeyUrl().orElse(null))) {
       errors.add(path + ".gpgKeyUrl is required when gpgCheck is true");
     }
   }

@@ -32,10 +32,12 @@ final class WorkstationProfileConfigMapper {
 
   private final WorkstationProfileValidator validator;
   private final WorkstationProfileWhenEvaluator whenEvaluator;
+  private final WorkstationProfileSourceMapper sourceMapper;
 
   WorkstationProfileConfigMapper(HostFactsProvider hostFactsProvider) {
     this.validator = new WorkstationProfileValidator();
     this.whenEvaluator = new WorkstationProfileWhenEvaluator(hostFactsProvider);
+    this.sourceMapper = new WorkstationProfileSourceMapper();
   }
 
   BootstrapConfig map(WorkstationProfileDocument document, Path manifestPath) {
@@ -45,22 +47,27 @@ final class WorkstationProfileConfigMapper {
     TargetDocument target = spec.target().orElse(null);
     BootstrapPolicy policy = mapPolicy(spec.policy());
     WorkstationProfileWhenEvaluator.PlanSelection selection = whenEvaluator.select(spec.plan());
+    WorkstationProfileSourceMapper.SourceMapping sourceMapping =
+        sourceMapper.map(spec.sources(), selection.selected());
     return BootstrapConfig.builder()
         .profileName(new ProfileName(requireField(metadata.name().orElse(null), "metadata.name")))
         .target(mapTarget(requireField(target, "spec.target")))
         .policy(policy)
-        .skippedPlanEntries(skippedEntries(selection.skipped()))
+        .skippedPlanEntries(skippedEntries(selection.skipped(), sourceMapping.skippedEntries()))
+        .sourceSetups(sourceMapping.sourceSetups())
         .addPhase(manifestPhase(selection.selected(), policy))
         .build();
   }
 
   private List<SkippedPlanEntry> skippedEntries(
-      List<WorkstationProfileWhenEvaluator.SkippedPlanEntry> entries) {
-    return entries.stream()
-        .map(
-            entry ->
-                new SkippedPlanEntry(entry.name(), normalizedKind(entry.kind()), entry.reason()))
-        .toList();
+      List<WorkstationProfileWhenEvaluator.SkippedPlanEntry> planEntries,
+      List<SkippedPlanEntry> sourceEntries) {
+    var entries = new ArrayList<SkippedPlanEntry>();
+    planEntries.stream()
+        .map(entry -> new SkippedPlanEntry(entry.name(), normalizedKind(entry.kind()), entry.reason()))
+        .forEach(entries::add);
+    entries.addAll(sourceEntries);
+    return List.copyOf(entries);
   }
 
   private String normalizedKind(String kind) {
