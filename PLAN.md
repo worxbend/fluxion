@@ -204,7 +204,10 @@ Progress:
   `profile`/`os` with `jobs`, `phases`, or `modules` still routes to `ConfigMapper`, while
   `apiVersion: initkit.io/v1alpha1` plus `kind: WorkstationProfile` routes to the new
   WorkstationProfile mapper path. Unknown root schemas now fail with an explicit schema error.
-  The WorkstationProfile mapper remains intentionally minimal until T004 maps identity and target.
+- 2026-06-29: T004 mapped WorkstationProfile `metadata.name` into the loaded profile name and
+  `spec.target.os.distribution` plus release/version/codename fields into the existing Fedora,
+  Arch, openSUSE, and Debian/Ubuntu-compatible `OsTarget` variants. The manifest mapper currently
+  emits an empty synthetic phase until later tasks map `spec.plan` entries into executable modules.
 
 Tasks:
 

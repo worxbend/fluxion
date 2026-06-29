@@ -19,7 +19,6 @@ import dev.sysboot.core.RpmRepositoryModule;
 import dev.sysboot.core.ShellCommandModule;
 import dev.sysboot.core.ShellScriptModule;
 import java.io.IOException;
-import java.net.URISyntaxException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import org.junit.jupiter.api.Test;
@@ -251,14 +250,47 @@ class YamlConfigLoaderTest {
   }
 
   @Test
-  void load_whenWorkstationProfileFixture_routesToManifestMapper() throws URISyntaxException {
+  void load_whenWorkstationProfilePresent_mapsIdentityAndTarget(@TempDir Path tmpDir)
+      throws IOException {
     Path config =
-        Path.of(getClass().getResource("/minimal-workstation-profile.yaml").toURI());
+        writeConfig(
+            tmpDir,
+            """
+            apiVersion: initkit.io/v1alpha1
+            kind: WorkstationProfile
+            metadata:
+              name: developer-workstation
+            spec:
+              target:
+                os:
+                  distribution: fedora
+                  release: "44"
+              plan: []
+            """);
 
-    assertThatThrownBy(() -> loader.load(config))
-        .isInstanceOf(ConfigLoadException.class)
-        .hasMessageContaining("WorkstationProfile manifest mapping is not implemented yet")
-        .hasMessageNotContaining("Required field 'profile' is missing");
+    BootstrapConfig result = loader.load(config);
+
+    assertThat(result.profileName().value()).isEqualTo("developer-workstation");
+    assertThat(result.target()).isInstanceOf(OsTarget.FedoraTarget.class);
+    assertThat(((OsTarget.FedoraTarget) result.target()).release()).isEqualTo("44");
+    assertThat(result.phases()).hasSize(1);
+    assertThat(result.phases().getFirst().modules()).isEmpty();
+  }
+
+  @Test
+  void load_whenWorkstationProfileTargetsSupportedDistributions_mapsToOsTargets(
+      @TempDir Path tmpDir)
+      throws IOException {
+    assertThat(loadWorkstationTarget(tmpDir, "fedora", "release: \"41\""))
+        .isInstanceOf(OsTarget.FedoraTarget.class);
+    assertThat(loadWorkstationTarget(tmpDir, "arch", "release: rolling"))
+        .isInstanceOf(OsTarget.ArchTarget.class);
+    assertThat(loadWorkstationTarget(tmpDir, "opensuse", "release: \"15.6\""))
+        .isInstanceOf(OsTarget.OpenSuseTarget.class);
+    assertThat(loadWorkstationTarget(tmpDir, "debian", "release: \"12\""))
+        .isInstanceOf(OsTarget.DebianTarget.class);
+    assertThat(loadWorkstationTarget(tmpDir, "ubuntu", "release: \"24.04\""))
+        .isInstanceOf(OsTarget.DebianTarget.class);
   }
 
   @Test
@@ -603,5 +635,26 @@ class YamlConfigLoaderTest {
     Path file = dir.resolve("config.yaml");
     Files.writeString(file, content);
     return file;
+  }
+
+  private OsTarget loadWorkstationTarget(Path dir, String distribution, String releaseYaml)
+      throws IOException {
+    Path config =
+        writeConfig(
+            dir,
+            """
+            apiVersion: initkit.io/v1alpha1
+            kind: WorkstationProfile
+            metadata:
+              name: target-test
+            spec:
+              target:
+                os:
+                  distribution: %s
+                  %s
+              plan: []
+            """
+                .formatted(distribution, releaseYaml));
+    return loader.load(config).target();
   }
 }

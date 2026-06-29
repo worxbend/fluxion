@@ -51,7 +51,7 @@ public final class YamlConfigLoader implements ConfigLoader {
       case WORKSTATION_PROFILE -> {
         WorkstationProfileDocument dto =
             objectMapper.treeToValue(root, WorkstationProfileDocument.class);
-        yield workstationProfileConfigMapper.map(dto, configFile);
+        yield workstationProfileConfigMapper.map(dto);
       }
     };
   }
