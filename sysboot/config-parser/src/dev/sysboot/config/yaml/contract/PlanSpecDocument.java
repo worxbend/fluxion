@@ -1,6 +1,8 @@
 package dev.sysboot.config.yaml.contract;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
+import com.fasterxml.jackson.databind.JsonNode;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 
@@ -30,6 +32,12 @@ public final class PlanSpecDocument {
   @JsonProperty("checksum")
   private WorkstationChecksumDocument checksum;
 
+  @JsonProperty("checksumUrl")
+  private String checksumUrl;
+
+  @JsonProperty("signatureUrl")
+  private String signatureUrl;
+
   @JsonProperty("binaryName")
   private String binaryName;
 
@@ -43,16 +51,52 @@ public final class PlanSpecDocument {
   private String destination;
 
   @JsonProperty("config")
-  private String config;
+  private JsonNode config;
 
   @JsonProperty("configPath")
   private String configPath;
+
+  @JsonProperty("script")
+  private String script;
 
   @JsonProperty("commands")
   private List<String> commands;
 
   @JsonProperty("args")
   private List<String> args;
+
+  @JsonProperty("shell")
+  private String shell;
+
+  @JsonProperty("workingDir")
+  private String workingDir;
+
+  @JsonProperty("installerVersion")
+  private String installerVersion;
+
+  @JsonProperty("dotbotBinary")
+  private String dotbotBinary;
+
+  @JsonProperty("nerdfontBinary")
+  private String nerdfontBinary;
+
+  @JsonProperty("probeCommand")
+  private String probeCommand;
+
+  @JsonProperty("versionCommand")
+  private String versionCommand;
+
+  @JsonProperty("expectedVersion")
+  private String expectedVersion;
+
+  @JsonProperty("release")
+  private String release;
+
+  @JsonProperty("refreshFontCache")
+  private Boolean refreshFontCache;
+
+  @JsonProperty("families")
+  private List<String> families;
 
   public List<String> packages() {
     return DocumentDefaults.list(packages);
@@ -86,6 +130,14 @@ public final class PlanSpecDocument {
     return DocumentDefaults.optional(checksum);
   }
 
+  public Optional<String> checksumUrl() {
+    return DocumentDefaults.optional(checksumUrl);
+  }
+
+  public Optional<String> signatureUrl() {
+    return DocumentDefaults.optional(signatureUrl);
+  }
+
   public Optional<String> binaryName() {
     return DocumentDefaults.optional(binaryName);
   }
@@ -103,11 +155,42 @@ public final class PlanSpecDocument {
   }
 
   public Optional<String> config() {
-    return DocumentDefaults.optional(config);
+    if (config == null || config.isNull() || !config.isTextual()) {
+      return Optional.empty();
+    }
+    return DocumentDefaults.optional(config.asText());
   }
 
   public Optional<String> configPath() {
     return DocumentDefaults.optional(configPath);
+  }
+
+  public Optional<String> dotfilesConfig() {
+    return config().or(this::configPath);
+  }
+
+  public Optional<NerdFontConfigDocument> nerdFontConfig() {
+    if (config == null || config.isNull() || !config.isObject()) {
+      return Optional.empty();
+    }
+    var document = new NerdFontConfigDocument();
+    document.release = textField(config, "release").orElse("latest");
+    document.destination = textField(config, "destination").orElse(null);
+    document.refreshFontCache = booleanField(config, "refreshFontCache").orElse(true);
+    document.families = stringList(config.get("families"));
+    return Optional.of(document);
+  }
+
+  public boolean configIsObject() {
+    return config != null && config.isObject();
+  }
+
+  public boolean configIsText() {
+    return config != null && config.isTextual();
+  }
+
+  public Optional<String> script() {
+    return DocumentDefaults.optional(script);
   }
 
   public List<String> commands() {
@@ -116,5 +199,68 @@ public final class PlanSpecDocument {
 
   public List<String> args() {
     return DocumentDefaults.list(args);
+  }
+
+  public Optional<String> shell() {
+    return DocumentDefaults.optional(shell);
+  }
+
+  public Optional<String> workingDir() {
+    return DocumentDefaults.optional(workingDir);
+  }
+
+  public Optional<String> installerVersion() {
+    return DocumentDefaults.optional(installerVersion);
+  }
+
+  public Optional<String> dotbotBinary() {
+    return DocumentDefaults.optional(dotbotBinary);
+  }
+
+  public Optional<String> nerdfontBinary() {
+    return DocumentDefaults.optional(nerdfontBinary);
+  }
+
+  public Optional<String> probeCommand() {
+    return DocumentDefaults.optional(probeCommand);
+  }
+
+  public Optional<String> versionCommand() {
+    return DocumentDefaults.optional(versionCommand);
+  }
+
+  public Optional<String> expectedVersion() {
+    return DocumentDefaults.optional(expectedVersion);
+  }
+
+  public Optional<String> release() {
+    return DocumentDefaults.optional(release);
+  }
+
+  public Optional<Boolean> refreshFontCache() {
+    return DocumentDefaults.optional(refreshFontCache);
+  }
+
+  public List<String> families() {
+    return DocumentDefaults.list(families);
+  }
+
+  private Optional<String> textField(JsonNode node, String field) {
+    JsonNode value = node.get(field);
+    return value != null && value.isTextual() ? Optional.of(value.asText()) : Optional.empty();
+  }
+
+  private Optional<Boolean> booleanField(JsonNode node, String field) {
+    JsonNode value = node.get(field);
+    return value != null && value.isBoolean() ? Optional.of(value.asBoolean()) : Optional.empty();
+  }
+
+  private List<String> stringList(JsonNode node) {
+    if (node == null || !node.isArray()) {
+      return List.of();
+    }
+    var values = new ArrayList<String>();
+    node.forEach(value -> values.add(value.isTextual() ? value.asText() : ""));
+    return List.copyOf(values);
   }
 }

@@ -6,6 +6,8 @@ import dev.sysboot.config.yaml.contract.PlanSpecDocument;
 import dev.sysboot.config.yaml.contract.PolicyDocument;
 import dev.sysboot.config.yaml.contract.WorkstationChecksumDocument;
 import dev.sysboot.config.yaml.contract.WorkstationProfileDocument;
+import java.net.URI;
+import java.net.URISyntaxException;
 import java.nio.file.InvalidPathException;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -24,6 +26,8 @@ final class WorkstationProfileValidator {
   private static final Set<String> PACKAGE_PLAN_KINDS =
       Set.of("apt-packages", "dnf-packages", "pacman-packages", "zypper-packages");
   private static final Set<String> APP_PLAN_KINDS = Set.of("flatpak-packages");
+  private static final Set<String> INSTALLER_PLAN_KINDS =
+      Set.of("binary-downloads", "shell-scripts", "commands", "nerd-fonts", "dotfiles-apply");
   private static final Map<String, Set<String>> SUPPORTED_PACKAGE_ACTIONS =
       Map.of(
           "apt-packages", Set.of("update", "upgrade", "dist-upgrade"),
@@ -145,6 +149,7 @@ final class WorkstationProfileValidator {
       return;
     }
     validateInstallList(kind, path, entryName, spec, errors);
+    validateInstallerSpec(kind, path, entryName, spec, errors);
     validatePackageActions(kind, path, entryName, spec, errors);
     if (spec != null) {
       validateChecksum(path + ".spec.checksum", spec.checksum().orElse(null), errors);
@@ -210,6 +215,114 @@ final class WorkstationProfileValidator {
     validatePresentItems(path + ".spec.appIds", spec.appIds(), errors);
   }
 
+  private void validateInstallerSpec(
+      String kind, String path, String entryName, PlanSpecDocument spec, List<String> errors) {
+    if (!INSTALLER_PLAN_KINDS.contains(kind)) {
+      return;
+    }
+    if (spec == null) {
+      errors.add(path + ".spec is required for plan entry '" + entryName + "'");
+      return;
+    }
+    switch (kind) {
+      case "binary-downloads" -> validateBinarySpec(path, entryName, spec, errors);
+      case "shell-scripts" -> validateScriptSpec(path, entryName, spec, errors);
+      case "commands" -> validateCommandSpec(path, spec, errors);
+      case "nerd-fonts" -> validateNerdFontSpec(path, entryName, spec, errors);
+      case "dotfiles-apply" -> validateDotfilesSpec(path, entryName, spec, errors);
+      default -> {
+      }
+    }
+  }
+
+  private void validateBinarySpec(
+      String path, String entryName, PlanSpecDocument spec, List<String> errors) {
+    requirePresent(path + ".spec.binaryName", spec.binaryName().orElse(null), entryName, errors);
+    validateHttpsUrl(path + ".spec.url", spec.url().orElse(null), errors);
+    validateAbsolutePath(path + ".spec.installPath", spec.installPath().orElse(null), errors);
+    spec.checksumUrl().ifPresent(url -> validateHttpsUrl(path + ".spec.checksumUrl", url, errors));
+    spec.signatureUrl().ifPresent(url -> validateHttpsUrl(path + ".spec.signatureUrl", url, errors));
+  }
+
+  private void validateScriptSpec(
+      String path, String entryName, PlanSpecDocument spec, List<String> errors) {
+    requirePresent(path + ".spec.script", spec.script().orElse(null), entryName, errors);
+    validatePresentItems(path + ".spec.args", spec.args(), errors);
+    spec.workingDir().ifPresent(dir -> validatePath(path + ".spec.workingDir", dir, errors));
+  }
+
+  private void validateCommandSpec(String path, PlanSpecDocument spec, List<String> errors) {
+    validateNonEmptyItems(path + ".spec.commands", spec.commands(), errors);
+    spec.shell().ifPresent(shell -> requirePresent(path + ".spec.shell", shell, "commands", errors));
+    spec.workingDir().ifPresent(dir -> validatePath(path + ".spec.workingDir", dir, errors));
+  }
+
+  private void validateNerdFontSpec(
+      String path, String entryName, PlanSpecDocument spec, List<String> errors) {
+    validateNerdFontConfigShape(path, spec, errors);
+    requirePresent(
+        path + ".spec.installerVersion",
+        spec.installerVersion().orElse("v1.0.5"),
+        entryName,
+        errors);
+    requirePresent(
+        path + ".spec.nerdfontBinary",
+        spec.nerdfontBinary().orElse("nerdfont-install"),
+        entryName,
+        errors);
+    validateNonEmptyItems(nerdFontFamiliesPath(path, spec), nerdFontFamilies(spec), errors);
+  }
+
+  private void validateDotfilesSpec(
+      String path, String entryName, PlanSpecDocument spec, List<String> errors) {
+    if (spec.configIsObject()) {
+      errors.add(path + ".spec.config for plan entry '" + entryName + "' must be a path string");
+    }
+    requirePresent(path + ".spec.config", spec.dotfilesConfig().orElse(null), entryName, errors);
+    requirePresent(
+        path + ".spec.installerVersion",
+        spec.installerVersion().orElse("v0.2.1"),
+        entryName,
+        errors);
+    requirePresent(
+        path + ".spec.dotbotBinary",
+        spec.dotbotBinary().orElse("dotbot"),
+        entryName,
+        errors);
+  }
+
+  private void validateNerdFontConfigShape(
+      String path, PlanSpecDocument spec, List<String> errors) {
+    if (spec.configIsText()) {
+      errors.add(path + ".spec.config must be an object for nerd-fonts");
+    }
+    spec.destination()
+        .ifPresent(value -> requirePresent(path + ".spec.destination", value, "nerd-fonts", errors));
+    spec.release()
+        .ifPresent(value -> requirePresent(path + ".spec.release", value, "nerd-fonts", errors));
+    spec.nerdFontConfig().ifPresent(config -> validateNerdFontConfig(path, config, errors));
+  }
+
+  private void validateNerdFontConfig(
+      String path,
+      dev.sysboot.config.yaml.contract.NerdFontConfigDocument config,
+      List<String> errors) {
+    requirePresent(path + ".spec.config.release", config.release, "nerd-fonts", errors);
+    if (config.destination != null) {
+      requirePresent(path + ".spec.config.destination", config.destination, "nerd-fonts", errors);
+    }
+  }
+
+  private List<String> nerdFontFamilies(PlanSpecDocument spec) {
+    return spec.nerdFontConfig().map(config -> config.families).orElseGet(spec::families);
+  }
+
+  private String nerdFontFamiliesPath(String path, PlanSpecDocument spec) {
+    return spec.nerdFontConfig().isPresent()
+        ? path + ".spec.config.families"
+        : path + ".spec.families";
+  }
+
   private void validateNonEmptyItems(String path, List<String> values, List<String> errors) {
     if (values.isEmpty()) {
       errors.add(path + " must contain at least one item");
@@ -223,6 +336,51 @@ final class WorkstationProfileValidator {
       if (isBlank(values.get(index))) {
         errors.add(path + "[" + index + "] must not be blank");
       }
+    }
+  }
+
+  private void requirePresent(
+      String path, String value, String entryName, List<String> errors) {
+    if (isBlank(value)) {
+      errors.add(path + " for plan entry '" + entryName + "' must not be blank");
+    }
+  }
+
+  private void validateAbsolutePath(String path, String value, List<String> errors) {
+    if (isBlank(value)) {
+      errors.add(path + " is required");
+      return;
+    }
+    try {
+      Path parsed = Path.of(expandHome(value));
+      if (!parsed.isAbsolute()) {
+        errors.add(path + " must be absolute");
+      }
+    } catch (InvalidPathException e) {
+      errors.add(path + " is not a valid path: " + e.getInput());
+    }
+  }
+
+  private void validatePath(String path, String value, List<String> errors) {
+    try {
+      Path.of(expandHome(value));
+    } catch (InvalidPathException e) {
+      errors.add(path + " is not a valid path: " + e.getInput());
+    }
+  }
+
+  private void validateHttpsUrl(String path, String value, List<String> errors) {
+    if (isBlank(value)) {
+      errors.add(path + " is required");
+      return;
+    }
+    try {
+      URI uri = new URI(value);
+      if (!"https".equalsIgnoreCase(uri.getScheme())) {
+        errors.add(path + " must use https");
+      }
+    } catch (URISyntaxException e) {
+      errors.add(path + " is not a valid URI: " + value);
     }
   }
 
@@ -281,6 +439,15 @@ final class WorkstationProfileValidator {
     }
     Path parent = manifestPath.toAbsolutePath().getParent();
     return (parent == null ? path : parent.resolve(path)).normalize();
+  }
+
+  private String expandHome(String rawPath) {
+    if (rawPath.equals("~")) {
+      return System.getProperty("user.home");
+    }
+    return rawPath.startsWith("~/")
+        ? System.getProperty("user.home") + rawPath.substring(1)
+        : rawPath;
   }
 
   private boolean isBlank(String value) {

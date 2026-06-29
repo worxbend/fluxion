@@ -11,14 +11,19 @@ import static org.mockito.Mockito.when;
 import dev.sysboot.core.AptRepositoryModule;
 import dev.sysboot.core.BootstrapPolicy;
 import dev.sysboot.core.AssertModule;
+import dev.sysboot.core.BinaryUrl;
 import dev.sysboot.core.BootstrapConfig;
 import dev.sysboot.core.BootstrapState;
+import dev.sysboot.core.CompiledBinaryModule;
+import dev.sysboot.core.DotbotModule;
 import dev.sysboot.core.EventKind;
 import dev.sysboot.core.ExecutionEvent;
 import dev.sysboot.core.FlatpakModule;
 import dev.sysboot.core.FlatpakRemoteModule;
 import dev.sysboot.core.ManualModule;
 import dev.sysboot.core.ModuleName;
+import dev.sysboot.core.NerdFontConfig;
+import dev.sysboot.core.NerdFontModule;
 import dev.sysboot.core.OsTarget;
 import dev.sysboot.core.PackageManagerExecutor;
 import dev.sysboot.core.PackageManagerKind;
@@ -34,7 +39,10 @@ import dev.sysboot.core.ProfileName;
 import dev.sysboot.core.RestartPolicy;
 import dev.sysboot.core.RpmRepositoryModule;
 import dev.sysboot.core.RpmRepositorySourceSetup;
+import dev.sysboot.core.ScriptPath;
+import dev.sysboot.core.ShellCommandModule;
 import dev.sysboot.core.ShellRunner;
+import dev.sysboot.core.ShellScriptModule;
 import dev.sysboot.core.StateEntry;
 import dev.sysboot.core.StateRepository;
 import dev.sysboot.core.SkippedPlanEntry;
@@ -434,6 +442,74 @@ class BootstrapOrchestratorImplTest {
   }
 
   @Test
+  void dryRun_whenInstallerModulesConfigured_previewsWithoutExecuting() {
+    var noExecutionRunner = new FailingShellRunner();
+    orchestrator = orchestratorWithRunner(noExecutionRunner);
+    List<dev.sysboot.core.BootstrapModule> modules =
+        List.of(
+            new CompiledBinaryModule(
+                new ModuleName("ripgrep-download"),
+                "rg",
+                new BinaryUrl(URI.create("https://example.com/ripgrep.tar.gz")),
+                Optional.empty(),
+                Path.of("/usr/local/bin/rg"),
+                false),
+            new ShellScriptModule(
+                new ModuleName("bootstrap-script"),
+                new ScriptPath(Path.of("./scripts/bootstrap.sh")),
+                List.of("--dry"),
+                Optional.empty(),
+                true),
+            new ShellCommandModule(
+                new ModuleName("git-defaults"),
+                List.of("git config --global init.defaultBranch main"),
+                "/bin/bash",
+                Optional.empty(),
+                false,
+                Optional.empty()),
+            new NerdFontModule(
+                new ModuleName("developer-fonts"),
+                "v1.0.5",
+                "nerdfont-install",
+                new NerdFontConfig(
+                    "latest",
+                    Path.of("/home/test/.local/share/fonts/NerdFonts"),
+                    true,
+                    List.of("JetBrainsMono")),
+                Optional.empty()),
+            new DotbotModule(
+                new ModuleName("dotfiles"),
+                Path.of("/home/test/.dotfiles/install.conf.yaml"),
+                "v0.2.1",
+                "dotbot",
+                Optional.empty()));
+
+    List<ExecutionEvent> events = new ArrayList<>();
+    orchestrator.dryRun(buildConfig(modules), events::add);
+
+    List<List<String>> previews =
+        events.stream()
+            .flatMap(event -> event.result().stream())
+            .filter(StepResult.DryRun.class::isInstance)
+            .map(StepResult.DryRun.class::cast)
+            .map(StepResult.DryRun::wouldExecute)
+            .toList();
+    assertThat(previews)
+        .contains(
+            List.of("download", "https://example.com/ripgrep.tar.gz"),
+            List.of("./scripts/bootstrap.sh"),
+            List.of("/bin/bash", "-lc", "<commands>"),
+            List.of("nerdfont-install", "--config", "<config>"),
+            List.of(
+                "dotbot-go",
+                "v0.2.1",
+                "--config",
+                "/home/test/.dotfiles/install.conf.yaml"));
+    verify(shellScriptExecutor, never()).execute(any());
+    verify(binaryInstaller, never()).install(any());
+  }
+
+  @Test
   void execute_whenRequiredSourceSetupFails_doesNotInstallPackages() {
     when(rpmRepositoryInstaller.add(any()))
         .thenReturn(
@@ -827,6 +903,29 @@ class BootstrapOrchestratorImplTest {
     return orchestratorWithRunner(result, Optional.empty());
   }
 
+  private BootstrapOrchestratorImpl orchestratorWithRunner(ShellRunner runner) {
+    return new BootstrapOrchestratorImpl(
+        new PackageManagerExecutorRegistry(List.of(dnfExecutor)),
+        shellScriptExecutor,
+        binaryInstaller,
+        new AptRepositoryInstaller(runner),
+        new RpmRepositoryInstaller(runner),
+        new PacmanRepositoryInstaller(runner),
+        flatpakInstaller,
+        new FlatpakRemoteInstaller(runner),
+        new DotbotExecutor(runner),
+        new DefaultShellExecutor(runner),
+        new OhMyZshExecutor(runner),
+        new ToolchainExecutor(runner),
+        new NerdFontExecutor(runner),
+        new ShellReloadExecutor(runner),
+        alwaysRun(),
+        Optional.empty(),
+        "test",
+        runner,
+        new DefaultShellRunner());
+  }
+
   private BootstrapOrchestratorImpl orchestratorWithRunner(
       ProcessResult result, Optional<StateRepository> stateRepository) {
     var runner = new FixedShellRunner(result);
@@ -1034,6 +1133,15 @@ class BootstrapOrchestratorImplTest {
     public ProcessResult run(
         List<String> command, Map<String, String> environment, Duration timeout) {
       return result;
+    }
+  }
+
+  private static final class FailingShellRunner implements ShellRunner {
+
+    @Override
+    public ProcessResult run(
+        List<String> command, Map<String, String> environment, Duration timeout) {
+      throw new AssertionError("dry-run must not execute command: " + command);
     }
   }
 }

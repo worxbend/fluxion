@@ -631,6 +631,15 @@ Desired extensions:
   - `timeout`
   - item-level `when`
 
+Progress:
+
+- 2026-06-29: Agent-loop T008 mapped basic WorkstationProfile installer kinds onto existing typed
+  Fluxion modules. `binary-downloads` now maps to `CompiledBinaryModule`, `shell-scripts` to
+  `ShellScriptModule`, `commands` to `ShellCommandModule`, `nerd-fonts` to `NerdFontModule`, and
+  `dotfiles-apply` to `DotbotModule`, with field-path validation and non-mutating dry-run preview
+  coverage. Rich multi-item downloads, archive extraction controls, URL script downloads, command
+  idempotency, env redaction, and item-level command options remain deferred to T009/T010.
+
 Acceptance:
 
 - The provided manifest can dry-run every non-skipped installer kind.
@@ -866,7 +875,7 @@ policy, variable, host-facts, `when`, and skipped-reporting milestones recorded 
 5. `T005` - Add package manager actions (complex feature, completed).
 6. `T006` - Verify package item isolation (moderate fix, completed).
 7. `T007` - Checkpoint package behavior (validation, completed).
-8. `T008` - Map basic installer kinds (complex feature).
+8. `T008` - Map basic installer kinds (complex feature, completed).
 9. `T009` - Extend binary downloads (complex feature).
 10. `T010` - Extend scripts and commands (complex feature).
 11. `T011` - Checkpoint installer kinds (validation).

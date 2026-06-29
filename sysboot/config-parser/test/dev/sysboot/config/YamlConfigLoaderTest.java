@@ -9,12 +9,14 @@ import dev.sysboot.core.AssertModule;
 import dev.sysboot.core.BootstrapConfig;
 import dev.sysboot.core.BootstrapPolicy;
 import dev.sysboot.core.CompiledBinaryModule;
+import dev.sysboot.core.DotbotModule;
 import dev.sysboot.core.FlatpakModule;
 import dev.sysboot.core.FlatpakRemoteModule;
 import dev.sysboot.core.FlatpakRemoteSourceSetup;
 import dev.sysboot.core.HostFacts;
 import dev.sysboot.core.HostFactsProvider;
 import dev.sysboot.core.ManualModule;
+import dev.sysboot.core.NerdFontModule;
 import dev.sysboot.core.OsTarget;
 import dev.sysboot.core.PackageManagerKind;
 import dev.sysboot.core.PackageModule;
@@ -341,6 +343,82 @@ class YamlConfigLoaderTest {
     assertThat(module.actions().get(1).args()).containsExactly("ffmpeg-free", "ffmpeg");
     assertThat(module.packages()).extracting(packageName -> packageName.value())
         .containsExactly("ripgrep");
+  }
+
+  @Test
+  void load_whenWorkstationProfileInstallerPlansPresent_mapsTypedModules(@TempDir Path tmpDir)
+      throws IOException {
+    Path config =
+        writeConfig(
+            tmpDir,
+            """
+            apiVersion: initkit.io/v1alpha1
+            kind: WorkstationProfile
+            metadata:
+              name: installer-test
+            spec:
+              target:
+                os:
+                  distribution: fedora
+                  release: "44"
+              plan:
+                - name: ripgrep-download
+                  kind: binary-downloads
+                  spec:
+                    binaryName: rg
+                    url: https://example.com/ripgrep.tar.gz
+                    checksum:
+                      algorithm: sha256
+                      value: "0000000000000000000000000000000000000000000000000000000000000000"
+                    installPath: ~/.local/bin/rg
+                - name: bootstrap-script
+                  kind: shell-scripts
+                  execution:
+                    continueOnError: true
+                  spec:
+                    script: ./scripts/bootstrap.sh
+                    args: [--dry]
+                    workingDir: /tmp
+                - name: git-defaults
+                  kind: commands
+                  spec:
+                    shell: /bin/bash
+                    commands:
+                      - "git config --global init.defaultBranch main"
+                - name: developer-fonts
+                  kind: nerd-fonts
+                  spec:
+                    installerVersion: v1.0.5
+                    nerdfontBinary: nerdfont-install
+                    config:
+                      release: latest
+                      destination: ~/.local/share/fonts/NerdFonts
+                      refreshFontCache: true
+                      families: [JetBrainsMono, Hack]
+                - name: dotfiles
+                  kind: dotfiles-apply
+                  spec:
+                    config: ~/.dotfiles/install.conf.yaml
+                    installerVersion: v0.2.1
+                    dotbotBinary: dotbot
+            """);
+
+    BootstrapConfig result = loader.load(config);
+
+    List<dev.sysboot.core.BootstrapModule> modules = result.phases().getFirst().modules();
+    assertThat(modules).hasSize(5);
+    var binary = (CompiledBinaryModule) modules.get(0);
+    assertThat(binary.binaryName()).isEqualTo("rg");
+    assertThat(binary.installPath().toString()).startsWith(System.getProperty("user.home"));
+    var script = (ShellScriptModule) modules.get(1);
+    assertThat(script.args()).containsExactly("--dry");
+    assertThat(script.workingDir()).hasValue(Path.of("/tmp"));
+    var command = (ShellCommandModule) modules.get(2);
+    assertThat(command.commands()).containsExactly("git config --global init.defaultBranch main");
+    var fonts = (NerdFontModule) modules.get(3);
+    assertThat(fonts.config().families()).containsExactly("JetBrainsMono", "Hack");
+    var dotbot = (DotbotModule) modules.get(4);
+    assertThat(dotbot.config().toString()).startsWith(System.getProperty("user.home"));
   }
 
   @Test

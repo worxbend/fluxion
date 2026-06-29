@@ -7,12 +7,18 @@ import dev.sysboot.config.yaml.contract.PolicyDocument;
 import dev.sysboot.config.yaml.contract.TargetDocument;
 import dev.sysboot.config.yaml.contract.TargetOsDocument;
 import dev.sysboot.config.yaml.contract.WorkstationProfileDocument;
+import dev.sysboot.core.BinaryUrl;
 import dev.sysboot.core.BootstrapConfig;
 import dev.sysboot.core.BootstrapModule;
 import dev.sysboot.core.BootstrapPolicy;
+import dev.sysboot.core.Checksum;
+import dev.sysboot.core.CompiledBinaryModule;
+import dev.sysboot.core.DotbotModule;
 import dev.sysboot.core.FlatpakModule;
 import dev.sysboot.core.HostFactsProvider;
 import dev.sysboot.core.ModuleName;
+import dev.sysboot.core.NerdFontConfig;
+import dev.sysboot.core.NerdFontModule;
 import dev.sysboot.core.OsTarget;
 import dev.sysboot.core.PackageManagerAction;
 import dev.sysboot.core.PackageManagerKind;
@@ -22,7 +28,11 @@ import dev.sysboot.core.Phase;
 import dev.sysboot.core.PhaseName;
 import dev.sysboot.core.ProfileName;
 import dev.sysboot.core.RestartPolicy;
+import dev.sysboot.core.ScriptPath;
+import dev.sysboot.core.ShellCommandModule;
+import dev.sysboot.core.ShellScriptModule;
 import dev.sysboot.core.SkippedPlanEntry;
+import java.net.URI;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
@@ -112,6 +122,11 @@ final class WorkstationProfileConfigMapper {
       case "zypper-packages" ->
           Optional.of(packageModule(entry, PackageManagerKind.ZYPPER, policy));
       case "flatpak-packages" -> Optional.of(flatpakModule(entry, policy));
+      case "binary-downloads" -> Optional.of(compiledBinaryModule(entry, policy));
+      case "shell-scripts" -> Optional.of(shellScriptModule(entry, policy));
+      case "commands" -> Optional.of(shellCommandModule(entry, policy));
+      case "nerd-fonts" -> Optional.of(nerdFontModule(entry));
+      case "dotfiles-apply" -> Optional.of(dotbotModule(entry));
       default -> Optional.empty();
     };
   }
@@ -162,6 +177,113 @@ final class WorkstationProfileConfigMapper {
     appIds.addAll(spec.apps());
     appIds.addAll(spec.appIds());
     return List.copyOf(appIds);
+  }
+
+  private CompiledBinaryModule compiledBinaryModule(
+      PlanEntryDocument entry, BootstrapPolicy policy) {
+    PlanSpecDocument spec = requireField(entry.spec().orElse(null), planName(entry) + ".spec");
+    return new CompiledBinaryModule(
+        new ModuleName(planName(entry)),
+        requireField(spec.binaryName().orElse(null), planName(entry) + ".spec.binaryName"),
+        binaryUrl(requireField(spec.url().orElse(null), planName(entry) + ".spec.url")),
+        checksum(spec.checksum()),
+        spec.checksumUrl().map(this::binaryUrl),
+        spec.signatureUrl().map(this::binaryUrl),
+        absolutePath(
+            requireField(spec.installPath().orElse(null), planName(entry) + ".spec.installPath")),
+        continueOnError(entry, policy),
+        spec.versionCommand(),
+        spec.expectedVersion());
+  }
+
+  private ShellScriptModule shellScriptModule(
+      PlanEntryDocument entry, BootstrapPolicy policy) {
+    PlanSpecDocument spec = requireField(entry.spec().orElse(null), planName(entry) + ".spec");
+    var script =
+        new ScriptPath(
+            Path.of(requireField(spec.script().orElse(null), planName(entry) + ".spec.script")));
+    return new ShellScriptModule(
+        new ModuleName(planName(entry)),
+        script,
+        spec.args(),
+        spec.workingDir().map(Path::of),
+        continueOnError(entry, policy),
+        spec.probeCommand());
+  }
+
+  private ShellCommandModule shellCommandModule(
+      PlanEntryDocument entry, BootstrapPolicy policy) {
+    PlanSpecDocument spec = requireField(entry.spec().orElse(null), planName(entry) + ".spec");
+    return new ShellCommandModule(
+        new ModuleName(planName(entry)),
+        spec.commands(),
+        spec.shell().orElse("/bin/bash"),
+        spec.workingDir().map(Path::of),
+        continueOnError(entry, policy),
+        spec.probeCommand());
+  }
+
+  private NerdFontModule nerdFontModule(PlanEntryDocument entry) {
+    PlanSpecDocument spec = requireField(entry.spec().orElse(null), planName(entry) + ".spec");
+    return new NerdFontModule(
+        new ModuleName(planName(entry)),
+        spec.installerVersion().orElse("v1.0.5"),
+        spec.nerdfontBinary().orElse("nerdfont-install"),
+        nerdFontConfig(spec),
+        spec.probeCommand());
+  }
+
+  private DotbotModule dotbotModule(PlanEntryDocument entry) {
+    PlanSpecDocument spec = requireField(entry.spec().orElse(null), planName(entry) + ".spec");
+    return new DotbotModule(
+        new ModuleName(planName(entry)),
+        Path.of(
+            expandHome(
+                requireField(spec.dotfilesConfig().orElse(null), planName(entry) + ".spec.config"))),
+        spec.installerVersion().orElse("v0.2.1"),
+        spec.dotbotBinary().orElse("dotbot"),
+        spec.probeCommand());
+  }
+
+  private NerdFontConfig nerdFontConfig(PlanSpecDocument spec) {
+    var config = spec.nerdFontConfig().orElse(null);
+    String release = config != null ? config.release : spec.release().orElse("latest");
+    String destination = config != null ? config.destination : spec.destination().orElse(null);
+    boolean refresh =
+        config != null ? config.refreshFontCache : spec.refreshFontCache().orElse(true);
+    List<String> families = config != null ? config.families : spec.families();
+    return new NerdFontConfig(
+        release,
+        Path.of(expandHome(destination != null ? destination : "~/.local/share/fonts/NerdFonts")),
+        refresh,
+        families);
+  }
+
+  private Optional<Checksum> checksum(
+      Optional<dev.sysboot.config.yaml.contract.WorkstationChecksumDocument> dto) {
+    return dto.map(
+        value -> new Checksum(value.algorithm().orElseThrow(), value.value().orElseThrow()));
+  }
+
+  private BinaryUrl binaryUrl(String rawUrl) {
+    return new BinaryUrl(URI.create(rawUrl));
+  }
+
+  private Path absolutePath(String rawPath) {
+    Path path = Path.of(expandHome(rawPath));
+    if (!path.isAbsolute()) {
+      throw new IllegalArgumentException("Required field 'installPath' must be absolute");
+    }
+    return path;
+  }
+
+  private String expandHome(String rawPath) {
+    if (rawPath.equals("~")) {
+      return System.getProperty("user.home");
+    }
+    return rawPath.startsWith("~/")
+        ? System.getProperty("user.home") + rawPath.substring(1)
+        : rawPath;
   }
 
   private String planKind(PlanEntryDocument entry) {
