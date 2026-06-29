@@ -22,6 +22,7 @@ import dev.sysboot.core.ShellScriptModule;
 import dev.sysboot.core.ToolchainModule;
 import dev.sysboot.core.ZypperModule;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Path;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.util.HexFormat;
@@ -179,6 +180,10 @@ final class PhaseFingerprintCalculator {
     append(builder, "checksumUrl", module.checksumUrl().map(Object::toString));
     append(builder, "signatureUrl", module.signatureUrl().map(Object::toString));
     append(builder, "installPath", module.installPath().toString());
+    append(builder, "archivePath", module.archivePath());
+    append(builder, "stripComponents", Integer.toString(module.stripComponents()));
+    append(builder, "installMode", module.installMode());
+    append(builder, "symlinkPath", module.symlinkPath().map(Path::toString));
     append(builder, "continueOnError", module.continueOnError());
     append(builder, "versionCommand", module.versionCommand());
     append(builder, "expectedVersion", module.expectedVersion());

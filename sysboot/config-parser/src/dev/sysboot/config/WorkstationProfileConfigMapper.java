@@ -191,6 +191,10 @@ final class WorkstationProfileConfigMapper {
         spec.signatureUrl().map(this::binaryUrl),
         absolutePath(
             requireField(spec.installPath().orElse(null), planName(entry) + ".spec.installPath")),
+        spec.archivePath(),
+        spec.stripComponents().orElse(0),
+        Optional.of(spec.installMode().orElse("0755")),
+        spec.symlinkPath().map(this::absolutePath),
         continueOnError(entry, policy),
         spec.versionCommand(),
         spec.expectedVersion());

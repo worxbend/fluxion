@@ -4,29 +4,25 @@ import dev.sysboot.core.Checksum;
 import dev.sysboot.core.CompiledBinaryModule;
 import java.io.IOException;
 import java.net.http.HttpClient;
-import java.net.http.HttpRequest;
-import java.net.http.HttpResponse;
-import java.time.Duration;
 import java.util.Optional;
 import java.util.regex.Pattern;
 
 final class ChecksumResolver {
 
-  private static final Duration DOWNLOAD_TIMEOUT = Duration.ofMinutes(1);
   private static final Pattern SHA256_HEX = Pattern.compile("\\b([a-fA-F0-9]{64})\\b");
 
-  private final HttpClient httpClient;
+  private final BinaryDownloadClient downloadClient;
 
   ChecksumResolver() {
-    this(
-        HttpClient.newBuilder()
-            .connectTimeout(Duration.ofSeconds(30))
-            .followRedirects(HttpClient.Redirect.NORMAL)
-            .build());
+    this(new HttpBinaryDownloadClient());
   }
 
   ChecksumResolver(HttpClient httpClient) {
-    this.httpClient = httpClient;
+    this(new HttpBinaryDownloadClient(httpClient));
+  }
+
+  ChecksumResolver(BinaryDownloadClient downloadClient) {
+    this.downloadClient = downloadClient;
   }
 
   Optional<Checksum> resolve(CompiledBinaryModule module) throws IOException {
@@ -40,22 +36,7 @@ final class ChecksumResolver {
   }
 
   private String downloadChecksum(CompiledBinaryModule module) throws IOException {
-    var request =
-        HttpRequest.newBuilder(module.checksumUrl().orElseThrow().value())
-            .timeout(DOWNLOAD_TIMEOUT)
-            .GET()
-            .build();
-    try {
-      HttpResponse<String> response =
-          httpClient.send(request, HttpResponse.BodyHandlers.ofString());
-      if (response.statusCode() != 200) {
-        throw new IOException("Checksum download failed with HTTP " + response.statusCode());
-      }
-      return parseSha256(response.body());
-    } catch (InterruptedException e) {
-      Thread.currentThread().interrupt();
-      throw new IOException("Checksum download interrupted", e);
-    }
+    return parseSha256(downloadClient.downloadText(module.checksumUrl().orElseThrow().value()));
   }
 
   static String parseSha256(String body) throws IOException {

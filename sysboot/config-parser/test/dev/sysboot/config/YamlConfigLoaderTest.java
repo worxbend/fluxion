@@ -371,6 +371,10 @@ class YamlConfigLoaderTest {
                       algorithm: sha256
                       value: "0000000000000000000000000000000000000000000000000000000000000000"
                     installPath: ~/.local/bin/rg
+                    archivePath: ripgrep/bin/rg
+                    stripComponents: 1
+                    mode: "0755"
+                    symlinkPath: ~/.local/bin/ripgrep
                 - name: bootstrap-script
                   kind: shell-scripts
                   execution:
@@ -410,6 +414,11 @@ class YamlConfigLoaderTest {
     var binary = (CompiledBinaryModule) modules.get(0);
     assertThat(binary.binaryName()).isEqualTo("rg");
     assertThat(binary.installPath().toString()).startsWith(System.getProperty("user.home"));
+    assertThat(binary.archivePath()).contains("ripgrep/bin/rg");
+    assertThat(binary.stripComponents()).isEqualTo(1);
+    assertThat(binary.installMode()).contains("0755");
+    assertThat(binary.symlinkPath().orElseThrow().toString())
+        .startsWith(System.getProperty("user.home"));
     var script = (ShellScriptModule) modules.get(1);
     assertThat(script.args()).containsExactly("--dry");
     assertThat(script.workingDir()).hasValue(Path.of("/tmp"));

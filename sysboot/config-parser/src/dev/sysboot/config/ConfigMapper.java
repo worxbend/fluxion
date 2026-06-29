@@ -264,9 +264,22 @@ final class ConfigMapper {
         mapBinaryUrl(dto.checksumUrl),
         mapBinaryUrl(dto.signatureUrl),
         installPath,
+        Optional.ofNullable(dto.archivePath),
+        dto.stripComponents != null ? dto.stripComponents : 0,
+        Optional.ofNullable(binaryMode(dto)).or(() -> Optional.of("0755")),
+        mapSymlinkPath(dto),
         dto.continueOnError,
         Optional.ofNullable(dto.versionCommand),
         Optional.ofNullable(dto.expectedVersion));
+  }
+
+  private String binaryMode(CompiledBinaryModuleDocument dto) {
+    return dto.installMode != null ? dto.installMode : dto.mode;
+  }
+
+  private Optional<Path> mapSymlinkPath(CompiledBinaryModuleDocument dto) {
+    String rawPath = dto.symlinkPath != null ? dto.symlinkPath : dto.symlink;
+    return Optional.ofNullable(rawPath).map(path -> absolutePath(path, "symlinkPath"));
   }
 
   private DotbotModule mapDotbotModule(DotbotModuleDocument dto, Path configFile) {

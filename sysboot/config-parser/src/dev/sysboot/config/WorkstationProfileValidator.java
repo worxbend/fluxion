@@ -23,6 +23,7 @@ final class WorkstationProfileValidator {
   private static final String SUPPORTED_API_VERSION = "initkit.io/v1alpha1";
   private static final String SUPPORTED_KIND = "WorkstationProfile";
   private static final Pattern SHA_256_HEX = Pattern.compile("[0-9a-fA-F]{64}");
+  private static final Pattern FILE_MODE = Pattern.compile("[0-7]{3,4}");
   private static final Set<String> PACKAGE_PLAN_KINDS =
       Set.of("apt-packages", "dnf-packages", "pacman-packages", "zypper-packages");
   private static final Set<String> APP_PLAN_KINDS = Set.of("flatpak-packages");
@@ -242,6 +243,22 @@ final class WorkstationProfileValidator {
     validateAbsolutePath(path + ".spec.installPath", spec.installPath().orElse(null), errors);
     spec.checksumUrl().ifPresent(url -> validateHttpsUrl(path + ".spec.checksumUrl", url, errors));
     spec.signatureUrl().ifPresent(url -> validateHttpsUrl(path + ".spec.signatureUrl", url, errors));
+    spec.archivePath().ifPresent(archivePath -> requirePresent(path + ".spec.archivePath", archivePath, entryName, errors));
+    spec.symlinkPath().ifPresent(symlink -> validateAbsolutePath(path + ".spec.symlinkPath", symlink, errors));
+    spec.installMode().ifPresent(mode -> validateFileMode(path + ".spec.mode", mode, errors));
+    spec.stripComponents().ifPresent(value -> validateStripComponents(path, value, errors));
+  }
+
+  private void validateFileMode(String path, String mode, List<String> errors) {
+    if (!FILE_MODE.matcher(mode.strip()).matches()) {
+      errors.add(path + " must be a 3 or 4 digit octal mode");
+    }
+  }
+
+  private void validateStripComponents(String path, int value, List<String> errors) {
+    if (value < 0) {
+      errors.add(path + ".spec.stripComponents must not be negative");
+    }
   }
 
   private void validateScriptSpec(

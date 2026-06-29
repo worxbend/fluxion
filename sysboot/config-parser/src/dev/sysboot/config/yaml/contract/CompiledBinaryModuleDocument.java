@@ -22,6 +22,24 @@ public final class CompiledBinaryModuleDocument extends ModuleDocument {
   @JsonProperty("installPath")
   public String installPath;
 
+  @JsonProperty("archivePath")
+  public String archivePath;
+
+  @JsonProperty("stripComponents")
+  public Integer stripComponents;
+
+  @JsonProperty("mode")
+  public String mode;
+
+  @JsonProperty("installMode")
+  public String installMode;
+
+  @JsonProperty("symlink")
+  public String symlink;
+
+  @JsonProperty("symlinkPath")
+  public String symlinkPath;
+
   @JsonProperty("continueOnError")
   public boolean continueOnError = false;
 

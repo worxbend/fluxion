@@ -243,6 +243,10 @@ The interpreter is detected from the shebang line; falls back to `/bin/bash`. Th
   checksumUrl: https://github.com/.../checksums.txt # optional alternative to checksum
   signatureUrl: https://github.com/.../nvim.tar.gz.asc # optional detached signature
   installPath: /usr/local/bin/nvim  # required — absolute path
+  archivePath: nvim-linux64/bin/nvim # optional — selected path inside .tar.gz/.tgz
+  stripComponents: 1          # optional — path components stripped before matching archivePath
+  mode: "0755"                # optional — POSIX install mode; default: "0755"
+  symlinkPath: /usr/local/bin/vim # optional — symlink pointing to installPath
   continueOnError: false        # default: false
 ```
 
@@ -252,9 +256,14 @@ file containing either a bare SHA-256 digest or common `sha256sum` output such a
 with `gpg --batch --verify <signature> <downloaded-artifact>`.
 
 Supported artifact formats: `.tar.gz`, `.tgz`, or plain binary URLs. Other archive formats such as
-`.zip` and `.tar.xz` are rejected by validation because the installer cannot extract them yet.
+`.zip` and `.tar.xz` are rejected by validation because the installer cannot extract them yet. For
+archives, Fluxion copies `archivePath` when provided; otherwise it selects an entry whose stripped
+file name matches `binaryName`. `stripComponents` defaults to `0`.
 
-The binary is copied to `installPath`. If the parent directory is root-owned, `sudo cp` is used.
+The binary is copied to `installPath`, the configured `mode` is applied, and `symlinkPath` is
+created when present. If the parent directory is root-owned, Fluxion uses `sudo cp`, `sudo chmod`,
+or `sudo ln -sfn` for the privileged write. Dry-run previews the download URL, archive extraction
+selection, destination path, mode, and symlink without downloading or writing files.
 When `checksum`, `checksumUrl`, and `signatureUrl` are all omitted, Fluxion logs an explicit warning
 and installs from the HTTPS source without integrity verification. Use SHA-256 checksums or detached
 signatures for downloaded binaries whenever possible. `fluxion validate --strict` treats missing

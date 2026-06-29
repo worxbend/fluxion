@@ -639,6 +639,11 @@ Progress:
   `dotfiles-apply` to `DotbotModule`, with field-path validation and non-mutating dry-run preview
   coverage. Rich multi-item downloads, archive extraction controls, URL script downloads, command
   idempotency, env redaction, and item-level command options remain deferred to T009/T010.
+- 2026-06-29: Agent-loop T009 extended binary downloads for direct binaries and `.tar.gz`/`.tgz`
+  extraction with selected archive paths, `stripComponents`, checksum-before-install validation,
+  install modes, optional symlinks, fakeable download/filesystem boundaries, richer dry-run
+  previews, parser coverage, executor coverage, and schema docs. Multi-item binary entries remain
+  deferred; URL script downloads and structured command options remain T010 work.
 
 Acceptance:
 
@@ -876,7 +881,7 @@ policy, variable, host-facts, `when`, and skipped-reporting milestones recorded 
 6. `T006` - Verify package item isolation (moderate fix, completed).
 7. `T007` - Checkpoint package behavior (validation, completed).
 8. `T008` - Map basic installer kinds (complex feature, completed).
-9. `T009` - Extend binary downloads (complex feature).
+9. `T009` - Extend binary downloads (complex feature, completed).
 10. `T010` - Extend scripts and commands (complex feature).
 11. `T011` - Checkpoint installer kinds (validation).
 12. `T012` - Add interrupt checkpoint model (complex feature).

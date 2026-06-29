@@ -8,19 +8,16 @@ import dev.sysboot.core.StepResult;
 import java.io.BufferedInputStream;
 import java.io.IOException;
 import java.io.InputStream;
-import java.net.URI;
-import java.net.http.HttpClient;
-import java.net.http.HttpRequest;
-import java.net.http.HttpResponse;
-import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.StandardCopyOption;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.time.Duration;
 import java.time.Instant;
+import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.HexFormat;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
 import org.apache.commons.compress.archivers.ArchiveEntry;
@@ -33,56 +30,98 @@ import org.slf4j.LoggerFactory;
 public final class CompiledBinaryInstaller {
 
   private static final Logger log = LoggerFactory.getLogger(CompiledBinaryInstaller.class);
-  private static final Duration DOWNLOAD_TIMEOUT = Duration.ofMinutes(10);
 
   private final ShellRunner shellRunner;
-  private final HttpClient httpClient;
+  private final BinaryDownloadClient downloadClient;
+  private final BinaryFileSystem fileSystem;
   private final ChecksumResolver checksumResolver;
   private final DetachedSignatureVerifier signatureVerifier;
 
   public CompiledBinaryInstaller(ShellRunner shellRunner) {
-    this(shellRunner, new ChecksumResolver());
+    this(shellRunner, new HttpBinaryDownloadClient(), new DefaultBinaryFileSystem());
   }
 
   CompiledBinaryInstaller(ShellRunner shellRunner, ChecksumResolver checksumResolver) {
+    this(
+        shellRunner,
+        new HttpBinaryDownloadClient(),
+        new DefaultBinaryFileSystem(),
+        checksumResolver);
+  }
+
+  CompiledBinaryInstaller(
+      ShellRunner shellRunner, BinaryDownloadClient downloadClient, BinaryFileSystem fileSystem) {
+    this(shellRunner, downloadClient, fileSystem, new ChecksumResolver(downloadClient));
+  }
+
+  private CompiledBinaryInstaller(
+      ShellRunner shellRunner,
+      BinaryDownloadClient downloadClient,
+      BinaryFileSystem fileSystem,
+      ChecksumResolver checksumResolver) {
     this.shellRunner = shellRunner;
+    this.downloadClient = downloadClient;
+    this.fileSystem = fileSystem;
     this.checksumResolver = checksumResolver;
     this.signatureVerifier = new DetachedSignatureVerifier(shellRunner);
-    this.httpClient =
-        HttpClient.newBuilder()
-            .connectTimeout(Duration.ofSeconds(30))
-            .followRedirects(HttpClient.Redirect.NORMAL)
-            .build();
   }
 
   public StepResult install(CompiledBinaryModule module) {
     Instant start = Instant.now();
     Path tempFile = null;
+    Path extractedFile = null;
     Optional<Path> signatureFile = Optional.empty();
     try {
-      tempFile = Files.createTempFile("sysboot-", "-" + module.binaryName());
+      tempFile = fileSystem.createTempFile("sysboot-", "-" + module.binaryName());
       Path downloadedFile = tempFile;
-      download(module.url().value(), downloadedFile);
+      downloadClient.downloadToFile(module.url().value(), downloadedFile);
       signatureFile = verifyDetachedSignature(module, downloadedFile);
-      Optional<Checksum> checksum = checksumResolver.resolve(module);
-      if (checksum.isPresent()) {
-        verifyChecksum(downloadedFile, checksum.orElseThrow());
-      } else if (module.signatureUrl().isEmpty()) {
-        log.warn("Installing downloaded binary '{}' without checksum verification", module.name());
-      }
-      extractOrCopy(downloadedFile, module);
-      return new StepResult.Success(
-          module.binaryName(),
-          Duration.between(start, Instant.now()),
-          detectedVersion(module),
-          checksum.map(Checksum::value));
+      Optional<Checksum> checksum = verifyResolvedChecksum(module, downloadedFile);
+      extractedFile = extractArchive(downloadedFile, module).orElse(null);
+      installBinary(extractedFile != null ? extractedFile : downloadedFile, module);
+      return success(module, start, checksum);
     } catch (IOException | ShellExecutionException e) {
       return new StepResult.Failure(
           module.binaryName(), e.getMessage(), 1, Duration.between(start, Instant.now()));
     } finally {
       deleteTempFile(tempFile);
+      deleteTempFile(extractedFile);
       signatureFile.ifPresent(this::deleteTempFile);
     }
+  }
+
+  public List<String> dryRunCommand(CompiledBinaryModule module) {
+    var command = new ArrayList<String>();
+    command.addAll(
+        List.of("download", module.url().toString(), "->", module.installPath().toString()));
+    appendArchivePreview(module, command);
+    module.installMode().ifPresent(mode -> command.addAll(List.of("mode", mode)));
+    module.symlinkPath()
+        .ifPresent(
+            link ->
+                command.addAll(
+                    List.of("symlink", link.toString(), "->", module.installPath().toString())));
+    return List.copyOf(command);
+  }
+
+  private Optional<Checksum> verifyResolvedChecksum(CompiledBinaryModule module, Path downloadedFile)
+      throws IOException {
+    Optional<Checksum> checksum = checksumResolver.resolve(module);
+    if (checksum.isPresent()) {
+      verifyChecksum(downloadedFile, checksum.orElseThrow());
+    } else if (module.signatureUrl().isEmpty()) {
+      log.warn("Installing downloaded binary '{}' without checksum verification", module.name());
+    }
+    return checksum;
+  }
+
+  private StepResult.Success success(
+      CompiledBinaryModule module, Instant start, Optional<Checksum> checksum) {
+    return new StepResult.Success(
+        module.binaryName(),
+        Duration.between(start, Instant.now()),
+        detectedVersion(module),
+        checksum.map(Checksum::value));
   }
 
   private Optional<Path> verifyDetachedSignature(CompiledBinaryModule module, Path downloadedFile)
@@ -90,31 +129,16 @@ public final class CompiledBinaryInstaller {
     if (module.signatureUrl().isEmpty()) {
       return Optional.empty();
     }
-    Path signatureFile = Files.createTempFile("sysboot-", ".sig");
-    download(module.signatureUrl().orElseThrow().value(), signatureFile);
+    Path signatureFile = fileSystem.createTempFile("sysboot-", ".sig");
+    downloadClient.downloadToFile(module.signatureUrl().orElseThrow().value(), signatureFile);
     signatureVerifier.verify(signatureFile, downloadedFile);
     return Optional.of(signatureFile);
-  }
-
-  private void download(URI url, Path destination) throws IOException {
-    log.debug("Downloading {}", url);
-    HttpRequest request = HttpRequest.newBuilder(url).timeout(DOWNLOAD_TIMEOUT).GET().build();
-    try {
-      HttpResponse<Path> response =
-          httpClient.send(request, HttpResponse.BodyHandlers.ofFile(destination));
-      if (response.statusCode() != 200) {
-        throw new IOException("Download failed with HTTP " + response.statusCode() + " for " + url);
-      }
-    } catch (InterruptedException e) {
-      Thread.currentThread().interrupt();
-      throw new IOException("Download interrupted", e);
-    }
   }
 
   private void verifyChecksum(Path file, Checksum checksum) {
     try {
       MessageDigest digest = MessageDigest.getInstance(checksum.algorithm());
-      byte[] fileBytes = Files.readAllBytes(file);
+      byte[] fileBytes = fileSystem.readAllBytes(file);
       byte[] hash = digest.digest(fileBytes);
       String actual = HexFormat.of().formatHex(hash);
       if (!actual.equals(checksum.value())) {
@@ -128,13 +152,17 @@ public final class CompiledBinaryInstaller {
     }
   }
 
-  private void extractOrCopy(Path sourceFile, CompiledBinaryModule module) throws IOException {
-    String urlString = module.url().value().toString();
-    if (urlString.endsWith(".tar.gz") || urlString.endsWith(".tgz")) {
-      extractTarGz(sourceFile, module.installPath(), module.binaryName());
-    } else {
-      copyBinary(sourceFile, module.installPath());
+  private void appendArchivePreview(CompiledBinaryModule module, List<String> command) {
+    if (!isTarGz(module)) {
+      command.add("direct-binary");
+      return;
     }
+    command.addAll(
+        List.of(
+            "extract",
+            module.archivePath().orElse(module.binaryName()),
+            "strip-components",
+            Integer.toString(module.stripComponents())));
   }
 
   private Optional<String> detectedVersion(CompiledBinaryModule module) {
@@ -147,50 +175,108 @@ public final class CompiledBinaryInstaller {
     return Optional.empty();
   }
 
-  private void extractTarGz(Path archive, Path installPath, String binaryName) throws IOException {
-    try (InputStream fileIn = Files.newInputStream(archive);
+  private Optional<Path> extractArchive(Path downloadedFile, CompiledBinaryModule module)
+      throws IOException {
+    if (!isTarGz(module)) {
+      return Optional.empty();
+    }
+    return Optional.of(extractTarGz(downloadedFile, module));
+  }
+
+  private Path extractTarGz(Path archive, CompiledBinaryModule module) throws IOException {
+    try (InputStream fileIn = fileSystem.openInput(archive);
         BufferedInputStream buffered = new BufferedInputStream(fileIn);
         GzipCompressorInputStream gzip = new GzipCompressorInputStream(buffered);
         ArchiveInputStream<? extends ArchiveEntry> tar = new TarArchiveInputStream(gzip)) {
 
       ArchiveEntry entry;
       while ((entry = tar.getNextEntry()) != null) {
-        if (!entry.isDirectory() && entry.getName().endsWith(binaryName)) {
-          copyBinaryStream(tar, installPath);
-          return;
+        if (!entry.isDirectory() && archiveEntryMatches(entry.getName(), module)) {
+          Path extracted =
+              fileSystem.createTempFile("sysboot-extracted-", "-" + module.binaryName());
+          fileSystem.copy(tar, extracted);
+          return extracted;
         }
       }
     }
-    throw new IOException("Binary '" + binaryName + "' not found in archive");
+    throw new IOException("Binary '" + module.binaryName() + "' not found in archive");
+  }
+
+  private boolean archiveEntryMatches(String entryName, CompiledBinaryModule module) {
+    String stripped = stripComponents(entryName, module.stripComponents());
+    if (stripped.isBlank()) {
+      return false;
+    }
+    if (module.archivePath().isPresent()) {
+      String selected = module.archivePath().orElseThrow();
+      return entryName.equals(selected) || stripped.equals(selected);
+    }
+    return Path.of(stripped).getFileName().toString().equals(module.binaryName());
+  }
+
+  private String stripComponents(String entryName, int count) {
+    String[] components = entryName.split("/");
+    if (components.length <= count) {
+      return "";
+    }
+    return String.join("/", Arrays.copyOfRange(components, count, components.length));
+  }
+
+  private void installBinary(Path source, CompiledBinaryModule module) throws IOException {
+    copyBinary(source, module.installPath());
+    applyMode(module.installPath(), module.installMode());
+    if (module.symlinkPath().isPresent()) {
+      createSymlink(module.symlinkPath().orElseThrow(), module.installPath());
+    }
   }
 
   private void copyBinary(Path source, Path destination) throws IOException {
-    if (destination.getParent() != null && isRootOwned(destination.getParent())) {
-      shellRunner.run(
-          List.of("sudo", "cp", source.toString(), destination.toString()),
-          Map.of(),
-          Duration.ofMinutes(1));
+    if (requiresSudo(destination)) {
+      runSudo(List.of("sudo", "cp", source.toString(), destination.toString()));
     } else {
-      Files.copy(source, destination, StandardCopyOption.REPLACE_EXISTING);
+      fileSystem.copy(source, destination);
     }
   }
 
-  private void copyBinaryStream(InputStream input, Path destination) throws IOException {
-    Files.copy(input, destination, StandardCopyOption.REPLACE_EXISTING);
+  private void applyMode(Path destination, Optional<String> mode) throws IOException {
+    if (mode.isEmpty()) {
+      return;
+    }
+    if (requiresSudo(destination)) {
+      runSudo(List.of("sudo", "chmod", mode.orElseThrow(), destination.toString()));
+    } else {
+      fileSystem.setMode(destination, mode.orElseThrow());
+    }
   }
 
-  private boolean isRootOwned(Path path) {
-    try {
-      return "root".equals(Files.getOwner(path).getName());
-    } catch (IOException e) {
-      return false;
+  private void createSymlink(Path link, Path target) throws IOException {
+    if (requiresSudo(link)) {
+      runSudo(List.of("sudo", "ln", "-sfn", target.toString(), link.toString()));
+    } else {
+      fileSystem.createSymlink(link, target);
     }
+  }
+
+  private boolean requiresSudo(Path path) {
+    return path.getParent() != null && fileSystem.isRootOwned(path.getParent());
+  }
+
+  private void runSudo(List<String> command) throws IOException {
+    var result = shellRunner.run(command, Map.of(), Duration.ofMinutes(1));
+    if (result.exitCode() != 0) {
+      throw new IOException("Command failed: " + String.join(" ", command));
+    }
+  }
+
+  private boolean isTarGz(CompiledBinaryModule module) {
+    String urlString = module.url().value().getPath().toLowerCase(Locale.ROOT);
+    return urlString.endsWith(".tar.gz") || urlString.endsWith(".tgz");
   }
 
   private void deleteTempFile(Path tempFile) {
     if (tempFile != null) {
       try {
-        Files.deleteIfExists(tempFile);
+        fileSystem.deleteIfExists(tempFile);
       } catch (IOException e) {
         log.warn("Failed to delete temp file: {}", tempFile);
       }

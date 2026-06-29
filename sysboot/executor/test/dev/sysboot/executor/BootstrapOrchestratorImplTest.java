@@ -14,6 +14,7 @@ import dev.sysboot.core.AssertModule;
 import dev.sysboot.core.BinaryUrl;
 import dev.sysboot.core.BootstrapConfig;
 import dev.sysboot.core.BootstrapState;
+import dev.sysboot.core.Checksum;
 import dev.sysboot.core.CompiledBinaryModule;
 import dev.sysboot.core.DotbotModule;
 import dev.sysboot.core.EventKind;
@@ -47,10 +48,14 @@ import dev.sysboot.core.StateEntry;
 import dev.sysboot.core.StateRepository;
 import dev.sysboot.core.SkippedPlanEntry;
 import dev.sysboot.core.StepResult;
+import java.io.IOException;
 import java.net.URI;
+import java.nio.file.Files;
 import java.nio.file.Path;
+import java.security.MessageDigest;
 import java.time.Duration;
 import java.time.Instant;
+import java.util.HexFormat;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -58,6 +63,7 @@ import java.util.Optional;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.junit.jupiter.api.io.TempDir;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
@@ -96,6 +102,12 @@ class BootstrapOrchestratorImplTest {
     lenient()
         .when(dnfExecutor.installCommand(any()))
         .thenAnswer(invocation -> dnfInstallCommand(invocation.getArgument(0)));
+    lenient()
+        .when(binaryInstaller.dryRunCommand(any()))
+        .thenAnswer(
+            invocation ->
+                new CompiledBinaryInstaller(new DefaultShellRunner())
+                    .dryRunCommand(invocation.getArgument(0)));
 
     orchestrator = orchestrator(alwaysRun(), Optional.empty());
   }
@@ -452,8 +464,16 @@ class BootstrapOrchestratorImplTest {
                 "rg",
                 new BinaryUrl(URI.create("https://example.com/ripgrep.tar.gz")),
                 Optional.empty(),
+                Optional.empty(),
+                Optional.empty(),
                 Path.of("/usr/local/bin/rg"),
-                false),
+                Optional.of("ripgrep/bin/rg"),
+                1,
+                Optional.of("0755"),
+                Optional.of(Path.of("/usr/local/bin/ripgrep")),
+                false,
+                Optional.empty(),
+                Optional.empty()),
             new ShellScriptModule(
                 new ModuleName("bootstrap-script"),
                 new ScriptPath(Path.of("./scripts/bootstrap.sh")),
@@ -496,7 +516,21 @@ class BootstrapOrchestratorImplTest {
             .toList();
     assertThat(previews)
         .contains(
-            List.of("download", "https://example.com/ripgrep.tar.gz"),
+            List.of(
+                "download",
+                "https://example.com/ripgrep.tar.gz",
+                "->",
+                "/usr/local/bin/rg",
+                "extract",
+                "ripgrep/bin/rg",
+                "strip-components",
+                "1",
+                "mode",
+                "0755",
+                "symlink",
+                "/usr/local/bin/ripgrep",
+                "->",
+                "/usr/local/bin/rg"),
             List.of("./scripts/bootstrap.sh"),
             List.of("/bin/bash", "-lc", "<commands>"),
             List.of("nerdfont-install", "--config", "<config>"),
@@ -507,6 +541,34 @@ class BootstrapOrchestratorImplTest {
                 "/home/test/.dotfiles/install.conf.yaml"));
     verify(shellScriptExecutor, never()).execute(any());
     verify(binaryInstaller, never()).install(any());
+  }
+
+  @Test
+  void execute_whenBinaryChecksumMismatches_doesNotRecordInstallState(@TempDir Path tempDir)
+      throws Exception {
+    var stateRepository = new InMemoryStateRepository(BootstrapState.empty("test", "1.0.0"));
+    binaryInstaller =
+        new CompiledBinaryInstaller(
+            new FixedShellRunner(result(0)),
+            new FakeDownloadClient(Map.of(binaryUri(), "bad".getBytes())),
+            new DefaultBinaryFileSystem());
+    orchestrator = orchestrator(alwaysRun(), Optional.of(stateRepository));
+    var module =
+        new CompiledBinaryModule(
+            new ModuleName("ripgrep-download"),
+            "rg",
+            new BinaryUrl(binaryUri()),
+            Optional.of(new Checksum("sha256", sha256("good".getBytes()))),
+            tempDir.resolve("rg"),
+            false);
+
+    List<ExecutionEvent> events = new ArrayList<>();
+    orchestrator.execute(buildConfig(List.of(module)), events::add);
+
+    assertThat(events)
+        .flatExtracting(event -> event.result().stream().toList())
+        .anySatisfy(result -> assertThat(result).isInstanceOf(StepResult.Failure.class));
+    assertThat(stateRepository.state().entries()).isEmpty();
   }
 
   @Test
@@ -1075,6 +1137,27 @@ class BootstrapOrchestratorImplTest {
         dependsOn,
         new RestartPolicy.None(),
         continueOnModuleError);
+  }
+
+  private static URI binaryUri() {
+    return URI.create("https://example.test/rg");
+  }
+
+  private static String sha256(byte[] body) throws Exception {
+    byte[] digest = MessageDigest.getInstance("SHA-256").digest(body);
+    return HexFormat.of().formatHex(digest);
+  }
+
+  private record FakeDownloadClient(Map<URI, byte[]> downloads) implements BinaryDownloadClient {
+    @Override
+    public void downloadToFile(URI url, Path destination) throws IOException {
+      Files.write(destination, downloads.get(url));
+    }
+
+    @Override
+    public String downloadText(URI url) {
+      throw new UnsupportedOperationException("not used");
+    }
   }
 
   private static final class InMemoryStateRepository implements StateRepository {

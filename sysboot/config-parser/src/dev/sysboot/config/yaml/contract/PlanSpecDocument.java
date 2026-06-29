@@ -47,6 +47,24 @@ public final class PlanSpecDocument {
   @JsonProperty("installPath")
   private String installPath;
 
+  @JsonProperty("archivePath")
+  private String archivePath;
+
+  @JsonProperty("stripComponents")
+  private Integer stripComponents;
+
+  @JsonProperty("mode")
+  private String mode;
+
+  @JsonProperty("installMode")
+  private String installMode;
+
+  @JsonProperty("symlink")
+  private String symlink;
+
+  @JsonProperty("symlinkPath")
+  private String symlinkPath;
+
   @JsonProperty("destination")
   private String destination;
 
@@ -148,6 +166,22 @@ public final class PlanSpecDocument {
 
   public Optional<String> installPath() {
     return DocumentDefaults.optional(installPath);
+  }
+
+  public Optional<String> archivePath() {
+    return DocumentDefaults.optional(archivePath);
+  }
+
+  public Optional<Integer> stripComponents() {
+    return DocumentDefaults.optional(stripComponents);
+  }
+
+  public Optional<String> installMode() {
+    return DocumentDefaults.optional(installMode).or(() -> DocumentDefaults.optional(mode));
+  }
+
+  public Optional<String> symlinkPath() {
+    return DocumentDefaults.optional(symlinkPath).or(() -> DocumentDefaults.optional(symlink));
   }
 
   public Optional<String> destination() {

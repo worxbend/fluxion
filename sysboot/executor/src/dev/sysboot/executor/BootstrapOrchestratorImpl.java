@@ -295,7 +295,7 @@ public final class BootstrapOrchestratorImpl implements BootstrapOrchestrator {
       case FlatpakModule fm -> executeFlatpakModule(fm, listener);
       case FlatpakRemoteModule frm -> executeFlatpakRemoteModule(frm, listener);
       case ShellScriptModule sm -> executeShellScript(sm, listener, phaseRunner);
-      case CompiledBinaryModule bm -> executeBinaryInstall(bm, listener, phaseRunner);
+      case CompiledBinaryModule bm -> executeBinaryInstall(bm, listener);
       case DotbotModule dm ->
           executeItem(
               dm.name(),
@@ -481,8 +481,7 @@ public final class BootstrapOrchestratorImpl implements BootstrapOrchestrator {
     return result instanceof StepResult.Failure && !module.continueOnError();
   }
 
-  private boolean executeBinaryInstall(
-      CompiledBinaryModule module, ExecutionEventListener listener, ShellRunner phaseRunner) {
+  private boolean executeBinaryInstall(CompiledBinaryModule module, ExecutionEventListener listener) {
     String installKey = module.installPath().toString();
     listener.onEvent(ExecutionEvent.itemStarted(module.name(), module.binaryName()));
     SkipDecision decision = skipEvaluator.evaluate(installKey, ItemType.COMPILED_BINARY);
@@ -494,7 +493,7 @@ public final class BootstrapOrchestratorImpl implements BootstrapOrchestrator {
               new StepResult.Skipped(module.binaryName(), skip.reason().toString())));
       return false;
     }
-    StepResult result = new CompiledBinaryInstaller(phaseRunner).install(module);
+    StepResult result = binaryInstaller.install(module);
     listener.onEvent(ExecutionEvent.itemCompleted(module.name(), module.binaryName(), result));
     recordBinarySuccess(module, installKey, result);
     return result instanceof StepResult.Failure && !module.continueOnError();
@@ -559,8 +558,7 @@ public final class BootstrapOrchestratorImpl implements BootstrapOrchestrator {
       case ShellScriptModule sm ->
           emitDryRun(sm.name(), sm.script().toString(), List.of(sm.script().toString()), listener);
       case CompiledBinaryModule bm ->
-          emitDryRun(
-              bm.name(), bm.binaryName(), List.of("download", bm.url().toString()), listener);
+          emitDryRun(bm.name(), bm.binaryName(), binaryInstaller.dryRunCommand(bm), listener);
       case DotbotModule dm ->
           emitDryRun(
               dm.name(),
