@@ -76,8 +76,7 @@ final class PhaseFingerprintCalculator {
       }
       case ShellScriptModule sm -> {
         append(builder, "type", "shell-script");
-        append(builder, "script", sm.script().toString());
-        sm.args().forEach(arg -> append(builder, "arg", arg));
+        sm.items().forEach(item -> appendShellScriptItem(builder, item));
         append(builder, "workingDir", sm.workingDir().map(Object::toString));
         append(builder, "continueOnError", sm.continueOnError());
         append(builder, "probe", sm.probeCommand());
@@ -109,7 +108,7 @@ final class PhaseFingerprintCalculator {
       }
       case ShellCommandModule scm -> {
         append(builder, "type", "shell-command");
-        scm.commands().forEach(command -> append(builder, "command", command));
+        scm.items().forEach(item -> appendShellCommandItem(builder, item));
         append(builder, "shell", scm.shell());
         append(builder, "workingDir", scm.workingDir().map(Object::toString));
         append(builder, "continueOnError", scm.continueOnError());
@@ -142,6 +141,36 @@ final class PhaseFingerprintCalculator {
       StringBuilder builder, dev.sysboot.core.PackageManagerAction action) {
     append(builder, "action", action.action());
     action.args().forEach(arg -> append(builder, "actionArg", arg));
+  }
+
+  private void appendShellScriptItem(
+      StringBuilder builder, dev.sysboot.core.ShellScriptItem item) {
+    append(builder, "scriptItem", item.name());
+    append(builder, "script", item.script().map(Object::toString));
+    append(builder, "url", item.url().map(Object::toString));
+    item.args().forEach(arg -> append(builder, "arg", arg));
+    append(builder, "cwd", item.workingDir().map(Object::toString));
+    append(builder, "sudo", item.sudo());
+    item.allowedExitCodes().forEach(code -> append(builder, "allowedExit", code.toString()));
+    append(builder, "creates", item.creates().map(Object::toString));
+    append(builder, "unless", item.unless());
+    append(builder, "confirm", item.confirm());
+    append(builder, "timeout", item.timeout().toString());
+  }
+
+  private void appendShellCommandItem(
+      StringBuilder builder, dev.sysboot.core.ShellCommandItem item) {
+    append(builder, "commandItem", item.name());
+    append(builder, "shellCommand", item.shellCommand());
+    item.argv().ifPresent(argv -> argv.forEach(arg -> append(builder, "argv", arg)));
+    append(builder, "shell", item.shell());
+    append(builder, "cwd", item.workingDir().map(Object::toString));
+    append(builder, "sudo", item.sudo());
+    item.allowedExitCodes().forEach(code -> append(builder, "allowedExit", code.toString()));
+    append(builder, "creates", item.creates().map(Object::toString));
+    append(builder, "unless", item.unless());
+    append(builder, "confirm", item.confirm());
+    append(builder, "timeout", item.timeout().toString());
   }
 
   private void appendAptRepository(StringBuilder builder, AptRepositoryModule module) {

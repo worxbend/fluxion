@@ -129,13 +129,13 @@ final class BootstrapConfigSelectionFilter {
 
   private Optional<BootstrapModule> filterShellCommandModule(
       ShellCommandModule module, Set<String> entries) {
-    var commands = module.commands().stream().filter(entries::contains).toList();
-    return commands.isEmpty()
+    var items = module.items().stream().filter(item -> entries.contains(item.name())).toList();
+    return items.isEmpty()
         ? Optional.empty()
         : Optional.of(
             new ShellCommandModule(
                 module.name(),
-                commands,
+                items,
                 module.shell(),
                 module.workingDir(),
                 module.continueOnError(),

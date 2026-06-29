@@ -482,7 +482,11 @@ class BootstrapOrchestratorImplTest {
                 true),
             new ShellCommandModule(
                 new ModuleName("git-defaults"),
-                List.of("git config --global init.defaultBranch main"),
+                List.of(
+                    dev.sysboot.core.ShellCommandItem.shell(
+                        "git config --global init.defaultBranch main",
+                        "/bin/bash",
+                        Optional.empty())),
                 "/bin/bash",
                 Optional.empty(),
                 false,
@@ -531,8 +535,8 @@ class BootstrapOrchestratorImplTest {
                 "/usr/local/bin/ripgrep",
                 "->",
                 "/usr/local/bin/rg"),
-            List.of("./scripts/bootstrap.sh"),
-            List.of("/bin/bash", "-lc", "<commands>"),
+            List.of("<interpreter>", "./scripts/bootstrap.sh", "--dry"),
+            List.of("/bin/bash", "-lc", "git config --global init.defaultBranch main"),
             List.of("nerdfont-install", "--config", "<config>"),
             List.of(
                 "dotbot-go",

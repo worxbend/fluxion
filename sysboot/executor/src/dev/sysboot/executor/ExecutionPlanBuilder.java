@@ -105,6 +105,18 @@ public final class ExecutionPlanBuilder {
     if (module instanceof FlatpakRemoteModule flatpakRemoteModule) {
       return Optional.of(flatpakRemoteCommand(flatpakRemoteModule));
     }
+    if (module instanceof ShellScriptModule shellScriptModule) {
+      return shellScriptModule.items().stream()
+          .filter(script -> script.name().equals(item.key()))
+          .findFirst()
+          .map(script -> new ShellScriptExecutor(new DefaultShellRunner()).commandPreview(script));
+    }
+    if (module instanceof ShellCommandModule shellCommandModule) {
+      return shellCommandModule.items().stream()
+          .filter(command -> command.name().equals(item.key()))
+          .findFirst()
+          .map(command -> new ShellCommandExecutor(new DefaultShellRunner()).commandPreview(command));
+    }
     if (module instanceof AptRepositoryModule aptRepositoryModule) {
       return Optional.of(
           new AptRepositoryInstaller(new DefaultShellRunner()).addCommand(aptRepositoryModule));
@@ -174,7 +186,13 @@ public final class ExecutionPlanBuilder {
       case FlatpakRemoteModule frm ->
           List.of(new ModuleItem(frm.name(), frm.remote(), ItemType.FLATPAK_REMOTE));
       case ShellScriptModule sm ->
-          List.of(new ModuleItem(sm.name(), sm.script().toString(), ItemType.SHELL_SCRIPT));
+          sm.items().stream()
+              .map(
+                  item ->
+                      new ModuleItem(
+                          sm.name(), item.name(), item.key(), ItemType.SHELL_SCRIPT,
+                          Optional.empty()))
+              .toList();
       case CompiledBinaryModule bm ->
           List.of(new ModuleItem(bm.name(), bm.installPath().toString(), ItemType.COMPILED_BINARY));
       case DotbotModule dm ->
@@ -190,7 +208,9 @@ public final class ExecutionPlanBuilder {
       case ShellReloadModule srm ->
           List.of(new ModuleItem(srm.name(), srm.shell().binaryName(), ItemType.SHELL_RELOAD));
       case ShellCommandModule sc ->
-          List.of(new ModuleItem(sc.name(), sc.name().value(), ItemType.SHELL_COMMAND));
+          sc.items().stream()
+              .map(item -> new ModuleItem(sc.name(), item.name(), ItemType.SHELL_COMMAND))
+              .toList();
       case AssertModule am ->
           List.of(new ModuleItem(am.name(), am.name().value(), ItemType.ASSERT));
       case ManualModule mm ->

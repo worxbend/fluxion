@@ -12,6 +12,7 @@ import dev.sysboot.core.Phase;
 import dev.sysboot.core.PhaseName;
 import dev.sysboot.core.ProfileName;
 import dev.sysboot.core.RestartPolicy;
+import dev.sysboot.core.ShellCommandItem;
 import dev.sysboot.core.ShellCommandModule;
 import java.net.URI;
 import java.nio.file.Path;
@@ -77,7 +78,7 @@ class ProfileLinterTest {
   private static ShellCommandModule shellModule(String command) {
     return new ShellCommandModule(
         new ModuleName("repository-setup"),
-        List.of(command),
+        List.of(ShellCommandItem.shell(command, "/bin/sh", Optional.empty())),
         "/bin/sh",
         Optional.empty(),
         false,

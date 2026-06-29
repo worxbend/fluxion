@@ -1,5 +1,6 @@
 package dev.sysboot.config;
 
+import com.fasterxml.jackson.databind.JsonNode;
 import dev.sysboot.config.yaml.contract.PlanEntryDocument;
 import dev.sysboot.config.yaml.contract.PackageActionDocument;
 import dev.sysboot.config.yaml.contract.PlanSpecDocument;
@@ -15,6 +16,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.regex.Pattern;
 
@@ -263,15 +265,169 @@ final class WorkstationProfileValidator {
 
   private void validateScriptSpec(
       String path, String entryName, PlanSpecDocument spec, List<String> errors) {
-    requirePresent(path + ".spec.script", spec.script().orElse(null), entryName, errors);
-    validatePresentItems(path + ".spec.args", spec.args(), errors);
+    if (spec.scriptItems().isEmpty()) {
+      validateScriptItem(path + ".spec", entryName, null, spec, errors);
+    } else {
+      for (int index = 0; index < spec.scriptItems().size(); index++) {
+        validateScriptItem(
+            path + ".spec.scripts[" + index + "]",
+            entryName,
+            spec.scriptItems().get(index),
+            spec,
+            errors);
+      }
+    }
+    spec.url().ifPresent(url -> validateHttpsUrl(path + ".spec.url", url, errors));
     spec.workingDir().ifPresent(dir -> validatePath(path + ".spec.workingDir", dir, errors));
+    validateCommonStructuredFields(path + ".spec", spec, errors);
   }
 
   private void validateCommandSpec(String path, PlanSpecDocument spec, List<String> errors) {
-    validateNonEmptyItems(path + ".spec.commands", spec.commands(), errors);
+    List<JsonNode> commands = spec.commandItems();
+    if (commands.isEmpty()) {
+      errors.add(path + ".spec.commands must contain at least one item");
+      return;
+    }
+    for (int index = 0; index < commands.size(); index++) {
+      validateCommandItem(path + ".spec.commands[" + index + "]", commands.get(index), errors);
+    }
     spec.shell().ifPresent(shell -> requirePresent(path + ".spec.shell", shell, "commands", errors));
     spec.workingDir().ifPresent(dir -> validatePath(path + ".spec.workingDir", dir, errors));
+    validateCommonStructuredFields(path + ".spec", spec, errors);
+  }
+
+  private void validateScriptItem(
+      String path, String entryName, JsonNode node, PlanSpecDocument spec, List<String> errors) {
+    if (node == null || node.isNull()) {
+      if (spec.script().isEmpty() && spec.url().isEmpty()) {
+        errors.add(path + ".script or " + path + ".url for plan entry '" + entryName + "' is required");
+      }
+      validatePresentItems(path + ".args", spec.args(), errors);
+      return;
+    }
+    if (node.isTextual()) {
+      requirePresent(path, node.asText(), entryName, errors);
+      return;
+    }
+    if (!node.isObject()) {
+      errors.add(path + " must be a script path string or object");
+      return;
+    }
+    boolean hasScript = text(node, "script").isPresent();
+    boolean hasUrl = text(node, "url").isPresent();
+    if (hasScript == hasUrl) {
+      errors.add(path + " must define exactly one of script or url");
+    }
+    text(node, "url").ifPresent(url -> validateHttpsUrl(path + ".url", url, errors));
+    text(node, "cwd").or(() -> text(node, "workingDir"))
+        .ifPresent(dir -> validatePath(path + ".cwd", dir, errors));
+    validateAllowedExitCodes(path, node, errors);
+    validateTimeout(path, node, errors);
+  }
+
+  private void validateCommandItem(String path, JsonNode node, List<String> errors) {
+    if (node.isTextual()) {
+      requirePresent(path, node.asText(), "commands", errors);
+      return;
+    }
+    if (node.isArray()) {
+      validateStringArray(path, node, errors);
+      return;
+    }
+    if (!node.isObject()) {
+      errors.add(path + " must be a command string, argv array, or object");
+      return;
+    }
+    boolean hasShellRun = text(node, "run").isPresent() || text(node, "shellCommand").isPresent();
+    boolean hasArgv = array(node, "run") || array(node, "argv") || text(node, "command").isPresent();
+    if (hasShellRun == hasArgv) {
+      errors.add(path + " must define exactly one shell string or direct argv command");
+    }
+    text(node, "cwd").or(() -> text(node, "workingDir"))
+        .ifPresent(dir -> validatePath(path + ".cwd", dir, errors));
+    validateAllowedExitCodes(path, node, errors);
+    validateTimeout(path, node, errors);
+  }
+
+  private void validateCommonStructuredFields(
+      String path, PlanSpecDocument spec, List<String> errors) {
+    spec.creates().ifPresent(value -> validatePath(path + ".creates", value, errors));
+    spec.timeout().ifPresent(value -> validateDuration(path + ".timeout", value, errors));
+    for (Integer exitCode : spec.allowedExitCodes()) {
+      if (exitCode < 0) {
+        errors.add(path + ".allowedExitCodes must not contain negative values");
+      }
+    }
+  }
+
+  private void validateAllowedExitCodes(String path, JsonNode node, List<String> errors) {
+    child(node, "allowedExitCodes")
+        .filter(JsonNode::isArray)
+        .ifPresent(values -> values.forEach(value -> {
+          if (!value.canConvertToInt() || value.asInt() < 0) {
+            errors.add(path + ".allowedExitCodes must contain non-negative integers");
+          }
+        }));
+  }
+
+  private void validateTimeout(String path, JsonNode node, List<String> errors) {
+    text(node, "timeout").ifPresent(value -> validateDuration(path + ".timeout", value, errors));
+    child(node, "timeoutSeconds")
+        .filter(value -> !value.canConvertToInt() || value.asInt() <= 0)
+        .ifPresent(ignored -> errors.add(path + ".timeoutSeconds must be a positive integer"));
+  }
+
+  private void validateDuration(String path, String value, List<String> errors) {
+    try {
+      duration(value);
+    } catch (RuntimeException e) {
+      errors.add(path + " is not a supported duration");
+    }
+  }
+
+  private java.time.Duration duration(String raw) {
+    String value = raw.strip().toLowerCase(Locale.ROOT);
+    if (value.matches("\\d+")) {
+      return java.time.Duration.ofSeconds(Long.parseLong(value));
+    }
+    if (value.endsWith("ms")) {
+      return java.time.Duration.ofMillis(Long.parseLong(value.substring(0, value.length() - 2)));
+    }
+    if (value.endsWith("s")) {
+      return java.time.Duration.ofSeconds(Long.parseLong(value.substring(0, value.length() - 1)));
+    }
+    if (value.endsWith("m")) {
+      return java.time.Duration.ofMinutes(Long.parseLong(value.substring(0, value.length() - 1)));
+    }
+    return java.time.Duration.parse(raw);
+  }
+
+  private Optional<String> text(JsonNode node, String field) {
+    return child(node, field).filter(JsonNode::isTextual).map(JsonNode::asText).filter(value -> !value.isBlank());
+  }
+
+  private boolean array(JsonNode node, String field) {
+    return child(node, field).filter(JsonNode::isArray).filter(value -> value.size() > 0).isPresent();
+  }
+
+  private Optional<JsonNode> child(JsonNode node, String field) {
+    if (node == null || !node.isObject()) {
+      return Optional.empty();
+    }
+    JsonNode value = node.get(field);
+    return value == null || value.isNull() ? Optional.empty() : Optional.of(value);
+  }
+
+  private void validateStringArray(String path, JsonNode node, List<String> errors) {
+    if (node.isEmpty()) {
+      errors.add(path + " must contain at least one item");
+    }
+    for (int index = 0; index < node.size(); index++) {
+      JsonNode value = node.get(index);
+      if (!value.isTextual() || value.asText().isBlank()) {
+        errors.add(path + "[" + index + "] must be a non-blank string");
+      }
+    }
   }
 
   private void validateNerdFontSpec(

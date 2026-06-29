@@ -3,7 +3,9 @@ package dev.sysboot.config.yaml.contract;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.databind.JsonNode;
 import java.util.ArrayList;
+import java.util.Iterator;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 
 public final class PlanSpecDocument {
@@ -77,8 +79,11 @@ public final class PlanSpecDocument {
   @JsonProperty("script")
   private String script;
 
+  @JsonProperty("scripts")
+  private JsonNode scripts;
+
   @JsonProperty("commands")
-  private List<String> commands;
+  private JsonNode commands;
 
   @JsonProperty("args")
   private List<String> args;
@@ -86,8 +91,35 @@ public final class PlanSpecDocument {
   @JsonProperty("shell")
   private String shell;
 
+  @JsonProperty("cwd")
+  private String cwd;
+
   @JsonProperty("workingDir")
   private String workingDir;
+
+  @JsonProperty("env")
+  private JsonNode env;
+
+  @JsonProperty("sudo")
+  private Boolean sudo;
+
+  @JsonProperty("allowedExitCodes")
+  private List<Integer> allowedExitCodes;
+
+  @JsonProperty("creates")
+  private String creates;
+
+  @JsonProperty("unless")
+  private String unless;
+
+  @JsonProperty("confirm")
+  private String confirm;
+
+  @JsonProperty("timeout")
+  private String timeout;
+
+  @JsonProperty("timeoutSeconds")
+  private Integer timeoutSeconds;
 
   @JsonProperty("installerVersion")
   private String installerVersion;
@@ -228,7 +260,23 @@ public final class PlanSpecDocument {
   }
 
   public List<String> commands() {
-    return DocumentDefaults.list(commands);
+    return stringList(commands);
+  }
+
+  public List<JsonNode> commandItems() {
+    return nodeItems(commands);
+  }
+
+  public List<JsonNode> scriptItems() {
+    return nodeItems(scripts);
+  }
+
+  public Optional<JsonNode> commandsNode() {
+    return DocumentDefaults.optional(commands);
+  }
+
+  public Optional<JsonNode> envNode() {
+    return DocumentDefaults.optional(env);
   }
 
   public List<String> args() {
@@ -240,7 +288,35 @@ public final class PlanSpecDocument {
   }
 
   public Optional<String> workingDir() {
-    return DocumentDefaults.optional(workingDir);
+    return DocumentDefaults.optional(workingDir).or(() -> DocumentDefaults.optional(cwd));
+  }
+
+  public Optional<Boolean> sudo() {
+    return DocumentDefaults.optional(sudo);
+  }
+
+  public List<Integer> allowedExitCodes() {
+    return DocumentDefaults.list(allowedExitCodes);
+  }
+
+  public Optional<String> creates() {
+    return DocumentDefaults.optional(creates);
+  }
+
+  public Optional<String> unless() {
+    return DocumentDefaults.optional(unless);
+  }
+
+  public Optional<String> confirm() {
+    return DocumentDefaults.optional(confirm);
+  }
+
+  public Optional<String> timeout() {
+    return DocumentDefaults.optional(timeout);
+  }
+
+  public Optional<Integer> timeoutSeconds() {
+    return DocumentDefaults.optional(timeoutSeconds);
   }
 
   public Optional<String> installerVersion() {
@@ -296,5 +372,29 @@ public final class PlanSpecDocument {
     var values = new ArrayList<String>();
     node.forEach(value -> values.add(value.isTextual() ? value.asText() : ""));
     return List.copyOf(values);
+  }
+
+  private List<JsonNode> nodeItems(JsonNode node) {
+    if (node == null || node.isNull() || node.isMissingNode()) {
+      return List.of();
+    }
+    if (!node.isArray()) {
+      return List.of(node);
+    }
+    var values = new ArrayList<JsonNode>();
+    node.forEach(values::add);
+    return List.copyOf(values);
+  }
+
+  public List<String> envNames() {
+    if (env == null || !env.isObject()) {
+      return List.of();
+    }
+    var names = new ArrayList<String>();
+    Iterator<Map.Entry<String, JsonNode>> fields = env.fields();
+    while (fields.hasNext()) {
+      names.add(fields.next().getKey());
+    }
+    return List.copyOf(names);
   }
 }

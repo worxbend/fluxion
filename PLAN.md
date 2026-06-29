@@ -644,6 +644,12 @@ Progress:
   install modes, optional symlinks, fakeable download/filesystem boundaries, richer dry-run
   previews, parser coverage, executor coverage, and schema docs. Multi-item binary entries remain
   deferred; URL script downloads and structured command options remain T010 work.
+- 2026-06-29: Agent-loop T010 extended WorkstationProfile `shell-scripts` and `commands` with
+  structured item records, URL script downloads through the fakeable download boundary, direct argv
+  versus shell command previews, `creates`/`unless` idempotency guards, cwd/env/sudo/timeouts,
+  allowed exit codes, sensitivity-aware env values, redaction for previews and shell failure text,
+  and item-level `when` filtering. `confirm` is retained as item metadata for previews/fingerprints;
+  it does not prompt interactively yet because Fluxion has no command-item confirmation service.
 
 Acceptance:
 
@@ -882,7 +888,7 @@ policy, variable, host-facts, `when`, and skipped-reporting milestones recorded 
 7. `T007` - Checkpoint package behavior (validation, completed).
 8. `T008` - Map basic installer kinds (complex feature, completed).
 9. `T009` - Extend binary downloads (complex feature, completed).
-10. `T010` - Extend scripts and commands (complex feature).
+10. `T010` - Extend scripts and commands (complex feature, completed).
 11. `T011` - Checkpoint installer kinds (validation).
 12. `T012` - Add interrupt checkpoint model (complex feature).
 13. `T013` - Report interrupt resume state (complex feature).

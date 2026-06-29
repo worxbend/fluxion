@@ -27,6 +27,7 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -112,7 +113,13 @@ public final class ParallelProbeRunner {
         case FlatpakRemoteModule frm ->
             targets.add(new ModuleItem(frm.name(), frm.remote(), ItemType.FLATPAK_REMOTE));
         case ShellScriptModule sm ->
-            targets.add(new ModuleItem(sm.name(), sm.script().toString(), ItemType.SHELL_SCRIPT));
+            sm.items()
+                .forEach(
+                    item ->
+                        targets.add(
+                            new ModuleItem(
+                                sm.name(), item.name(), item.key(), ItemType.SHELL_SCRIPT,
+                                Optional.empty())));
         case CompiledBinaryModule bm ->
             targets.add(
                 new ModuleItem(bm.name(), bm.installPath().toString(), ItemType.COMPILED_BINARY));
@@ -139,7 +146,10 @@ public final class ParallelProbeRunner {
             targets.add(
                 new ModuleItem(srm.name(), srm.shell().binaryName(), ItemType.SHELL_RELOAD));
         case ShellCommandModule sc ->
-            targets.add(new ModuleItem(sc.name(), sc.name().value(), ItemType.SHELL_COMMAND));
+            sc.items()
+                .forEach(
+                    item ->
+                        targets.add(new ModuleItem(sc.name(), item.name(), ItemType.SHELL_COMMAND)));
         case AssertModule am ->
             targets.add(new ModuleItem(am.name(), am.name().value(), ItemType.ASSERT));
         case ManualModule mm ->

@@ -50,6 +50,7 @@ import dev.sysboot.core.ProfileName;
 import dev.sysboot.core.RestartPolicy;
 import dev.sysboot.core.RpmRepositoryModule;
 import dev.sysboot.core.ScriptPath;
+import dev.sysboot.core.ShellCommandItem;
 import dev.sysboot.core.ShellCommandModule;
 import dev.sysboot.core.ShellKind;
 import dev.sysboot.core.ShellReloadModule;
@@ -354,7 +355,9 @@ final class ConfigMapper {
         dto.workingDir != null ? Optional.of(Path.of(dto.workingDir)) : Optional.<Path>empty();
     return new ShellCommandModule(
         new ModuleName(requireField(dto.name, "name")),
-        requireField(dto.commands, "shell-command.commands"),
+        requireField(dto.commands, "shell-command.commands").stream()
+            .map(command -> ShellCommandItem.shell(command, dto.shell != null ? dto.shell : "/bin/bash", workingDir))
+            .toList(),
         dto.shell != null ? dto.shell : "/bin/bash",
         workingDir,
         dto.continueOnError,

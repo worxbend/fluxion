@@ -464,7 +464,7 @@ public final class BootstrapOrchestratorImpl implements BootstrapOrchestrator {
 
   private boolean executeShellScript(
       ShellScriptModule module, ExecutionEventListener listener, ShellRunner phaseRunner) {
-    String scriptKey = module.script().toString();
+    String scriptKey = module.items().getFirst().key();
     listener.onEvent(ExecutionEvent.itemStarted(module.name(), scriptKey));
     SkipDecision decision = skipEvaluator.evaluate(scriptKey, ItemType.SHELL_SCRIPT);
     if (decision instanceof SkipDecision.Skip skip) {
@@ -556,7 +556,14 @@ public final class BootstrapOrchestratorImpl implements BootstrapOrchestrator {
       case FlatpakRemoteModule frm ->
           emitDryRun(frm.name(), frm.remote(), flatpakRemoteInstaller.addCommand(frm), listener);
       case ShellScriptModule sm ->
-          emitDryRun(sm.name(), sm.script().toString(), List.of(sm.script().toString()), listener);
+          sm.items()
+              .forEach(
+                  item ->
+                      emitDryRun(
+                          sm.name(),
+                          item.name(),
+                          new ShellScriptExecutor(new DefaultShellRunner()).commandPreview(item),
+                          listener));
       case CompiledBinaryModule bm ->
           emitDryRun(bm.name(), bm.binaryName(), binaryInstaller.dryRunCommand(bm), listener);
       case DotbotModule dm ->
@@ -589,8 +596,14 @@ public final class BootstrapOrchestratorImpl implements BootstrapOrchestrator {
               List.of(srm.shell().binaryName(), "--login", "-i", "-c", "exit"),
               listener);
       case ShellCommandModule sc ->
-          emitDryRun(
-              sc.name(), "shell-command", List.of(sc.shell(), "-lc", "<commands>"), listener);
+          sc.items()
+              .forEach(
+                  item ->
+                      emitDryRun(
+                          sc.name(),
+                          item.name(),
+                          new ShellCommandExecutor(new DefaultShellRunner()).commandPreview(item),
+                          listener));
       case AssertModule am ->
           emitDryRun(
               am.name(), am.name().value(), List.of(am.shell(), "-lc", am.command()), listener);

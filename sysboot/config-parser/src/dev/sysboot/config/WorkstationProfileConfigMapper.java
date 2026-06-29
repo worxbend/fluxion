@@ -1,11 +1,14 @@
 package dev.sysboot.config;
 
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import dev.sysboot.config.yaml.contract.MetadataDocument;
 import dev.sysboot.config.yaml.contract.PlanEntryDocument;
 import dev.sysboot.config.yaml.contract.PlanSpecDocument;
 import dev.sysboot.config.yaml.contract.PolicyDocument;
 import dev.sysboot.config.yaml.contract.TargetDocument;
 import dev.sysboot.config.yaml.contract.TargetOsDocument;
+import dev.sysboot.config.yaml.contract.WhenDocument;
 import dev.sysboot.config.yaml.contract.WorkstationProfileDocument;
 import dev.sysboot.core.BinaryUrl;
 import dev.sysboot.core.BootstrapConfig;
@@ -29,17 +32,25 @@ import dev.sysboot.core.PhaseName;
 import dev.sysboot.core.ProfileName;
 import dev.sysboot.core.RestartPolicy;
 import dev.sysboot.core.ScriptPath;
+import dev.sysboot.core.ShellCommandItem;
 import dev.sysboot.core.ShellCommandModule;
+import dev.sysboot.core.ShellEnvironmentVariable;
+import dev.sysboot.core.ShellScriptItem;
 import dev.sysboot.core.ShellScriptModule;
 import dev.sysboot.core.SkippedPlanEntry;
 import java.net.URI;
 import java.nio.file.Path;
+import java.time.Duration;
 import java.util.ArrayList;
+import java.util.Iterator;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Optional;
 
 final class WorkstationProfileConfigMapper {
+
+  private static final ObjectMapper MAPPER = new ObjectMapper();
 
   private final WorkstationProfileValidator validator;
   private final WorkstationProfileWhenEvaluator whenEvaluator;
@@ -203,13 +214,9 @@ final class WorkstationProfileConfigMapper {
   private ShellScriptModule shellScriptModule(
       PlanEntryDocument entry, BootstrapPolicy policy) {
     PlanSpecDocument spec = requireField(entry.spec().orElse(null), planName(entry) + ".spec");
-    var script =
-        new ScriptPath(
-            Path.of(requireField(spec.script().orElse(null), planName(entry) + ".spec.script")));
     return new ShellScriptModule(
         new ModuleName(planName(entry)),
-        script,
-        spec.args(),
+        scriptItems(entry, spec),
         spec.workingDir().map(Path::of),
         continueOnError(entry, policy),
         spec.probeCommand());
@@ -220,11 +227,231 @@ final class WorkstationProfileConfigMapper {
     PlanSpecDocument spec = requireField(entry.spec().orElse(null), planName(entry) + ".spec");
     return new ShellCommandModule(
         new ModuleName(planName(entry)),
-        spec.commands(),
+        commandItems(entry, spec),
         spec.shell().orElse("/bin/bash"),
         spec.workingDir().map(Path::of),
         continueOnError(entry, policy),
         spec.probeCommand());
+  }
+
+  private List<ShellScriptItem> scriptItems(PlanEntryDocument entry, PlanSpecDocument spec) {
+    List<JsonNode> nodes = spec.scriptItems();
+    if (nodes.isEmpty()) {
+      return List.of(scriptItem(entry, spec, null, 0));
+    }
+    var items = new ArrayList<ShellScriptItem>();
+    for (int index = 0; index < nodes.size(); index++) {
+      if (itemMatches(nodes.get(index))) {
+        items.add(scriptItem(entry, spec, nodes.get(index), index));
+      }
+    }
+    return List.copyOf(items);
+  }
+
+  private ShellScriptItem scriptItem(
+      PlanEntryDocument entry, PlanSpecDocument spec, JsonNode node, int index) {
+    String name = text(node, "name").orElse(planName(entry) + "[" + index + "]");
+    Optional<ScriptPath> script = scriptPath(node, spec);
+    Optional<URI> url = text(node, "url").or(spec::url).map(URI::create);
+    return new ShellScriptItem(
+        name,
+        script,
+        url,
+        stringList(node, "args").orElseGet(spec::args),
+        path(node, "cwd").or(() -> path(node, "workingDir")).or(() -> spec.workingDir().map(Path::of)),
+        environment(spec.envNode(), child(node, "env")),
+        bool(node, "sudo").or(spec::sudo).orElse(false),
+        intList(node, "allowedExitCodes").orElseGet(spec::allowedExitCodes),
+        path(node, "creates").or(() -> spec.creates().map(Path::of)),
+        text(node, "unless").or(spec::unless),
+        confirm(node).or(spec::confirm),
+        timeout(node).orElseGet(() -> timeout(spec)));
+  }
+
+  private Optional<ScriptPath> scriptPath(JsonNode node, PlanSpecDocument spec) {
+    return text(node, "script").or(spec::script)
+        .map(raw -> new ScriptPath(Path.of(expandHome(raw))));
+  }
+
+  private List<ShellCommandItem> commandItems(PlanEntryDocument entry, PlanSpecDocument spec) {
+    List<JsonNode> nodes = spec.commandItems();
+    var items = new ArrayList<ShellCommandItem>();
+    for (int index = 0; index < nodes.size(); index++) {
+      if (itemMatches(nodes.get(index))) {
+        items.add(commandItem(entry, spec, nodes.get(index), index));
+      }
+    }
+    return List.copyOf(items);
+  }
+
+  private ShellCommandItem commandItem(
+      PlanEntryDocument entry, PlanSpecDocument spec, JsonNode node, int index) {
+    String fallback = node.isTextual() ? node.asText() : planName(entry) + "[" + index + "]";
+    String name = text(node, "name").orElse(fallback);
+    return new ShellCommandItem(
+        name,
+        shellCommand(node),
+        argv(node),
+        text(node, "shell").or(spec::shell).orElse("/bin/bash"),
+        path(node, "cwd").or(() -> path(node, "workingDir")).or(() -> spec.workingDir().map(Path::of)),
+        environment(spec.envNode(), child(node, "env")),
+        bool(node, "sudo").or(spec::sudo).orElse(false),
+        intList(node, "allowedExitCodes").orElseGet(spec::allowedExitCodes),
+        path(node, "creates").or(() -> spec.creates().map(Path::of)),
+        text(node, "unless").or(spec::unless),
+        confirm(node).or(spec::confirm),
+        timeout(node).orElseGet(() -> timeout(spec)));
+  }
+
+  private Optional<String> shellCommand(JsonNode node) {
+    if (node.isTextual()) {
+      return Optional.of(node.asText());
+    }
+    return text(node, "run").or(() -> text(node, "shellCommand"));
+  }
+
+  private Optional<List<String>> argv(JsonNode node) {
+    if (node.isArray()) {
+      return Optional.of(stringArray(node));
+    }
+    return array(node, "run").or(() -> array(node, "argv")).or(() -> commandWithArgs(node));
+  }
+
+  private Optional<List<String>> commandWithArgs(JsonNode node) {
+    return text(node, "command")
+        .map(command -> {
+          var values = new ArrayList<String>();
+          values.add(command);
+          values.addAll(stringList(node, "args").orElse(List.of()));
+          return List.copyOf(values);
+        });
+  }
+
+  private List<ShellEnvironmentVariable> environment(
+      Optional<JsonNode> moduleEnv, Optional<JsonNode> itemEnv) {
+    var values = new java.util.LinkedHashMap<String, ShellEnvironmentVariable>();
+    moduleEnv.ifPresent(env -> addEnvironment(values, env));
+    itemEnv.ifPresent(env -> addEnvironment(values, env));
+    return List.copyOf(values.values());
+  }
+
+  private void addEnvironment(
+      Map<String, ShellEnvironmentVariable> values, JsonNode env) {
+    if (env == null || !env.isObject()) {
+      return;
+    }
+    Iterator<Map.Entry<String, JsonNode>> fields = env.fields();
+    while (fields.hasNext()) {
+      Map.Entry<String, JsonNode> field = fields.next();
+      environmentVariable(field.getKey(), field.getValue()).ifPresent(value -> values.put(field.getKey(), value));
+    }
+  }
+
+  private Optional<ShellEnvironmentVariable> environmentVariable(String name, JsonNode value) {
+    if (value.isTextual()) {
+      return Optional.of(new ShellEnvironmentVariable(name, value.asText(), sensitiveName(name)));
+    }
+    if (!value.isObject()) {
+      return Optional.empty();
+    }
+    return text(value, "value")
+        .map(raw -> new ShellEnvironmentVariable(name, raw, bool(value, "sensitive").orElse(sensitiveName(name))));
+  }
+
+  private boolean sensitiveName(String name) {
+    String normalized = name.toLowerCase(Locale.ROOT);
+    return normalized.contains("token")
+        || normalized.contains("secret")
+        || normalized.contains("password")
+        || normalized.contains("passwd")
+        || normalized.contains("credential");
+  }
+
+  private boolean itemMatches(JsonNode node) {
+    return child(node, "when").map(value -> whenEvaluator.matches(Optional.of(MAPPER.convertValue(value, WhenDocument.class)))).orElse(true);
+  }
+
+  private Optional<JsonNode> child(JsonNode node, String field) {
+    if (node == null || !node.isObject()) {
+      return Optional.empty();
+    }
+    JsonNode value = node.get(field);
+    return value == null || value.isNull() ? Optional.empty() : Optional.of(value);
+  }
+
+  private Optional<String> text(JsonNode node, String field) {
+    return child(node, field).filter(JsonNode::isTextual).map(JsonNode::asText).filter(value -> !value.isBlank());
+  }
+
+  private Optional<Boolean> bool(JsonNode node, String field) {
+    return child(node, field).filter(JsonNode::isBoolean).map(JsonNode::asBoolean);
+  }
+
+  private Optional<Path> path(JsonNode node, String field) {
+    return text(node, field).map(value -> Path.of(expandHome(value)));
+  }
+
+  private Optional<List<Integer>> intList(JsonNode node, String field) {
+    return child(node, field).filter(JsonNode::isArray).map(values -> {
+      var result = new ArrayList<Integer>();
+      values.forEach(value -> {
+        if (value.canConvertToInt()) {
+          result.add(value.asInt());
+        }
+      });
+      return List.copyOf(result);
+    });
+  }
+
+  private Optional<List<String>> stringList(JsonNode node, String field) {
+    return child(node, field).filter(JsonNode::isArray).map(this::stringArray);
+  }
+
+  private Optional<List<String>> array(JsonNode node, String field) {
+    return stringList(node, field).filter(values -> !values.isEmpty());
+  }
+
+  private List<String> stringArray(JsonNode node) {
+    var values = new ArrayList<String>();
+    node.forEach(value -> {
+      if (value.isTextual() && !value.asText().isBlank()) {
+        values.add(value.asText());
+      }
+    });
+    return List.copyOf(values);
+  }
+
+  private Optional<String> confirm(JsonNode node) {
+    return text(node, "confirm")
+        .or(() -> bool(node, "confirm").filter(Boolean::booleanValue).map(ignored -> "confirm"));
+  }
+
+  private Optional<Duration> timeout(JsonNode node) {
+    return text(node, "timeout").map(this::duration)
+        .or(() -> child(node, "timeoutSeconds").filter(JsonNode::canConvertToInt).map(value -> Duration.ofSeconds(value.asInt())));
+  }
+
+  private Duration timeout(PlanSpecDocument spec) {
+    return spec.timeout().map(this::duration)
+        .or(() -> spec.timeoutSeconds().map(Duration::ofSeconds))
+        .orElse(Duration.ofMinutes(30));
+  }
+
+  private Duration duration(String raw) {
+    String value = raw.strip().toLowerCase(Locale.ROOT);
+    if (value.matches("\\d+")) {
+      return Duration.ofSeconds(Long.parseLong(value));
+    }
+    if (value.endsWith("ms")) {
+      return Duration.ofMillis(Long.parseLong(value.substring(0, value.length() - 2)));
+    }
+    if (value.endsWith("s")) {
+      return Duration.ofSeconds(Long.parseLong(value.substring(0, value.length() - 1)));
+    }
+    if (value.endsWith("m")) {
+      return Duration.ofMinutes(Long.parseLong(value.substring(0, value.length() - 1)));
+    }
+    return Duration.parse(raw);
   }
 
   private NerdFontModule nerdFontModule(PlanEntryDocument entry) {

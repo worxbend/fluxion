@@ -39,10 +39,12 @@ final class SelectionEntryCatalog {
           List.of(pacmanRepositoryModule.repositoryName());
       case FlatpakModule flatpakModule -> flatpakModule.appIds();
       case FlatpakRemoteModule flatpakRemoteModule -> List.of(flatpakRemoteModule.remote());
-      case ShellCommandModule shellCommandModule -> shellCommandModule.commands();
+      case ShellCommandModule shellCommandModule ->
+          shellCommandModule.items().stream().map(item -> item.name()).toList();
       case NerdFontModule nerdFontModule -> nerdFontModule.config().families();
       case CompiledBinaryModule compiledBinaryModule -> List.of(compiledBinaryModule.binaryName());
-      case ShellScriptModule shellScriptModule -> List.of(shellScriptModule.script().toString());
+      case ShellScriptModule shellScriptModule ->
+          shellScriptModule.items().stream().map(item -> item.name()).toList();
       case DotbotModule dotbotModule -> List.of(dotbotModule.config().toString());
       case DefaultShellModule defaultShellModule ->
           List.of(defaultShellModule.shellPath().toString());

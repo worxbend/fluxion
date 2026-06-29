@@ -137,7 +137,7 @@ public final class ListCommand implements Runnable {
       case PacmanRepositoryModule prm -> prm.repositoryName() + " <- " + prm.server();
       case FlatpakModule fm -> fm.appIds().size() + " apps from " + fm.remote();
       case FlatpakRemoteModule frm -> frm.remote() + " -> " + frm.url();
-      case ShellScriptModule sm -> sm.script().toString();
+      case ShellScriptModule sm -> sm.items().getFirst().key();
       case CompiledBinaryModule bm -> bm.binaryName() + " from " + bm.url();
       case ZypperModule zm -> zm.packages().size() + " packages (zypper)";
       case DotbotModule dm -> dm.config().toString();
@@ -146,7 +146,7 @@ public final class ListCommand implements Runnable {
       case ToolchainModule tm -> tm.kind().name().toLowerCase();
       case NerdFontModule nfm -> nfm.config().families().size() + " families";
       case ShellReloadModule srm -> srm.shell().binaryName();
-      case ShellCommandModule sc -> sc.commands().size() + " commands";
+      case ShellCommandModule sc -> sc.items().size() + " commands";
       case AssertModule am -> am.command();
       case ManualModule mm -> mm.message();
     };
@@ -156,7 +156,7 @@ public final class ListCommand implements Runnable {
     return switch (module) {
       case PackageModule pm -> pm.packages().size();
       case FlatpakModule fm -> fm.appIds().size();
-      case ShellCommandModule sc -> sc.commands().size();
+      case ShellCommandModule sc -> sc.items().size();
       case NerdFontModule nfm -> nfm.config().families().size();
       default -> 1;
     };

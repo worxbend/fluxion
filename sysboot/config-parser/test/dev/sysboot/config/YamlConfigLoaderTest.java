@@ -431,6 +431,76 @@ class YamlConfigLoaderTest {
   }
 
   @Test
+  void load_whenWorkstationProfileStructuredScriptsAndCommands_mapsExecutionFields(
+      @TempDir Path tmpDir) throws IOException {
+    Path config =
+        writeConfig(
+            tmpDir,
+            """
+            apiVersion: initkit.io/v1alpha1
+            kind: WorkstationProfile
+            metadata:
+              name: structured-shell
+            spec:
+              target:
+                os:
+                  distribution: fedora
+                  release: "44"
+              plan:
+                - name: remote-script
+                  kind: shell-scripts
+                  spec:
+                    scripts:
+                      - name: sdkman
+                        url: https://example.test/install.sh
+                        args: [--batch]
+                        cwd: /tmp
+                        env:
+                          API_TOKEN:
+                            value: abc123
+                            sensitive: true
+                        sudo: true
+                        allowedExitCodes: [0, 75]
+                        creates: ~/.sdkman/bin/sdkman-init.sh
+                        unless: test -d ~/.sdkman
+                        timeout: 5m
+                - name: shell-commands
+                  kind: commands
+                  spec:
+                    commands:
+                      - name: direct-git
+                        run: [git, config, --global, init.defaultBranch, main]
+                        cwd: /tmp
+                        allowedExitCodes: [0, 2]
+                      - name: shell-cargo
+                        run: cargo binstall --no-confirm eza
+                        shell: /bin/zsh
+                        env:
+                          PASSWORD: secret
+                    timeoutSeconds: 45
+            """);
+
+    BootstrapConfig result = loader.load(config);
+
+    var scriptModule = (ShellScriptModule) result.phases().getFirst().modules().get(0);
+    var script = scriptModule.items().getFirst();
+    assertThat(script.name()).isEqualTo("sdkman");
+    assertThat(script.url()).hasValue(java.net.URI.create("https://example.test/install.sh"));
+    assertThat(script.args()).containsExactly("--batch");
+    assertThat(script.sudo()).isTrue();
+    assertThat(script.allowedExitCodes()).containsExactly(0, 75);
+    assertThat(script.environment().getFirst().sensitive()).isTrue();
+
+    var commandModule = (ShellCommandModule) result.phases().getFirst().modules().get(1);
+    assertThat(commandModule.items()).hasSize(2);
+    assertThat(commandModule.items().get(0).argv())
+        .hasValue(List.of("git", "config", "--global", "init.defaultBranch", "main"));
+    assertThat(commandModule.items().get(1).shellCommand())
+        .hasValue("cargo binstall --no-confirm eza");
+    assertThat(commandModule.items().get(1).environment().getFirst().sensitive()).isTrue();
+  }
+
+  @Test
   void load_whenWorkstationProfileSourcesPresent_mapsRelevantSourceSetups(@TempDir Path tmpDir)
       throws IOException {
     Path config =

@@ -7,7 +7,7 @@ import java.util.Optional;
 
 public record ShellCommandModule(
     ModuleName name,
-    List<String> commands,
+    List<ShellCommandItem> items,
     String shell,
     Optional<Path> workingDir,
     boolean continueOnError,
@@ -16,16 +16,22 @@ public record ShellCommandModule(
 
   public ShellCommandModule {
     Objects.requireNonNull(name);
-    Objects.requireNonNull(commands);
+    Objects.requireNonNull(items);
     Objects.requireNonNull(shell);
     Objects.requireNonNull(workingDir);
     Objects.requireNonNull(probeCommand);
-    commands = List.copyOf(commands);
-    if (commands.isEmpty()) {
+    items = List.copyOf(items);
+    if (items.isEmpty()) {
       throw new IllegalArgumentException("commands must not be empty");
     }
     if (shell.isBlank()) {
       throw new IllegalArgumentException("shell must not be blank");
     }
+  }
+
+  public List<String> commands() {
+    return items.stream()
+        .map(item -> item.shellCommand().orElseGet(() -> String.join(" ", item.argv().orElseThrow())))
+        .toList();
   }
 }

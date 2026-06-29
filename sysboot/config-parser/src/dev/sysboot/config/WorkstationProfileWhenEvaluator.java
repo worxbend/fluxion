@@ -34,6 +34,10 @@ final class WorkstationProfileWhenEvaluator {
     return new PlanSelection(List.copyOf(selected), List.copyOf(skipped));
   }
 
+  boolean matches(Optional<WhenDocument> when) {
+    return evaluate(when, hostFactsProvider.facts()).matches();
+  }
+
   private Decision evaluate(Optional<WhenDocument> when, HostFacts facts) {
     return when.map(value -> evaluate(value, facts)).orElseGet(Decision::selected);
   }
