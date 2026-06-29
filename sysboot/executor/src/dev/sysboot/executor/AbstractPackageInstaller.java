@@ -18,7 +18,8 @@ abstract sealed class AbstractPackageInstaller implements PackageManagerExecutor
         ParuPackageInstaller,
         YayPackageInstaller,
         AptPackageInstaller,
-        ZypperPackageInstaller {
+        ZypperPackageInstaller,
+        CargoPackageInstaller {
 
   protected static final Duration INSTALL_TIMEOUT = Duration.ofMinutes(10);
 

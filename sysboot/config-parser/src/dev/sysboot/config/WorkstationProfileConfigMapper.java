@@ -130,6 +130,8 @@ final class WorkstationProfileConfigMapper {
     return switch (planKind(entry)) {
       case "apt-packages" -> Optional.of(packageModule(entry, PackageManagerKind.APT, policy));
       case "aur-packages" -> Optional.of(packageModule(entry, aurPackageManager(entry), policy));
+      case "cargo-packages" ->
+          Optional.of(packageModule(entry, PackageManagerKind.CARGO, policy));
       case "dnf-packages" -> Optional.of(packageModule(entry, PackageManagerKind.DNF, policy));
       case "pacman-packages" ->
           Optional.of(packageModule(entry, PackageManagerKind.PACMAN, policy));

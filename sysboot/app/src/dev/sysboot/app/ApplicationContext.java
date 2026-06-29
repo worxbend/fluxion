@@ -11,6 +11,7 @@ import dev.sysboot.executor.AptPackageProbe;
 import dev.sysboot.executor.AptRepositoryInstaller;
 import dev.sysboot.executor.AptRepositoryProbe;
 import dev.sysboot.executor.BootstrapOrchestratorImpl;
+import dev.sysboot.executor.CargoPackageInstaller;
 import dev.sysboot.executor.CompiledBinaryInstaller;
 import dev.sysboot.executor.CompiledBinaryProbe;
 import dev.sysboot.executor.DefaultShellExecutor;
@@ -228,6 +229,7 @@ public final class ApplicationContext {
             new ParuPackageInstaller(runner, sudo),
             new YayPackageInstaller(runner, sudo),
             new AptPackageInstaller(runner, sudo),
-            new ZypperPackageInstaller(runner, sudo)));
+            new ZypperPackageInstaller(runner, sudo),
+            new CargoPackageInstaller(runner, sudo)));
   }
 }

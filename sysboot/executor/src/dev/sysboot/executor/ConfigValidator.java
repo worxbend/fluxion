@@ -237,6 +237,9 @@ public final class ConfigValidator {
   }
 
   private boolean managerAllowed(OsTarget target, PackageManagerKind manager) {
+    if (manager == PackageManagerKind.CARGO) {
+      return true;
+    }
     return switch (target) {
       case OsTarget.FedoraTarget ignored -> manager == PackageManagerKind.DNF;
       case OsTarget.ArchTarget ignored ->

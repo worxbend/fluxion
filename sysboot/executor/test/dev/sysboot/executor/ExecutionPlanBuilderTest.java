@@ -76,13 +76,20 @@ class ExecutionPlanBuilderTest {
     assertThat(plan.profileName()).isEqualTo("package-plan-test");
     assertThat(plan.phases().getFirst().modules()).extracting(ExecutionPlan.Module::name)
         .containsExactly(
-            "apt-base", "dnf-base", "aur-apps", "pacman-base", "zypper-base", "desktop-apps");
+            "apt-base",
+            "dnf-base",
+            "aur-apps",
+            "cargo-tools",
+            "pacman-base",
+            "zypper-base",
+            "desktop-apps");
     assertPlanItem(plan, 0, "curl", PackageManagerKind.APT);
     assertPlanItem(plan, 1, "ripgrep", PackageManagerKind.DNF);
     assertAurPlanItem(plan, 2, "visual-studio-code-bin");
-    assertPlanItem(plan, 3, "fd", PackageManagerKind.PACMAN);
-    assertPlanItem(plan, 4, "htop", PackageManagerKind.ZYPPER);
-    assertFlatpakPlanItem(plan, 5, "org.mozilla.firefox");
+    assertCargoPlanItem(plan, 3, "cargo-binstall");
+    assertPlanItem(plan, 4, "fd", PackageManagerKind.PACMAN);
+    assertPlanItem(plan, 5, "htop", PackageManagerKind.ZYPPER);
+    assertFlatpakPlanItem(plan, 6, "org.mozilla.firefox");
   }
 
   @Test
@@ -393,6 +400,14 @@ class ExecutionPlanBuilderTest {
     assertThat(item.commandPreview().orElseThrow()).containsExactly("paru", "-S", "--noconfirm", key);
   }
 
+  private static void assertCargoPlanItem(ExecutionPlan plan, int moduleIndex, String key) {
+    ExecutionPlan.Item item =
+        plan.phases().getFirst().modules().get(moduleIndex).items().getFirst();
+    assertThat(item.item().key()).isEqualTo(key);
+    assertThat(item.item().packageManager()).contains(PackageManagerKind.CARGO);
+    assertThat(item.commandPreview().orElseThrow()).containsExactly("cargo", "install", key);
+  }
+
   private static void assertFlatpakPlanItem(ExecutionPlan plan, int moduleIndex, String key) {
     ExecutionPlan.Module module = plan.phases().getFirst().modules().get(moduleIndex);
     ExecutionPlan.Item item = module.items().getFirst();
@@ -407,6 +422,9 @@ class ExecutionPlanBuilderTest {
     return List.of(
         packageExecutor(PackageManagerKind.APT),
         new ParuPackageInstaller(
+            (command, environment, timeout) -> new dev.sysboot.core.ProcessResult(0, "", "", Duration.ZERO),
+            prompt -> Optional.empty()),
+        new CargoPackageInstaller(
             (command, environment, timeout) -> new dev.sysboot.core.ProcessResult(0, "", "", Duration.ZERO),
             prompt -> Optional.empty()),
         dnf(),
@@ -474,6 +492,10 @@ class ExecutionPlanBuilderTest {
               spec:
                 packageManager: paru
                 packages: [visual-studio-code-bin]
+            - name: cargo-tools
+              kind: cargo-packages
+              spec:
+                packages: [cargo-binstall]
             - name: pacman-base
               kind: pacman-packages
               spec:

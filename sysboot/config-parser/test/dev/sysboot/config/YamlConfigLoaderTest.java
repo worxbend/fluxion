@@ -301,14 +301,15 @@ class YamlConfigLoaderTest {
     BootstrapConfig result = loader.load(config);
 
     assertThat(result.phases()).hasSize(1);
-    assertThat(result.phases().getFirst().modules()).hasSize(6);
+    assertThat(result.phases().getFirst().modules()).hasSize(7);
     assertPackageModule(result, 0, "apt-base", PackageManagerKind.APT, "curl", "git");
     assertPackageModule(result, 1, "dnf-base", PackageManagerKind.DNF, "ripgrep");
     assertPackageModule(result, 2, "aur-apps", PackageManagerKind.PARU, "visual-studio-code-bin");
-    assertPackageModule(result, 3, "pacman-base", PackageManagerKind.PACMAN, "fd");
-    assertPackageModule(result, 4, "zypper-base", PackageManagerKind.ZYPPER, "htop");
+    assertPackageModule(result, 3, "cargo-tools", PackageManagerKind.CARGO, "cargo-binstall");
+    assertPackageModule(result, 4, "pacman-base", PackageManagerKind.PACMAN, "fd");
+    assertPackageModule(result, 5, "zypper-base", PackageManagerKind.ZYPPER, "htop");
     assertFlatpakModule(
-        result, 5, "desktop-apps", "fedora", "org.mozilla.firefox", "com.slack.Slack");
+        result, 6, "desktop-apps", "fedora", "org.mozilla.firefox", "com.slack.Slack");
   }
 
   @Test
@@ -847,7 +848,13 @@ class YamlConfigLoaderTest {
 
     assertThat(result.modules()).extracting(module -> module.name().value())
         .containsExactly(
-            "apt-base", "dnf-base", "aur-apps", "pacman-base", "zypper-base", "desktop-apps");
+            "apt-base",
+            "dnf-base",
+            "aur-apps",
+            "cargo-tools",
+            "pacman-base",
+            "zypper-base",
+            "desktop-apps");
   }
 
   @Test
@@ -1032,6 +1039,10 @@ class YamlConfigLoaderTest {
                   spec:
                     packageManager: pacman
                     packages: []
+                - name: cargo
+                  kind: cargo-packages
+                  spec:
+                    packages: []
                 - name: apps
                   kind: flatpak-packages
                   spec:
@@ -1051,10 +1062,11 @@ class YamlConfigLoaderTest {
         .hasMessageContaining("spec.plan[1].spec.packages")
         .hasMessageContaining("spec.plan[1].spec.packageManager")
         .hasMessageContaining("unsupported AUR helper 'pacman'")
-        .hasMessageContaining("spec.plan[2].spec.apps")
-        .hasMessageContaining("spec.plan[3].spec.checksum.algorithm")
+        .hasMessageContaining("spec.plan[2].spec.packages")
+        .hasMessageContaining("spec.plan[3].spec.apps")
+        .hasMessageContaining("spec.plan[4].spec.checksum.algorithm")
         .hasMessageContaining("sha1")
-        .hasMessageContaining("spec.plan[3].spec.checksum.value");
+        .hasMessageContaining("spec.plan[4].spec.checksum.value");
   }
 
   @Test
@@ -1684,6 +1696,10 @@ class YamlConfigLoaderTest {
               spec:
                 packageManager: paru
                 packages: [visual-studio-code-bin]
+            - name: cargo-tools
+              kind: cargo-packages
+              spec:
+                packages: [cargo-binstall]
             - name: pacman-base
               kind: pacman-packages
               spec:

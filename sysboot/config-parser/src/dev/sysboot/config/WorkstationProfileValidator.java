@@ -27,7 +27,13 @@ final class WorkstationProfileValidator {
   private static final Pattern SHA_256_HEX = Pattern.compile("[0-9a-fA-F]{64}");
   private static final Pattern FILE_MODE = Pattern.compile("[0-7]{3,4}");
   private static final Set<String> PACKAGE_PLAN_KINDS =
-      Set.of("apt-packages", "aur-packages", "dnf-packages", "pacman-packages", "zypper-packages");
+      Set.of(
+          "apt-packages",
+          "aur-packages",
+          "cargo-packages",
+          "dnf-packages",
+          "pacman-packages",
+          "zypper-packages");
   private static final Set<String> APP_PLAN_KINDS = Set.of("flatpak-packages");
   private static final Set<String> INSTALLER_PLAN_KINDS =
       Set.of("binary-downloads", "shell-scripts", "commands", "nerd-fonts", "dotfiles-apply");
@@ -37,12 +43,14 @@ final class WorkstationProfileValidator {
           "dnf-packages",
               Set.of("check-update", "upgrade", "swap", "groupupdate", "group-update"),
           "aur-packages", Set.of(),
+          "cargo-packages", Set.of(),
           "pacman-packages", Set.of("sync-upgrade", "syu", "upgrade"),
           "zypper-packages", Set.of("refresh", "update", "dup", "dup-from"));
   private static final Set<String> SUPPORTED_PLAN_KINDS =
       Set.of(
           "apt-packages",
           "aur-packages",
+          "cargo-packages",
           "dnf-packages",
           "pacman-packages",
           "zypper-packages",

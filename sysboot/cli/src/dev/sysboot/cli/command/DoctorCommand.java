@@ -198,6 +198,7 @@ public final class DoctorCommand implements Runnable {
       case APT -> "apt-get";
       case FLATPAK -> "flatpak";
       case ZYPPER -> "zypper";
+      case CARGO -> "cargo";
     };
   }
 

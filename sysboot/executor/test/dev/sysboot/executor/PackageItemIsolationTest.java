@@ -65,7 +65,8 @@ class PackageItemIsolationTest {
         packageManager(PackageManagerKind.PARU, runner -> new ParuPackageInstaller(runner, sudo)),
         packageManager(PackageManagerKind.YAY, runner -> new YayPackageInstaller(runner, sudo)),
         packageManager(
-            PackageManagerKind.ZYPPER, runner -> new ZypperPackageInstaller(runner, sudo)));
+            PackageManagerKind.ZYPPER, runner -> new ZypperPackageInstaller(runner, sudo)),
+        packageManager(PackageManagerKind.CARGO, runner -> new CargoPackageInstaller(runner, sudo)));
   }
 
   private static Arguments packageManager(

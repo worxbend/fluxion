@@ -545,11 +545,18 @@ Progress:
   previews use the existing helper argv conventions, and existing package item isolation still
   attempts later helper packages after a middle failure. `./mill config-parser.test`,
   `./mill executor.test`, and `git diff --check` passed.
+- 2026-06-29: T016 added WorkstationProfile `cargo-packages` support as a package-like kind over a
+  new `CargoPackageInstaller`. Cargo package lists use the same non-empty validation path as other
+  package kinds, dry-run/plan/apply render one `cargo install <crate>` command per item, and package
+  item isolation now covers cargo so later crates are still attempted after a middle failure.
+  `./mill __.compile`, `./mill config-parser.test`, `./mill executor.test`, and `git diff --check`
+  passed.
 
 Plan kinds:
 
 - `apt-packages`
 - `aur-packages`
+- `cargo-packages`
 - `pacman-packages`
 - `dnf-packages`
 - `zypper-packages`
@@ -742,8 +749,6 @@ support gives safer validation, preview, state, and TUI reporting.
 
 Add only after the `WorkstationProfile` path is stable:
 
-- `aur-packages`
-- `cargo-packages`
 - `sdkman-packages`
 - `file-writes`
 
@@ -925,7 +930,7 @@ policy, variable, host-facts, `when`, and skipped-reporting milestones recorded 
 13. `T013` - Report interrupt resume state (complex feature, completed).
 14. `T014` - Checkpoint interrupt resume (validation, completed).
 15. `T015` - Add AUR package kind (moderate feature, completed).
-16. `T016` - Add cargo package kind (complex feature).
+16. `T016` - Add cargo package kind (complex feature, completed).
 17. `T017` - Add SDKMAN package kind (complex feature).
 18. `T018` - Add file write kind (complex feature).
 19. `T019` - Checkpoint parity kinds (validation).

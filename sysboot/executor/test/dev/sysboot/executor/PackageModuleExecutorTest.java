@@ -199,6 +199,23 @@ class PackageModuleExecutorTest {
   }
 
   @Test
+  void dryRun_whenCargoPackageModule_rendersCargoInstallCommands() {
+    var cargo =
+        new CargoPackageInstaller(
+            (command, environment, timeout) ->
+                new dev.sysboot.core.ProcessResult(0, "", "", Duration.ZERO),
+            prompt -> Optional.empty());
+    var executor = new PackageModuleExecutor(new PackageManagerExecutorRegistry(List.of(cargo)));
+    List<ExecutionEvent> events = new ArrayList<>();
+
+    executor.dryRun(module(PackageManagerKind.CARGO, "cargo-binstall", "eza"), events::add);
+
+    assertThat(completedItems(events)).containsExactly("cargo-binstall", "eza");
+    assertDryRun(events, 1, "cargo", "install", "cargo-binstall");
+    assertDryRun(events, 3, "cargo", "install", "eza");
+  }
+
+  @Test
   void dryRun_emitsActionCommandsBeforePackageCommands() {
     var action = new PackageManagerAction("upgrade", List.of());
     when(dnf.supports(PackageManagerKind.DNF)).thenReturn(true);
@@ -228,9 +245,21 @@ class PackageModuleExecutorTest {
 
   private static PackageModule module(
       List<PackageManagerAction> actions, boolean continueOnError, String... packageNames) {
+    return module(PackageManagerKind.DNF, actions, continueOnError, packageNames);
+  }
+
+  private static PackageModule module(PackageManagerKind kind, String... packageNames) {
+    return module(kind, List.of(), true, packageNames);
+  }
+
+  private static PackageModule module(
+      PackageManagerKind kind,
+      List<PackageManagerAction> actions,
+      boolean continueOnError,
+      String... packageNames) {
     return new PackageModule(
         new ModuleName("tools"),
-        PackageManagerKind.DNF,
+        kind,
         java.util.Arrays.stream(packageNames).map(PackageName::new).toList(),
         actions,
         continueOnError);
