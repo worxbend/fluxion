@@ -463,6 +463,10 @@ Progress:
   setup failures stop package execution by default; an explicit manifest-level
   `continueOnError: true` policy allows continuation. Successful source setup records repository or
   remote item state, not package item state.
+- 2026-06-29: VALIDATION-5 passed the source-prelude checkpoint. `just verify`,
+  `cd sysboot && ./mill cli.assembly`, and `just native-smoke` all completed successfully. No
+  regressions were found and no code fixes were needed. Remaining risk moves to pending package
+  behavior work: package-manager actions, item isolation, and later installer kinds.
 
 Reference behavior from the pinned `binstaller` scan:
 
@@ -841,7 +845,7 @@ policy, variable, host-facts, `when`, and skipped-reporting milestones recorded 
 1. `T001` - Decode source setup specs (moderate feature).
 2. `T002` - Map source setup modules (complex feature).
 3. `T003` - Plan source setup prelude (complex feature, completed).
-4. `T004` - Checkpoint source prelude (validation).
+4. `T004` - Checkpoint source prelude (validation, completed).
 5. `T005` - Add package manager actions (complex feature).
 6. `T006` - Verify package item isolation (moderate fix).
 7. `T007` - Checkpoint package behavior (validation).
