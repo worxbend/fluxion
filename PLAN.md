@@ -193,6 +193,14 @@ cd sysboot
 
 Goal: load the Kubernetes-style manifest as a supported input format.
 
+Progress:
+
+- 2026-06-29: T002 added the first WorkstationProfile Jackson DTO surface under
+  `config-parser` with Optional-style scalar accessors and empty collection/map defaults. A minimal
+  `apiVersion`/`kind`/`metadata.name`/empty `spec` fixture now deserializes directly into
+  `WorkstationProfileDocument`, and GraalVM reflection metadata includes the new DTOs. Loader
+  routing and mapping remain in T003/T004.
+
 Tasks:
 
 - Add DTOs under `config-parser/src/dev/sysboot/config/yaml/contract/`:
