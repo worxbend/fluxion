@@ -288,6 +288,11 @@ Progress:
   with field-path diagnostics, and plan-scoped errors include the plan-entry name. The resolver
   only replaces `${name}` tokens and leaves `$()`, backticks, globs, `$repo`, `$arch`, and other
   shell text literal. Focused parser tests and a full JVM test rerun passed.
+- 2026-06-29: VALIDATION-12 passed the checkpoint gate after T009. `just verify`,
+  `./mill cli.assembly`, `./mill cli.nativeImage`, and `just native-smoke` all completed
+  successfully. No regressions were found and no in-scope fixes were needed. Remaining risk is in
+  pending feature work: fuller host facts and `when` evaluation, source setup, and non-package
+  WorkstationProfile plan kinds are still not implemented.
 
 Tasks:
 
