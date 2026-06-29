@@ -347,6 +347,49 @@ class CliExitCodeTest {
   }
 
   @Test
+  void plan_whenWorkstationProfileEntriesSkipped_outputsReasons() throws Exception {
+    Path config = writeWorkstationProfileWithSkippedPlan();
+
+    CliResult result = execute("plan", "--no-tui", "-c", config.toString());
+
+    assertThat(result.exitCode()).isEqualTo(ExitCode.SUCCESS.value());
+    assertThat(result.stdout())
+        .contains("Execution plan for: workstation-skip-test")
+        .contains("git")
+        .contains("Skipped WorkstationProfile entries:")
+        .contains("arch-only")
+        .contains("when.distribution expected one of [no-such-os]");
+    assertThat(result.stderr()).isEmpty();
+  }
+
+  @Test
+  void dryRunAndApplyNoTuiDryRun_reportSameWorkstationProfileSelection() throws Exception {
+    Path config = writeWorkstationProfileWithSkippedPlan();
+
+    CliResult dryRun = executeCapturingSystemOut("dry-run", "--no-tui", "-c", config.toString());
+    CliResult apply =
+        executeCapturingSystemOut(
+            "apply", "--no-tui", "--dry-run", "-c", config.toString(), "--yes");
+
+    assertThat(dryRun.exitCode()).isEqualTo(ExitCode.SUCCESS.value());
+    assertThat(apply.exitCode()).isEqualTo(ExitCode.SUCCESS.value());
+    assertThat(dryRun.stdout())
+        .contains("SKIPPED")
+        .contains("arch-only")
+        .contains("when.distribution expected one of [no-such-os]")
+        .contains("DRY-RUN")
+        .contains("git");
+    assertThat(apply.stdout())
+        .contains("SKIPPED")
+        .contains("arch-only")
+        .contains("when.distribution expected one of [no-such-os]")
+        .contains("DRY-RUN")
+        .contains("git");
+    assertThat(dryRun.stderr()).isEmpty();
+    assertThat(apply.stderr()).isEmpty();
+  }
+
+  @Test
   void graph_outputsMermaidPhaseDag() throws Exception {
     Path config = writeDependentPhaseConfig();
 
@@ -946,6 +989,35 @@ class CliExitCodeTest {
                 name: apps
                 remote: flathub
                 appIds: [org.mozilla.firefox]
+        """);
+    return config;
+  }
+
+  private Path writeWorkstationProfileWithSkippedPlan() throws IOException {
+    Path config = tempDir.resolve("workstation-skipped.yaml");
+    Files.writeString(
+        config,
+        """
+        apiVersion: initkit.io/v1alpha1
+        kind: WorkstationProfile
+        metadata:
+          name: workstation-skip-test
+        spec:
+          target:
+            os:
+              distribution: fedora
+              release: "44"
+          plan:
+            - name: selected
+              kind: dnf-packages
+              spec:
+                packages: [git]
+            - name: arch-only
+              kind: dnf-packages
+              when:
+                distribution: no-such-os
+              spec:
+                packages: [curl]
         """);
     return config;
   }

@@ -336,7 +336,10 @@ Progress:
   host fact matches, field-level and top-level `oneOf`, and `commandExists` now select package plan
   entries through the injectable `HostFactsProvider`. `ApplicationContext` wires the Linux adapter
   into `YamlConfigLoader`, while parser tests use fake Debian, Ubuntu, Fedora, Arch, and openSUSE
-  facts. Skipped-entry reporting remains in T013.
+  facts.
+- 2026-06-29: T013 preserved skipped WorkstationProfile plan entries on `BootstrapConfig` with
+  stable reasons, exposes them through `ExecutionPlan`, and reports them in plain `plan` output,
+  dry-run/apply `--no-tui` event output, and disabled TUI selection rows.
 
 Tasks:
 
@@ -571,6 +574,12 @@ cd sysboot
 
 Goal: make both output modes explain the new schema clearly.
 
+Progress:
+
+- 2026-06-29: T013 added selected/skipped WorkstationProfile reporting for `plan`, `dry-run`,
+  `apply --no-tui --dry-run`, and TUI selection rendering without requiring a real terminal in
+  tests. Skipped entries include the manifest plan entry name, kind, and reason.
+
 Plain CLI:
 
 - Show manifest/profile name.
@@ -701,7 +710,7 @@ Strict task queue is written to `.agent-loop/tasks.json`; validation defaults ar
 10. `T010` - Checkpoint manifest mapping (validation).
 11. `T011` - Add host facts boundary (moderate feature, completed).
 12. `T012` - Evaluate when conditions (complex feature, completed).
-13. `T013` - Report skipped plan entries (complex feature).
+13. `T013` - Report skipped plan entries (complex feature, completed).
 14. `T014` - Checkpoint host filtering (validation).
 15. `T015` - Decode source setup specs (moderate feature).
 16. `T016` - Plan source setup prelude (complex feature).

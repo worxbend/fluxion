@@ -12,13 +12,19 @@ public final class BootstrapConfig {
   private final OsTarget target;
   private final BootstrapPolicy policy;
   private final List<Phase> phases;
+  private final List<SkippedPlanEntry> skippedPlanEntries;
 
   private BootstrapConfig(
-      ProfileName profileName, OsTarget target, BootstrapPolicy policy, List<Phase> phases) {
+      ProfileName profileName,
+      OsTarget target,
+      BootstrapPolicy policy,
+      List<Phase> phases,
+      List<SkippedPlanEntry> skippedPlanEntries) {
     this.profileName = profileName;
     this.target = target;
     this.policy = policy;
     this.phases = List.copyOf(phases);
+    this.skippedPlanEntries = List.copyOf(skippedPlanEntries);
   }
 
   public ProfileName profileName() {
@@ -37,6 +43,10 @@ public final class BootstrapConfig {
     return phases;
   }
 
+  public List<SkippedPlanEntry> skippedPlanEntries() {
+    return skippedPlanEntries;
+  }
+
   /** Flattened view of all modules across all phases — used by probing and legacy code. */
   public List<BootstrapModule> modules() {
     return phases.stream().flatMap(p -> p.modules().stream()).toList();
@@ -53,6 +63,7 @@ public final class BootstrapConfig {
     private BootstrapPolicy policy = BootstrapPolicy.empty();
     private final List<Phase> phases = new ArrayList<>();
     private final List<BootstrapModule> pendingModules = new ArrayList<>();
+    private final List<SkippedPlanEntry> skippedPlanEntries = new ArrayList<>();
 
     public Builder profileName(ProfileName name) {
       this.profileName = Objects.requireNonNull(name);
@@ -86,6 +97,11 @@ public final class BootstrapConfig {
       return this;
     }
 
+    public Builder skippedPlanEntries(List<SkippedPlanEntry> entries) {
+      entries.forEach(entry -> skippedPlanEntries.add(Objects.requireNonNull(entry)));
+      return this;
+    }
+
     public BootstrapConfig build() {
       Objects.requireNonNull(profileName, "Profile name is required");
       Objects.requireNonNull(target, "OS target is required");
@@ -109,7 +125,7 @@ public final class BootstrapConfig {
       }
       validateUniquePhaseNames(allPhases);
       validateUniqueModuleNames(allPhases);
-      return new BootstrapConfig(profileName, target, policy, allPhases);
+      return new BootstrapConfig(profileName, target, policy, allPhases, skippedPlanEntries);
     }
 
     private void validateUniqueNames(List<BootstrapModule> mods) {

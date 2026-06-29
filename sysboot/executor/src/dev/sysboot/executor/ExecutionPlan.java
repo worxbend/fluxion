@@ -1,15 +1,22 @@
 package dev.sysboot.executor;
 
 import dev.sysboot.core.ModuleItem;
+import dev.sysboot.core.SkippedPlanEntry;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
 
-public record ExecutionPlan(String profileName, List<ExecutionPlan.Phase> phases) {
+public record ExecutionPlan(
+    String profileName, List<ExecutionPlan.Phase> phases, List<SkippedPlanEntry> skippedEntries) {
 
   public ExecutionPlan {
     Objects.requireNonNull(profileName);
     phases = List.copyOf(Objects.requireNonNull(phases));
+    skippedEntries = List.copyOf(Objects.requireNonNull(skippedEntries));
+  }
+
+  public ExecutionPlan(String profileName, List<ExecutionPlan.Phase> phases) {
+    this(profileName, phases, List.of());
   }
 
   public record Phase(

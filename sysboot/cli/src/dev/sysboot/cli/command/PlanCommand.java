@@ -7,6 +7,7 @@ import dev.sysboot.cli.option.GlobalOptions;
 import dev.sysboot.cli.output.JsonOutput;
 import dev.sysboot.core.BootstrapConfig;
 import dev.sysboot.core.InstallationStatus;
+import dev.sysboot.core.SkippedPlanEntry;
 import dev.sysboot.executor.ExecutionPlan;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -97,6 +98,7 @@ public final class PlanCommand implements Runnable {
       }
       out.println();
     }
+    writeSkippedText(plan.skippedEntries());
   }
 
   private void writeTablePlan(ExecutionPlan plan, Map<String, InstallationStatus> probeResults) {
@@ -118,6 +120,11 @@ public final class PlanCommand implements Runnable {
         }
       }
     }
+    for (SkippedPlanEntry skipped : plan.skippedEntries()) {
+      out.printf(
+          "%-22s %-24s %-35s skipped: %s%n",
+          "manifest-plan", skipped.name(), skipped.kind(), skipped.reason());
+    }
   }
 
   private void writeTreePlan(ExecutionPlan plan, Map<String, InstallationStatus> probeResults) {
@@ -137,6 +144,7 @@ public final class PlanCommand implements Runnable {
         }
       }
     }
+    writeSkippedTree(plan.skippedEntries());
   }
 
   private String dependencyLabel(ExecutionPlan.Phase phase) {
@@ -156,6 +164,39 @@ public final class PlanCommand implements Runnable {
     output.put("profileName", plan.profileName());
     output.put(
         "phases", plan.phases().stream().map(phase -> jsonPhase(phase, probeResults)).toList());
+    output.put("skippedEntries", plan.skippedEntries().stream().map(this::jsonSkipped).toList());
+    return output;
+  }
+
+  private void writeSkippedText(List<SkippedPlanEntry> skippedEntries) {
+    var out = spec.commandLine().getOut();
+    if (skippedEntries.isEmpty()) {
+      return;
+    }
+    out.println("Skipped WorkstationProfile entries:");
+    for (SkippedPlanEntry skipped : skippedEntries) {
+      out.printf("  • %-35s %s%n", skipped.name(), skipped.reason());
+    }
+    out.println();
+  }
+
+  private void writeSkippedTree(List<SkippedPlanEntry> skippedEntries) {
+    var out = spec.commandLine().getOut();
+    if (skippedEntries.isEmpty()) {
+      return;
+    }
+    out.println("└─ skipped WorkstationProfile entries");
+    for (SkippedPlanEntry skipped : skippedEntries) {
+      out.printf("   └─ %s (%s) - %s%n", skipped.name(), skipped.kind(), skipped.reason());
+    }
+  }
+
+  private Map<String, Object> jsonSkipped(SkippedPlanEntry skipped) {
+    var output = new LinkedHashMap<String, Object>();
+    output.put("name", skipped.name());
+    output.put("kind", skipped.kind());
+    output.put("status", "skipped");
+    output.put("reason", skipped.reason());
     return output;
   }
 

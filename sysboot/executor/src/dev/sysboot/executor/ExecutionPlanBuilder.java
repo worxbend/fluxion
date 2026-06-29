@@ -43,7 +43,7 @@ public final class ExecutionPlanBuilder {
   public ExecutionPlan build(BootstrapConfig config) {
     List<ExecutionPlan.Phase> phases =
         phasePlanner.plan(config.phases()).stream().map(this::phase).toList();
-    return new ExecutionPlan(config.profileName().value(), phases);
+    return new ExecutionPlan(config.profileName().value(), phases, config.skippedPlanEntries());
   }
 
   private ExecutionPlan.Phase phase(Phase phase) {

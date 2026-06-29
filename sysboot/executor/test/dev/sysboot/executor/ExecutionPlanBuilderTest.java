@@ -20,6 +20,7 @@ import dev.sysboot.core.Phase;
 import dev.sysboot.core.PhaseName;
 import dev.sysboot.core.ProfileName;
 import dev.sysboot.core.RestartPolicy;
+import dev.sysboot.core.SkippedPlanEntry;
 import dev.sysboot.core.RpmRepositoryModule;
 import dev.sysboot.core.StepResult;
 import java.io.IOException;
@@ -78,6 +79,25 @@ class ExecutionPlanBuilderTest {
     assertPlanItem(plan, 2, "fd", PackageManagerKind.PACMAN);
     assertPlanItem(plan, 3, "htop", PackageManagerKind.ZYPPER);
     assertFlatpakPlanItem(plan, 4, "org.mozilla.firefox");
+  }
+
+  @Test
+  void build_whenWorkstationProfilePlanEntriesSkipped_includesSkipReasons(
+      @TempDir Path tmpDir) throws IOException {
+    Path configFile = tmpDir.resolve("config.yaml");
+    Files.writeString(configFile, workstationProfileWithSkippedPlan());
+    BootstrapConfig config = new YamlConfigLoader().load(configFile);
+    var builder = new ExecutionPlanBuilder(new PackageManagerExecutorRegistry(packageExecutors()));
+
+    ExecutionPlan plan = builder.build(config);
+
+    assertThat(plan.phases().getFirst().modules()).extracting(ExecutionPlan.Module::name)
+        .containsExactly("selected");
+    assertThat(plan.skippedEntries())
+        .extracting(SkippedPlanEntry::name, SkippedPlanEntry::kind)
+        .containsExactly(org.assertj.core.groups.Tuple.tuple("skipped", "dnf-packages"));
+    assertThat(plan.skippedEntries().getFirst().reason())
+        .startsWith("when.distribution expected one of [no-such-os] but was");
   }
 
   @Test
@@ -380,6 +400,31 @@ class ExecutionPlanBuilderTest {
                 remote: fedora
                 apps: [org.mozilla.firefox]
                 appIds: [com.slack.Slack]
+        """;
+  }
+
+  private static String workstationProfileWithSkippedPlan() {
+    return """
+        apiVersion: initkit.io/v1alpha1
+        kind: WorkstationProfile
+        metadata:
+          name: skipped-plan-test
+        spec:
+          target:
+            os:
+              distribution: fedora
+              release: "44"
+          plan:
+            - name: selected
+              kind: dnf-packages
+              spec:
+                packages: [git]
+            - name: skipped
+              kind: dnf-packages
+              when:
+                distribution: no-such-os
+              spec:
+                packages: [curl]
         """;
   }
 

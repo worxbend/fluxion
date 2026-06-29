@@ -28,7 +28,7 @@ final class WorkstationProfileWhenEvaluator {
       if (decision.matches()) {
         selected.add(entry);
       } else {
-        skipped.add(new SkippedPlanEntry(planName(entry), decision.reason()));
+        skipped.add(new SkippedPlanEntry(planName(entry), planKind(entry), decision.reason()));
       }
     }
     return new PlanSelection(List.copyOf(selected), List.copyOf(skipped));
@@ -212,9 +212,13 @@ final class WorkstationProfileWhenEvaluator {
     return entry.name().orElse("<unnamed>");
   }
 
+  private String planKind(PlanEntryDocument entry) {
+    return entry.kind().orElse("<unknown>");
+  }
+
   record PlanSelection(List<PlanEntryDocument> selected, List<SkippedPlanEntry> skipped) {}
 
-  record SkippedPlanEntry(String name, String reason) {}
+  record SkippedPlanEntry(String name, String kind, String reason) {}
 
   private record Decision(boolean matches, String reason) {
     static Decision selected() {

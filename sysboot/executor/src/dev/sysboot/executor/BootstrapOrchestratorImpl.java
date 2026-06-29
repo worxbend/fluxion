@@ -31,6 +31,7 @@ import dev.sysboot.core.ShellReloadModule;
 import dev.sysboot.core.ShellRunner;
 import dev.sysboot.core.ShellScriptModule;
 import dev.sysboot.core.SkipDecision;
+import dev.sysboot.core.SkippedPlanEntry;
 import dev.sysboot.core.StateEntry;
 import dev.sysboot.core.StateRepository;
 import dev.sysboot.core.StepResult;
@@ -148,6 +149,7 @@ public final class BootstrapOrchestratorImpl implements BootstrapOrchestrator {
 
   @Override
   public void execute(BootstrapConfig config, ExecutionEventListener listener) {
+    emitSkippedPlanEntries(config.skippedPlanEntries(), listener);
     List<Phase> ordered = planner.plan(config.phases());
     Set<PhaseName> failed = new HashSet<>();
     Set<PhaseName> blocked = new HashSet<>();
@@ -199,6 +201,7 @@ public final class BootstrapOrchestratorImpl implements BootstrapOrchestrator {
 
   @Override
   public void dryRun(BootstrapConfig config, ExecutionEventListener listener) {
+    emitSkippedPlanEntries(config.skippedPlanEntries(), listener);
     List<Phase> ordered = planner.plan(config.phases());
     for (Phase phase : ordered) {
       listener.onEvent(ExecutionEvent.phaseStarted(phase.name()));
@@ -556,6 +559,19 @@ public final class BootstrapOrchestratorImpl implements BootstrapOrchestrator {
     listener.onEvent(
         ExecutionEvent.itemCompleted(
             moduleName, itemKey, new StepResult.Skipped(itemKey, skip.reason().toString())));
+  }
+
+  private void emitSkippedPlanEntries(
+      List<SkippedPlanEntry> skippedEntries, ExecutionEventListener listener) {
+    for (SkippedPlanEntry skipped : skippedEntries) {
+      ModuleName moduleName = new ModuleName(skipped.name());
+      listener.onEvent(ExecutionEvent.itemStarted(moduleName, skipped.name()));
+      listener.onEvent(
+          ExecutionEvent.itemCompleted(
+              moduleName,
+              skipped.name(),
+              new StepResult.Skipped(skipped.name(), skipped.reason())));
+    }
   }
 
   private void emitDryRun(

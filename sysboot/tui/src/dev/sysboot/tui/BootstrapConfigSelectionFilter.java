@@ -38,7 +38,8 @@ final class BootstrapConfigSelectionFilter {
         BootstrapConfig.builder()
             .profileName(config.profileName())
             .target(config.target())
-            .policy(config.policy());
+            .policy(config.policy())
+            .skippedPlanEntries(config.skippedPlanEntries());
     phases.forEach(builder::addPhase);
     return builder.build();
   }

@@ -34,6 +34,7 @@ import dev.sysboot.core.RpmRepositoryModule;
 import dev.sysboot.core.ShellRunner;
 import dev.sysboot.core.StateEntry;
 import dev.sysboot.core.StateRepository;
+import dev.sysboot.core.SkippedPlanEntry;
 import dev.sysboot.core.StepResult;
 import java.net.URI;
 import java.nio.file.Path;
@@ -275,6 +276,36 @@ class BootstrapOrchestratorImplTest {
     assertThat(completedEvent.result().orElseThrow()).isInstanceOf(StepResult.DryRun.class);
     var dryRun = (StepResult.DryRun) completedEvent.result().orElseThrow();
     assertThat(dryRun.wouldExecute()).containsExactly("sudo", "dnf", "install", "-y", "git");
+  }
+
+  @Test
+  void dryRun_whenPlanEntriesSkipped_emitsSkippedBeforeSelectedItems() {
+    var config =
+        BootstrapConfig.builder()
+            .profileName(new ProfileName("test"))
+            .target(new OsTarget.FedoraTarget("41"))
+            .skippedPlanEntries(
+                List.of(
+                    new SkippedPlanEntry(
+                        "arch-only", "pacman-packages", "when.distribution expected arch")))
+            .addModule(
+                new PackageModule(
+                    new ModuleName("tools"),
+                    PackageManagerKind.DNF,
+                    List.of(new PackageName("git")),
+                    true))
+            .build();
+
+    List<ExecutionEvent> events = new ArrayList<>();
+    orchestrator.dryRun(config, events::add);
+
+    assertThat(events.stream().flatMap(event -> event.result().stream()).toList())
+        .extracting(StepResult::item)
+        .containsSubsequence("arch-only", "git");
+    StepResult skipped =
+        events.stream().flatMap(event -> event.result().stream()).findFirst().orElseThrow();
+    assertThat(skipped).isInstanceOf(StepResult.Skipped.class);
+    assertThat(((StepResult.Skipped) skipped).reason()).contains("when.distribution");
   }
 
   @Test

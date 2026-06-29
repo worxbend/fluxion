@@ -3,6 +3,7 @@ package dev.sysboot.tui;
 import dev.sysboot.core.BootstrapConfig;
 import dev.sysboot.core.BootstrapModule;
 import dev.sysboot.core.Phase;
+import dev.sysboot.core.SkippedPlanEntry;
 import java.io.Console;
 import java.io.OutputStream;
 import java.io.PrintStream;
@@ -77,13 +78,15 @@ final class TuiSelectionPrompt {
     if (parsed.is("j")) {
       phaseAt(config.phases(), parsed.index()).ifPresent(selection::togglePhase);
     } else if (parsed.is("s")) {
-      phaseAt(config.phases(), parsed.index()).ifPresent(phase -> selectSteps(phase, selection));
+      phaseAt(config.phases(), parsed.index())
+          .ifPresent(phase -> selectSteps(phase, config.skippedPlanEntries(), selection));
     }
   }
 
-  private void selectSteps(Phase phase, BootstrapSelection selection) {
+  private void selectSteps(
+      Phase phase, List<SkippedPlanEntry> skippedEntries, BootstrapSelection selection) {
     while (true) {
-      renderSteps(phase, selection);
+      renderSteps(phase, skippedEntries, selection);
       String command = reader.readLine("steps> ");
       if (isBack(command)) {
         return;
@@ -144,7 +147,8 @@ final class TuiSelectionPrompt {
     }
   }
 
-  private void renderSteps(Phase phase, BootstrapSelection selection) {
+  private void renderSteps(
+      Phase phase, List<SkippedPlanEntry> skippedEntries, BootstrapSelection selection) {
     out.println();
     out.printf("Job '%s' steps%n", phase.name().value());
     out.println("Commands: t N toggle step, e N select entries, b, run, q");
@@ -157,6 +161,9 @@ final class TuiSelectionPrompt {
           module.name().value(),
           SelectionEntryCatalog.entries(module).size(),
           SelectionEntryCatalog.entries(module).size() == 1 ? "y" : "ies");
+    }
+    if (phase.name().value().equals("manifest-plan")) {
+      renderSkippedSteps(skippedEntries);
     }
   }
 
@@ -173,6 +180,16 @@ final class TuiSelectionPrompt {
 
   private String mark(boolean selected) {
     return selected ? "x" : " ";
+  }
+
+  private void renderSkippedSteps(List<SkippedPlanEntry> skippedEntries) {
+    for (SkippedPlanEntry skipped : skippedEntries) {
+      out.printf(
+          "    [-] %s  (%s skipped: %s)%n",
+          skipped.name(),
+          skipped.kind(),
+          skipped.reason());
+    }
   }
 
   private boolean isRun(String command) {

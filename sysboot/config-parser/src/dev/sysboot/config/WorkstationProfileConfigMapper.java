@@ -21,6 +21,7 @@ import dev.sysboot.core.Phase;
 import dev.sysboot.core.PhaseName;
 import dev.sysboot.core.ProfileName;
 import dev.sysboot.core.RestartPolicy;
+import dev.sysboot.core.SkippedPlanEntry;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
@@ -43,12 +44,27 @@ final class WorkstationProfileConfigMapper {
     var spec = requireField(document.spec().orElse(null), "spec");
     TargetDocument target = spec.target().orElse(null);
     BootstrapPolicy policy = mapPolicy(spec.policy());
+    WorkstationProfileWhenEvaluator.PlanSelection selection = whenEvaluator.select(spec.plan());
     return BootstrapConfig.builder()
         .profileName(new ProfileName(requireField(metadata.name().orElse(null), "metadata.name")))
         .target(mapTarget(requireField(target, "spec.target")))
         .policy(policy)
-        .addPhase(manifestPhase(whenEvaluator.select(spec.plan()).selected(), policy))
+        .skippedPlanEntries(skippedEntries(selection.skipped()))
+        .addPhase(manifestPhase(selection.selected(), policy))
         .build();
+  }
+
+  private List<SkippedPlanEntry> skippedEntries(
+      List<WorkstationProfileWhenEvaluator.SkippedPlanEntry> entries) {
+    return entries.stream()
+        .map(
+            entry ->
+                new SkippedPlanEntry(entry.name(), normalizedKind(entry.kind()), entry.reason()))
+        .toList();
+  }
+
+  private String normalizedKind(String kind) {
+    return kind.strip().toLowerCase(Locale.ROOT);
   }
 
   private BootstrapPolicy mapPolicy(Optional<PolicyDocument> policy) {

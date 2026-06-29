@@ -30,7 +30,25 @@ class BootstrapConfigBuilderTest {
     assertThat(config.profileName()).isEqualTo(PROFILE);
     assertThat(config.target()).isEqualTo(TARGET);
     assertThat(config.policy()).isEqualTo(BootstrapPolicy.empty());
+    assertThat(config.skippedPlanEntries()).isEmpty();
     assertThat(config.modules()).hasSize(1);
+  }
+
+  @Test
+  void build_whenSkippedPlanEntriesProvided_preservesUnmodifiableEntries() {
+    var skipped = new SkippedPlanEntry("arch-only", "pacman-packages", "when.os expected arch");
+
+    var config =
+        BootstrapConfig.builder()
+            .profileName(PROFILE)
+            .target(TARGET)
+            .skippedPlanEntries(List.of(skipped))
+            .addModule(SAMPLE_MODULE)
+            .build();
+
+    assertThat(config.skippedPlanEntries()).containsExactly(skipped);
+    assertThatThrownBy(() -> config.skippedPlanEntries().add(skipped))
+        .isInstanceOf(UnsupportedOperationException.class);
   }
 
   @Test
