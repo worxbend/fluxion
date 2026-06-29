@@ -332,7 +332,11 @@ Progress:
   Linux distribution/version/codename, normalizes architectures such as `x86_64`/`amd64` to
   `amd64` and `aarch64`/`arm64` to `arm64`, and checks command availability from `PATH`. Focused
   tests prove the boundary can be faked and the adapter can be driven with fixture host data.
-  `when` evaluation is still pending in T012.
+- 2026-06-29: T012 added WorkstationProfile `when` evaluation during manifest mapping. Scalar
+  host fact matches, field-level and top-level `oneOf`, and `commandExists` now select package plan
+  entries through the injectable `HostFactsProvider`. `ApplicationContext` wires the Linux adapter
+  into `YamlConfigLoader`, while parser tests use fake Debian, Ubuntu, Fedora, Arch, and openSUSE
+  facts. Skipped-entry reporting remains in T013.
 
 Tasks:
 
@@ -696,7 +700,7 @@ Strict task queue is written to `.agent-loop/tasks.json`; validation defaults ar
 9. `T009` - Add variable interpolation (complex feature).
 10. `T010` - Checkpoint manifest mapping (validation).
 11. `T011` - Add host facts boundary (moderate feature, completed).
-12. `T012` - Evaluate when conditions (complex feature).
+12. `T012` - Evaluate when conditions (complex feature, completed).
 13. `T013` - Report skipped plan entries (complex feature).
 14. `T014` - Checkpoint host filtering (validation).
 15. `T015` - Decode source setup specs (moderate feature).

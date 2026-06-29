@@ -7,6 +7,7 @@ import dev.sysboot.config.yaml.contract.ConfigDocument;
 import dev.sysboot.config.yaml.contract.WorkstationProfileDocument;
 import dev.sysboot.core.BootstrapConfig;
 import dev.sysboot.core.ConfigLoader;
+import dev.sysboot.core.HostFactsProvider;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -19,10 +20,14 @@ public final class YamlConfigLoader implements ConfigLoader {
   private final WorkstationProfileInterpolator workstationProfileInterpolator;
 
   public YamlConfigLoader() {
+    this(new JvmHostFactsProvider());
+  }
+
+  public YamlConfigLoader(HostFactsProvider hostFactsProvider) {
     this.objectMapper = new ObjectMapper(new YAMLFactory());
     this.objectMapper.findAndRegisterModules();
     this.configMapper = new ConfigMapper();
-    this.workstationProfileConfigMapper = new WorkstationProfileConfigMapper();
+    this.workstationProfileConfigMapper = new WorkstationProfileConfigMapper(hostFactsProvider);
     this.workstationProfileInterpolator = new WorkstationProfileInterpolator();
   }
 

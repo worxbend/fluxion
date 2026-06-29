@@ -27,6 +27,7 @@ import dev.sysboot.executor.FlatpakRemoteInstaller;
 import dev.sysboot.executor.FlatpakRemoteProbe;
 import dev.sysboot.executor.InstalledProbeRegistry;
 import dev.sysboot.executor.JsonStateRepository;
+import dev.sysboot.executor.LinuxHostFactsProvider;
 import dev.sysboot.executor.NerdFontExecutor;
 import dev.sysboot.executor.NerdFontProbe;
 import dev.sysboot.executor.OhMyZshExecutor;
@@ -116,6 +117,7 @@ public final class ApplicationContext {
     var baseRunner = new DefaultShellRunner();
     var mapper = new ObjectMapper();
     var stateRepo = new JsonStateRepository(mapper);
+    var hostFactsProvider = new LinuxHostFactsProvider();
 
     var probeRegistry = buildProbeRegistry(baseRunner);
     var skipEvaluator =
@@ -128,7 +130,7 @@ public final class ApplicationContext {
 
     return new ApplicationContext(
         orchestrator,
-        new YamlConfigLoader(),
+        new YamlConfigLoader(hostFactsProvider),
         Optional.of(tuiApp),
         new ParallelProbeRunner(probeRegistry),
         new ExecutionPlanBuilder(registry));
@@ -140,6 +142,7 @@ public final class ApplicationContext {
     var shellRunner = new DefaultShellRunner();
     var mapper = new ObjectMapper();
     var stateRepo = new JsonStateRepository(mapper);
+    var hostFactsProvider = new LinuxHostFactsProvider();
 
     var probeRegistry = buildProbeRegistry(shellRunner);
     var skipEvaluator =
@@ -151,7 +154,7 @@ public final class ApplicationContext {
 
     return new ApplicationContext(
         orchestrator,
-        new YamlConfigLoader(),
+        new YamlConfigLoader(hostFactsProvider),
         Optional.empty(),
         new ParallelProbeRunner(probeRegistry),
         new ExecutionPlanBuilder(registry));

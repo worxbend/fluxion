@@ -11,6 +11,7 @@ import dev.sysboot.core.BootstrapConfig;
 import dev.sysboot.core.BootstrapModule;
 import dev.sysboot.core.BootstrapPolicy;
 import dev.sysboot.core.FlatpakModule;
+import dev.sysboot.core.HostFactsProvider;
 import dev.sysboot.core.ModuleName;
 import dev.sysboot.core.OsTarget;
 import dev.sysboot.core.PackageManagerKind;
@@ -29,9 +30,11 @@ import java.util.Optional;
 final class WorkstationProfileConfigMapper {
 
   private final WorkstationProfileValidator validator;
+  private final WorkstationProfileWhenEvaluator whenEvaluator;
 
-  WorkstationProfileConfigMapper() {
+  WorkstationProfileConfigMapper(HostFactsProvider hostFactsProvider) {
     this.validator = new WorkstationProfileValidator();
+    this.whenEvaluator = new WorkstationProfileWhenEvaluator(hostFactsProvider);
   }
 
   BootstrapConfig map(WorkstationProfileDocument document, Path manifestPath) {
@@ -44,7 +47,7 @@ final class WorkstationProfileConfigMapper {
         .profileName(new ProfileName(requireField(metadata.name().orElse(null), "metadata.name")))
         .target(mapTarget(requireField(target, "spec.target")))
         .policy(policy)
-        .addPhase(manifestPhase(spec.plan(), policy))
+        .addPhase(manifestPhase(whenEvaluator.select(spec.plan()).selected(), policy))
         .build();
   }
 

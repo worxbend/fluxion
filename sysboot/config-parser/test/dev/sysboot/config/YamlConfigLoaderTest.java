@@ -10,6 +10,8 @@ import dev.sysboot.core.BootstrapPolicy;
 import dev.sysboot.core.CompiledBinaryModule;
 import dev.sysboot.core.FlatpakModule;
 import dev.sysboot.core.FlatpakRemoteModule;
+import dev.sysboot.core.HostFacts;
+import dev.sysboot.core.HostFactsProvider;
 import dev.sysboot.core.ManualModule;
 import dev.sysboot.core.OsTarget;
 import dev.sysboot.core.PackageManagerKind;
@@ -22,6 +24,10 @@ import dev.sysboot.core.ShellScriptModule;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.LinkedHashSet;
+import java.util.List;
+import java.util.Optional;
+import java.util.Set;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -292,7 +298,44 @@ class YamlConfigLoaderTest {
     assertPackageModule(result, 1, "dnf-base", PackageManagerKind.DNF, "ripgrep");
     assertPackageModule(result, 2, "pacman-base", PackageManagerKind.PACMAN, "fd");
     assertPackageModule(result, 3, "zypper-base", PackageManagerKind.ZYPPER, "htop");
-    assertFlatpakModule(result, 4, "desktop-apps", "fedora", "org.mozilla.firefox", "com.slack.Slack");
+    assertFlatpakModule(
+        result, 4, "desktop-apps", "fedora", "org.mozilla.firefox", "com.slack.Slack");
+  }
+
+  @Test
+  void load_whenWorkstationProfileWhenMatchesFakeHostFacts_selectsExpectedEntries(
+      @TempDir Path tmpDir) throws IOException {
+    assertSelectedModules(tmpDir, facts("debian", "12", "bookworm"), "apt-base");
+    assertSelectedModules(tmpDir, facts("ubuntu", "24.04", "noble"), "apt-base");
+    assertSelectedModules(tmpDir, facts("fedora", "44", ""), "dnf-base");
+    assertSelectedModules(tmpDir, facts("arch", "", ""), "pacman-base");
+    assertSelectedModules(tmpDir, facts("opensuse", "15.6", ""), "zypper-base");
+  }
+
+  @Test
+  void load_whenCommandExistsPresent_usesInjectedHostFactsBoundary(@TempDir Path tmpDir)
+      throws IOException {
+    var hostFacts = new FakeHostFactsProvider(facts("debian", "12", "bookworm"), Set.of("apt"));
+    YamlConfigLoader hostLoader = new YamlConfigLoader(hostFacts);
+    Path config = writeConfig(tmpDir, workstationProfileWithCommandConditions());
+
+    BootstrapConfig result = hostLoader.load(config);
+
+    assertThat(result.modules()).extracting(module -> module.name().value())
+        .containsExactly("apt-gated");
+    assertThat(hostFacts.commandChecks()).containsExactly("apt", "dnf");
+  }
+
+  @Test
+  void load_whenWorkstationProfileHasNoWhen_keepsPlanEntriesUnchanged(@TempDir Path tmpDir)
+      throws IOException {
+    var hostFacts = new FakeHostFactsProvider(facts("arch", "", ""), Set.of());
+    Path config = writeConfig(tmpDir, workstationProfileWithAllPackageKinds());
+
+    BootstrapConfig result = new YamlConfigLoader(hostFacts).load(config);
+
+    assertThat(result.modules()).extracting(module -> module.name().value())
+        .containsExactly("apt-base", "dnf-base", "pacman-base", "zypper-base", "desktop-apps");
   }
 
   @Test
@@ -984,6 +1027,23 @@ class YamlConfigLoaderTest {
     return loader.load(config).target();
   }
 
+  private void assertSelectedModules(Path tmpDir, HostFacts hostFacts, String... names)
+      throws IOException {
+    Path config = writeConfig(tmpDir, workstationProfileWithWhenConditions());
+    BootstrapConfig result = new YamlConfigLoader(new FakeHostFactsProvider(hostFacts, Set.of()))
+        .load(config);
+    assertThat(result.modules()).extracting(module -> module.name().value()).containsExactly(names);
+  }
+
+  private static HostFacts facts(String distribution, String version, String codename) {
+    return new HostFacts(
+        "linux",
+        Optional.ofNullable(distribution).filter(value -> !value.isBlank()),
+        Optional.ofNullable(version).filter(value -> !value.isBlank()),
+        Optional.ofNullable(codename).filter(value -> !value.isBlank()),
+        "amd64");
+  }
+
   private static void assertPackageModule(
       BootstrapConfig result,
       int index,
@@ -1041,6 +1101,102 @@ class YamlConfigLoaderTest {
                 remote: fedora
                 apps: [org.mozilla.firefox]
                 appIds: [com.slack.Slack]
+            """;
+  }
+
+  private static String workstationProfileWithWhenConditions() {
+    return """
+        apiVersion: initkit.io/v1alpha1
+        kind: WorkstationProfile
+        metadata:
+          name: when-test
+        spec:
+          target:
+            os:
+              distribution: fedora
+              release: "44"
+          plan:
+            - name: apt-base
+              kind: apt-packages
+              when:
+                distribution:
+                  oneOf: [debian, ubuntu]
+                architecture: amd64
+              spec:
+                packages: [curl]
+            - name: dnf-base
+              kind: dnf-packages
+              when:
+                distribution: fedora
+              spec:
+                packages: [ripgrep]
+            - name: pacman-base
+              kind: pacman-packages
+              when:
+                distributions: [arch]
+              spec:
+                packages: [fd]
+            - name: zypper-base
+              kind: zypper-packages
+              when:
+                oneOf:
+                  - distribution: opensuse
+                  - distribution: suse
+              spec:
+                packages: [htop]
         """;
+  }
+
+  private static String workstationProfileWithCommandConditions() {
+    return """
+        apiVersion: initkit.io/v1alpha1
+        kind: WorkstationProfile
+        metadata:
+          name: command-test
+        spec:
+          target:
+            os:
+              distribution: debian
+              release: "12"
+          plan:
+            - name: apt-gated
+              kind: apt-packages
+              when:
+                commandExists: apt
+              spec:
+                packages: [curl]
+            - name: dnf-gated
+              kind: dnf-packages
+              when:
+                commandExists: dnf
+              spec:
+                packages: [ripgrep]
+        """;
+  }
+
+  private static final class FakeHostFactsProvider implements HostFactsProvider {
+    private final HostFacts facts;
+    private final Set<String> commands;
+    private final Set<String> commandChecks = new LinkedHashSet<>();
+
+    private FakeHostFactsProvider(HostFacts facts, Set<String> commands) {
+      this.facts = facts;
+      this.commands = Set.copyOf(commands);
+    }
+
+    @Override
+    public HostFacts facts() {
+      return facts;
+    }
+
+    @Override
+    public boolean commandExists(String command) {
+      commandChecks.add(command);
+      return commands.contains(command);
+    }
+
+    private List<String> commandChecks() {
+      return List.copyOf(commandChecks);
+    }
   }
 }
