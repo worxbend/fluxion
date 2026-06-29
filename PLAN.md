@@ -208,6 +208,12 @@ Progress:
   `spec.target.os.distribution` plus release/version/codename fields into the existing Fedora,
   Arch, openSUSE, and Debian/Ubuntu-compatible `OsTarget` variants. The manifest mapper currently
   emits an empty synthetic phase until later tasks map `spec.plan` entries into executable modules.
+- 2026-06-29: VALIDATION-6 passed the checkpoint gate after T004. `just verify`,
+  `./mill cli.assembly`, `./mill cli.nativeImage`, and `just native-smoke` all completed
+  successfully. No regressions were found and no code fixes were needed. Remaining risk is the
+  planned T005/T007 work: WorkstationProfile contract validation and executable `spec.plan`
+  mapping are still incomplete, so currently loaded manifests still produce an empty synthetic
+  phase.
 
 Tasks:
 
