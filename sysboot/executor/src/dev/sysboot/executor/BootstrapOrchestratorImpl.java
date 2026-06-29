@@ -12,6 +12,7 @@ import dev.sysboot.core.DotbotModule;
 import dev.sysboot.core.ExecutionEvent;
 import dev.sysboot.core.ExecutionEventListener;
 import dev.sysboot.core.ExecutionPausedException;
+import dev.sysboot.core.FileWriteModule;
 import dev.sysboot.core.FlatpakModule;
 import dev.sysboot.core.FlatpakRemoteModule;
 import dev.sysboot.core.InterruptModule;
@@ -62,6 +63,7 @@ public final class BootstrapOrchestratorImpl implements BootstrapOrchestrator {
   private final AptRepositoryInstaller aptRepositoryInstaller;
   private final RpmRepositoryInstaller rpmRepositoryInstaller;
   private final PacmanRepositoryInstaller pacmanRepositoryInstaller;
+  private final FileWriteExecutor fileWriteExecutor;
   private final FlatpakInstaller flatpakInstaller;
   private final FlatpakRemoteInstaller flatpakRemoteInstaller;
   private final DotbotExecutor dotbotExecutor;
@@ -87,6 +89,7 @@ public final class BootstrapOrchestratorImpl implements BootstrapOrchestrator {
       AptRepositoryInstaller aptRepositoryInstaller,
       RpmRepositoryInstaller rpmRepositoryInstaller,
       PacmanRepositoryInstaller pacmanRepositoryInstaller,
+      FileWriteExecutor fileWriteExecutor,
       FlatpakInstaller flatpakInstaller,
       FlatpakRemoteInstaller flatpakRemoteInstaller,
       DotbotExecutor dotbotExecutor,
@@ -111,6 +114,7 @@ public final class BootstrapOrchestratorImpl implements BootstrapOrchestrator {
     this.aptRepositoryInstaller = aptRepositoryInstaller;
     this.rpmRepositoryInstaller = rpmRepositoryInstaller;
     this.pacmanRepositoryInstaller = pacmanRepositoryInstaller;
+    this.fileWriteExecutor = fileWriteExecutor;
     this.flatpakInstaller = flatpakInstaller;
     this.flatpakRemoteInstaller = flatpakRemoteInstaller;
     this.dotbotExecutor = dotbotExecutor;
@@ -151,6 +155,7 @@ public final class BootstrapOrchestratorImpl implements BootstrapOrchestrator {
         new AptRepositoryInstaller(new DefaultShellRunner()),
         new RpmRepositoryInstaller(new DefaultShellRunner()),
         new PacmanRepositoryInstaller(new DefaultShellRunner()),
+        new FileWriteExecutor(new DefaultShellRunner()),
         flatpakInstaller,
         new FlatpakRemoteInstaller(new DefaultShellRunner()),
         new DotbotExecutor(new DefaultShellRunner()),
@@ -320,6 +325,7 @@ public final class BootstrapOrchestratorImpl implements BootstrapOrchestrator {
       case AptRepositoryModule arm -> executeAptRepositoryModule(arm, listener);
       case RpmRepositoryModule rrm -> executeRpmRepositoryModule(rrm, listener);
       case PacmanRepositoryModule prm -> executePacmanRepositoryModule(prm, listener);
+      case FileWriteModule fwm -> executeFileWriteModule(fwm, listener);
       case FlatpakModule fm -> executeFlatpakModule(fm, listener);
       case FlatpakRemoteModule frm -> executeFlatpakRemoteModule(frm, listener);
       case ShellScriptModule sm -> executeShellScript(sm, listener, phaseRunner);
@@ -498,6 +504,23 @@ public final class BootstrapOrchestratorImpl implements BootstrapOrchestrator {
         listener);
   }
 
+  private boolean executeFileWriteModule(FileWriteModule module, ExecutionEventListener listener) {
+    boolean anyFailed = false;
+    for (var item : module.items()) {
+      boolean failed =
+          executeItem(
+              module.name(),
+              item.itemKey(),
+              ItemType.FILE_WRITE,
+              () -> fileWriteExecutor.write(item),
+              listener);
+      if (failed) {
+        anyFailed = true;
+      }
+    }
+    return anyFailed && !module.continueOnError();
+  }
+
   private boolean executeFlatpakRemoteModule(
       FlatpakRemoteModule module, ExecutionEventListener listener) {
     return executeItem(
@@ -590,6 +613,15 @@ public final class BootstrapOrchestratorImpl implements BootstrapOrchestrator {
               prm.repositoryName(),
               pacmanRepositoryInstaller.addCommand(prm),
               listener);
+      case FileWriteModule fwm ->
+          fwm.items()
+              .forEach(
+                  item ->
+                      emitDryRun(
+                          fwm.name(),
+                          item.itemKey(),
+                          fileWriteExecutor.dryRunCommand(item),
+                          listener));
       case FlatpakModule fm ->
           fm.appIds()
               .forEach(

@@ -7,6 +7,7 @@ import dev.sysboot.core.BootstrapModule;
 import dev.sysboot.core.CompiledBinaryModule;
 import dev.sysboot.core.DefaultShellModule;
 import dev.sysboot.core.DotbotModule;
+import dev.sysboot.core.FileWriteModule;
 import dev.sysboot.core.FlatpakModule;
 import dev.sysboot.core.FlatpakRemoteModule;
 import dev.sysboot.core.InterruptModule;
@@ -141,6 +142,12 @@ public final class ExecutionPlanBuilder {
           new PacmanRepositoryInstaller(new DefaultShellRunner())
               .addCommand(pacmanRepositoryModule));
     }
+    if (module instanceof FileWriteModule fileWriteModule) {
+      return fileWriteModule.items().stream()
+          .filter(file -> file.itemKey().equals(item.key()))
+          .findFirst()
+          .map(file -> new FileWriteExecutor(new DefaultShellRunner()).dryRunCommand(file));
+    }
     return item.packageManager()
         .map(
             kind ->
@@ -190,6 +197,7 @@ public final class ExecutionPlanBuilder {
               new ModuleItem(rrm.name(), rrm.repoFilePath().toString(), ItemType.RPM_REPOSITORY));
       case PacmanRepositoryModule prm ->
           List.of(new ModuleItem(prm.name(), prm.repositoryName(), ItemType.PACMAN_REPOSITORY));
+      case FileWriteModule fwm -> new FileWriteExecutor(new DefaultShellRunner()).items(fwm);
       case FlatpakModule fm ->
           fm.appIds().stream()
               .map(app -> new ModuleItem(fm.name(), app, ItemType.FLATPAK))
@@ -248,6 +256,7 @@ public final class ExecutionPlanBuilder {
       case AptRepositoryModule ignored -> "apt-repository";
       case RpmRepositoryModule ignored -> "rpm-repository";
       case PacmanRepositoryModule ignored -> "pacman-repository";
+      case FileWriteModule ignored -> "file-writes";
       case FlatpakModule ignored -> "flatpak";
       case FlatpakRemoteModule ignored -> "flatpak-remote";
       case ShellScriptModule ignored -> "shell-script";

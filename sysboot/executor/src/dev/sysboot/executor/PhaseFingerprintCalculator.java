@@ -7,6 +7,7 @@ import dev.sysboot.core.BootstrapModule;
 import dev.sysboot.core.CompiledBinaryModule;
 import dev.sysboot.core.DefaultShellModule;
 import dev.sysboot.core.DotbotModule;
+import dev.sysboot.core.FileWriteModule;
 import dev.sysboot.core.FlatpakModule;
 import dev.sysboot.core.FlatpakRemoteModule;
 import dev.sysboot.core.InterruptModule;
@@ -81,6 +82,7 @@ final class PhaseFingerprintCalculator {
       case AptRepositoryModule arm -> appendAptRepository(builder, arm);
       case RpmRepositoryModule rrm -> appendRpmRepository(builder, rrm);
       case PacmanRepositoryModule prm -> appendPacmanRepository(builder, prm);
+      case FileWriteModule fwm -> appendFileWrite(builder, fwm);
       case FlatpakModule fm -> {
         append(builder, "type", "flatpak");
         append(builder, "remote", fm.remote());
@@ -229,6 +231,21 @@ final class PhaseFingerprintCalculator {
     append(builder, "sigLevel", module.sigLevel());
     append(builder, "include", module.include().map(Object::toString));
     append(builder, "enabled", module.enabled());
+  }
+
+  private void appendFileWrite(StringBuilder builder, FileWriteModule module) {
+    append(builder, "type", "file-writes");
+    module.items().forEach(item -> {
+      append(builder, "file", item.name());
+      append(builder, "destination", item.destination().toString());
+      append(builder, "content", item.content().map(this::sha256));
+      append(builder, "source", item.source().map(Path::toString));
+      append(builder, "owner", item.owner());
+      append(builder, "group", item.group());
+      append(builder, "mode", item.mode());
+      append(builder, "sudo", item.sudo());
+    });
+    append(builder, "continueOnError", module.continueOnError());
   }
 
   private void appendCompiledBinary(StringBuilder builder, CompiledBinaryModule module) {

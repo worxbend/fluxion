@@ -7,6 +7,7 @@ import dev.sysboot.core.BootstrapModule;
 import dev.sysboot.core.CompiledBinaryModule;
 import dev.sysboot.core.DefaultShellModule;
 import dev.sysboot.core.DotbotModule;
+import dev.sysboot.core.FileWriteModule;
 import dev.sysboot.core.FlatpakModule;
 import dev.sysboot.core.FlatpakRemoteModule;
 import dev.sysboot.core.InterruptModule;
@@ -89,6 +90,7 @@ final class BootstrapConfigSelectionFilter {
       case AptRepositoryModule aptRepositoryModule -> Optional.of(aptRepositoryModule);
       case RpmRepositoryModule rpmRepositoryModule -> Optional.of(rpmRepositoryModule);
       case PacmanRepositoryModule pacmanRepositoryModule -> Optional.of(pacmanRepositoryModule);
+      case FileWriteModule fileWriteModule -> filterFileWriteModule(fileWriteModule, entries);
       case FlatpakModule flatpakModule -> filterFlatpakModule(flatpakModule, entries);
       case FlatpakRemoteModule flatpakRemoteModule -> Optional.of(flatpakRemoteModule);
       case ShellCommandModule shellCommandModule ->
@@ -115,6 +117,14 @@ final class BootstrapConfigSelectionFilter {
       return Optional.empty();
     }
     return Optional.of(new SdkmanModule(module.name(), packages, module.continueOnError()));
+  }
+
+  private Optional<BootstrapModule> filterFileWriteModule(
+      FileWriteModule module, Set<String> entries) {
+    var items = module.items().stream().filter(item -> entries.contains(item.itemKey())).toList();
+    return items.isEmpty()
+        ? Optional.empty()
+        : Optional.of(new FileWriteModule(module.name(), items, module.continueOnError()));
   }
 
   private Optional<BootstrapModule> filterPackageModule(PackageModule module, Set<String> entries) {

@@ -10,6 +10,7 @@ import dev.sysboot.core.BootstrapConfig;
 import dev.sysboot.core.BootstrapPolicy;
 import dev.sysboot.core.CompiledBinaryModule;
 import dev.sysboot.core.DotbotModule;
+import dev.sysboot.core.FileWriteModule;
 import dev.sysboot.core.FlatpakModule;
 import dev.sysboot.core.FlatpakRemoteModule;
 import dev.sysboot.core.FlatpakRemoteSourceSetup;
@@ -534,6 +535,96 @@ class YamlConfigLoaderTest {
     assertThat(fonts.config().families()).containsExactly("JetBrainsMono", "Hack");
     var dotbot = (DotbotModule) modules.get(4);
     assertThat(dotbot.config().toString()).startsWith(System.getProperty("user.home"));
+  }
+
+  @Test
+  void load_whenWorkstationProfileFileWrites_mapsItemsAndFiltersItemWhen(@TempDir Path tmpDir)
+      throws IOException {
+    Path source = tmpDir.resolve("source.conf").toAbsolutePath();
+    Path destination = tmpDir.resolve("tool.conf").toAbsolutePath();
+    Path skipped = tmpDir.resolve("skipped.conf").toAbsolutePath();
+    Path config =
+        writeConfig(
+            tmpDir,
+            """
+            apiVersion: initkit.io/v1alpha1
+            kind: WorkstationProfile
+            metadata:
+              name: file-write-test
+            spec:
+              target:
+                os:
+                  distribution: fedora
+                  release: "44"
+              plan:
+                - name: write-config
+                  kind: file-writes
+                  spec:
+                    files:
+                      - name: direct-content
+                        destination: %s
+                        content: |
+                          enabled=true
+                        owner: root
+                        group: root
+                        mode: "0644"
+                        sudo: true
+                      - name: from-source
+                        destination: %s
+                        source: %s
+                      - name: skipped
+                        destination: %s
+                        content: ignored
+                        when:
+                          distribution: arch
+            """
+                .formatted(destination, tmpDir.resolve("copy.conf").toAbsolutePath(), source, skipped));
+
+    BootstrapConfig result = loader.load(config);
+
+    var module = (FileWriteModule) result.phases().getFirst().modules().getFirst();
+    assertThat(module.items()).hasSize(2);
+    assertThat(module.items().getFirst().destination()).isEqualTo(destination);
+    assertThat(module.items().getFirst().content()).contains("enabled=true\n");
+    assertThat(module.items().getFirst().owner()).contains("root");
+    assertThat(module.items().getFirst().group()).contains("root");
+    assertThat(module.items().getFirst().mode()).contains("0644");
+    assertThat(module.items().getFirst().sudo()).isTrue();
+    assertThat(module.items().get(1).source()).contains(source);
+  }
+
+  @Test
+  void load_whenWorkstationProfileFileWriteInvalid_reportsFieldPaths(@TempDir Path tmpDir)
+      throws IOException {
+    Path config =
+        writeConfig(
+            tmpDir,
+            """
+            apiVersion: initkit.io/v1alpha1
+            kind: WorkstationProfile
+            metadata:
+              name: invalid-file-write
+            spec:
+              target:
+                os:
+                  distribution: fedora
+                  release: "44"
+              plan:
+                - name: write-config
+                  kind: file-writes
+                  spec:
+                    files:
+                      - destination: relative.conf
+                        content: hello
+                        source: /tmp/source.conf
+                        mode: "invalid"
+            """);
+
+    assertThatThrownBy(() -> loader.load(config))
+        .isInstanceOf(ConfigLoadException.class)
+        .hasMessageContaining("spec.plan[0].spec.files[0].destination must be absolute")
+        .hasMessageContaining("spec.plan[0].spec.files[0] must define exactly one of content or source")
+        .hasMessageContaining("spec.plan[0].spec.files[0].mode must be a 3 or 4 digit octal mode");
   }
 
   @Test

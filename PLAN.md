@@ -761,8 +761,14 @@ Progress:
   `sysboot/graal/reflect-config.json` all passed. No regressions were found and no code fixes were
   needed. Remaining risk: `.agent-loop/tasks.json` still lists T018 `file-writes` and T019 parity
   checkpoint work as pending, and no `file-writes` implementation is present yet.
+- 2026-06-30: T018 added WorkstationProfile `file-writes` support with parser validation,
+  `FileWriteModule`/`FileWriteItem`, filesystem/sudo execution boundaries, dry-run and plan
+  previews, state/fingerprint/TUI/list/probe switch handling, docs, and focused tests. Checks
+  passed: `just verify`, `cd sysboot && ./mill cli.assembly`, `cd sysboot && ./mill executor.test`,
+  `cd sysboot && ./mill integration-tests.test`, `cd sysboot && ./mill config-parser.test`,
+  `git diff --check`, and JSON syntax checks.
 
-Add only after the `WorkstationProfile` path is stable:
+Already added as typed WorkstationProfile kinds:
 
 - `sdkman-packages`
 - `file-writes`
@@ -947,7 +953,7 @@ policy, variable, host-facts, `when`, and skipped-reporting milestones recorded 
 15. `T015` - Add AUR package kind (moderate feature, completed).
 16. `T016` - Add cargo package kind (complex feature, completed).
 17. `T017` - Add SDKMAN package kind (complex feature, completed).
-18. `T018` - Add file write kind (complex feature).
+18. `T018` - Add file write kind (complex feature, completed).
 19. `T019` - Checkpoint parity kinds (validation).
 20. `T020` - Polish plain CLI reporting (moderate improvement).
 21. `T021` - Polish TUI reporting (moderate improvement).

@@ -2,6 +2,7 @@ package dev.sysboot.config.yaml.contract;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.List;
@@ -9,6 +10,8 @@ import java.util.Map;
 import java.util.Optional;
 
 public final class PlanSpecDocument {
+
+  private static final ObjectMapper MAPPER = new ObjectMapper();
 
   @JsonProperty("packages")
   private JsonNode packages;
@@ -29,10 +32,25 @@ public final class PlanSpecDocument {
   private String remote;
 
   @JsonProperty("source")
-  private SourceSpecDocument source;
+  private JsonNode source;
 
   @JsonProperty("sources")
   private List<SourceDocument> sources;
+
+  @JsonProperty("files")
+  private JsonNode files;
+
+  @JsonProperty("writes")
+  private JsonNode writes;
+
+  @JsonProperty("content")
+  private JsonNode content;
+
+  @JsonProperty("owner")
+  private String owner;
+
+  @JsonProperty("group")
+  private String group;
 
   @JsonProperty("checksum")
   private WorkstationChecksumDocument checksum;
@@ -192,11 +210,45 @@ public final class PlanSpecDocument {
   }
 
   public Optional<SourceSpecDocument> source() {
-    return DocumentDefaults.optional(source);
+    if (source == null || source.isNull() || !source.isObject()) {
+      return Optional.empty();
+    }
+    return Optional.of(MAPPER.convertValue(source, SourceSpecDocument.class));
+  }
+
+  public Optional<String> fileSource() {
+    if (source == null || source.isNull() || !source.isTextual()) {
+      return Optional.empty();
+    }
+    return DocumentDefaults.optional(source.asText());
   }
 
   public List<SourceDocument> sources() {
     return DocumentDefaults.list(sources);
+  }
+
+  public List<JsonNode> fileWriteItems() {
+    List<JsonNode> fileItems = nodeItems(files);
+    return fileItems.isEmpty() ? nodeItems(writes) : fileItems;
+  }
+
+  public Optional<String> content() {
+    if (content == null || content.isNull() || !content.isTextual()) {
+      return Optional.empty();
+    }
+    return Optional.of(content.asText());
+  }
+
+  public Optional<JsonNode> contentNode() {
+    return DocumentDefaults.optional(content);
+  }
+
+  public Optional<String> owner() {
+    return DocumentDefaults.optional(owner);
+  }
+
+  public Optional<String> group() {
+    return DocumentDefaults.optional(group);
   }
 
   public Optional<WorkstationChecksumDocument> checksum() {

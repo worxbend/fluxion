@@ -5,6 +5,7 @@ public sealed interface BootstrapModule
         AptRepositoryModule,
         RpmRepositoryModule,
         PacmanRepositoryModule,
+        FileWriteModule,
         FlatpakModule,
         FlatpakRemoteModule,
         ShellScriptModule,

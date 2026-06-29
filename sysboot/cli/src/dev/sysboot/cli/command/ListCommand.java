@@ -11,6 +11,7 @@ import dev.sysboot.core.BootstrapModule;
 import dev.sysboot.core.CompiledBinaryModule;
 import dev.sysboot.core.DefaultShellModule;
 import dev.sysboot.core.DotbotModule;
+import dev.sysboot.core.FileWriteModule;
 import dev.sysboot.core.FlatpakModule;
 import dev.sysboot.core.FlatpakRemoteModule;
 import dev.sysboot.core.InterruptModule;
@@ -91,6 +92,7 @@ public final class ListCommand implements Runnable {
       case AptRepositoryModule ignored -> "📦 apt repo";
       case RpmRepositoryModule ignored -> "📦 rpm repo";
       case PacmanRepositoryModule ignored -> "📦 pacman repo";
+      case FileWriteModule ignored -> "file write";
       case FlatpakModule ignored -> "🗃 flatpak";
       case FlatpakRemoteModule ignored -> "🗃 remote";
       case ShellScriptModule ignored -> "📜 script";
@@ -116,6 +118,7 @@ public final class ListCommand implements Runnable {
       case AptRepositoryModule ignored -> "apt-repository";
       case RpmRepositoryModule ignored -> "rpm-repository";
       case PacmanRepositoryModule ignored -> "pacman-repository";
+      case FileWriteModule ignored -> "file-writes";
       case FlatpakModule ignored -> "flatpak";
       case FlatpakRemoteModule ignored -> "flatpak-remote";
       case ShellScriptModule ignored -> "shell-script";
@@ -141,6 +144,7 @@ public final class ListCommand implements Runnable {
       case AptRepositoryModule arm -> arm.sourceListPath() + " <- " + arm.sourceEntry();
       case RpmRepositoryModule rrm -> rrm.repoFilePath() + " <- " + rrm.baseUrl();
       case PacmanRepositoryModule prm -> prm.repositoryName() + " <- " + prm.server();
+      case FileWriteModule fwm -> fwm.items().getFirst().destination().toString();
       case FlatpakModule fm -> fm.appIds().size() + " apps from " + fm.remote();
       case FlatpakRemoteModule frm -> frm.remote() + " -> " + frm.url();
       case ShellScriptModule sm -> sm.items().getFirst().key();
@@ -164,6 +168,7 @@ public final class ListCommand implements Runnable {
     return switch (module) {
       case PackageModule pm -> pm.packages().size();
       case FlatpakModule fm -> fm.appIds().size();
+      case FileWriteModule fwm -> fwm.items().size();
       case ShellCommandModule sc -> sc.items().size();
       case NerdFontModule nfm -> nfm.config().families().size();
       case SdkmanModule sm -> sm.packages().size();

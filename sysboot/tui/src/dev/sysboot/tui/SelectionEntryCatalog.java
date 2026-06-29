@@ -6,6 +6,7 @@ import dev.sysboot.core.BootstrapModule;
 import dev.sysboot.core.CompiledBinaryModule;
 import dev.sysboot.core.DefaultShellModule;
 import dev.sysboot.core.DotbotModule;
+import dev.sysboot.core.FileWriteModule;
 import dev.sysboot.core.FlatpakModule;
 import dev.sysboot.core.FlatpakRemoteModule;
 import dev.sysboot.core.InterruptModule;
@@ -39,6 +40,8 @@ final class SelectionEntryCatalog {
           List.of(rpmRepositoryModule.repoFilePath().toString());
       case PacmanRepositoryModule pacmanRepositoryModule ->
           List.of(pacmanRepositoryModule.repositoryName());
+      case FileWriteModule fileWriteModule ->
+          fileWriteModule.items().stream().map(item -> item.itemKey()).toList();
       case FlatpakModule flatpakModule -> flatpakModule.appIds();
       case FlatpakRemoteModule flatpakRemoteModule -> List.of(flatpakRemoteModule.remote());
       case ShellCommandModule shellCommandModule ->

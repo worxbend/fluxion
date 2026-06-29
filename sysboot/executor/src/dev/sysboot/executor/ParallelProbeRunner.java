@@ -6,6 +6,7 @@ import dev.sysboot.core.BootstrapModule;
 import dev.sysboot.core.CompiledBinaryModule;
 import dev.sysboot.core.DefaultShellModule;
 import dev.sysboot.core.DotbotModule;
+import dev.sysboot.core.FileWriteModule;
 import dev.sysboot.core.FlatpakModule;
 import dev.sysboot.core.FlatpakRemoteModule;
 import dev.sysboot.core.InstallationStatus;
@@ -109,6 +110,17 @@ public final class ParallelProbeRunner {
         case PacmanRepositoryModule prm ->
             targets.add(
                 new ModuleItem(prm.name(), prm.repositoryName(), ItemType.PACMAN_REPOSITORY));
+        case FileWriteModule fwm ->
+            fwm.items()
+                .forEach(
+                    item ->
+                        targets.add(
+                            new ModuleItem(
+                                fwm.name(),
+                                item.itemKey(),
+                                item.name(),
+                                ItemType.FILE_WRITE,
+                                Optional.empty())));
         case FlatpakModule fm ->
             fm.appIds()
                 .forEach(appId -> targets.add(new ModuleItem(fm.name(), appId, ItemType.FLATPAK)));

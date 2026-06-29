@@ -37,7 +37,13 @@ final class WorkstationProfileValidator {
           "zypper-packages");
   private static final Set<String> APP_PLAN_KINDS = Set.of("flatpak-packages");
   private static final Set<String> INSTALLER_PLAN_KINDS =
-      Set.of("binary-downloads", "shell-scripts", "commands", "nerd-fonts", "dotfiles-apply");
+      Set.of(
+          "binary-downloads",
+          "shell-scripts",
+          "commands",
+          "file-writes",
+          "nerd-fonts",
+          "dotfiles-apply");
   private static final Map<String, Set<String>> SUPPORTED_PACKAGE_ACTIONS =
       Map.of(
           "apt-packages", Set.of("update", "upgrade", "dist-upgrade"),
@@ -59,6 +65,7 @@ final class WorkstationProfileValidator {
           "flatpak-packages",
           "binary-downloads",
           "shell-scripts",
+          "file-writes",
           "nerd-fonts",
           "dotfiles-apply",
           "commands",
@@ -301,6 +308,7 @@ final class WorkstationProfileValidator {
       case "binary-downloads" -> validateBinarySpec(path, entryName, spec, errors);
       case "shell-scripts" -> validateScriptSpec(path, entryName, spec, errors);
       case "commands" -> validateCommandSpec(path, spec, errors);
+      case "file-writes" -> validateFileWriteSpec(path, entryName, spec, errors);
       case "nerd-fonts" -> validateNerdFontSpec(path, entryName, spec, errors);
       case "dotfiles-apply" -> validateDotfilesSpec(path, entryName, spec, errors);
       default -> {
@@ -388,6 +396,57 @@ final class WorkstationProfileValidator {
     spec.shell().ifPresent(shell -> requirePresent(path + ".spec.shell", shell, "commands", errors));
     spec.workingDir().ifPresent(dir -> validatePath(path + ".spec.workingDir", dir, errors));
     validateCommonStructuredFields(path + ".spec", spec, errors);
+  }
+
+  private void validateFileWriteSpec(
+      String path, String entryName, PlanSpecDocument spec, List<String> errors) {
+    List<JsonNode> items = spec.fileWriteItems();
+    if (items.isEmpty()) {
+      validateFileWriteItem(path + ".spec", entryName, null, spec, errors);
+      return;
+    }
+    for (int index = 0; index < items.size(); index++) {
+      validateFileWriteItem(
+          path + ".spec.files[" + index + "]", entryName, items.get(index), spec, errors);
+    }
+  }
+
+  private void validateFileWriteItem(
+      String path, String entryName, JsonNode node, PlanSpecDocument spec, List<String> errors) {
+    if (node != null && !node.isObject()) {
+      errors.add(path + " for plan entry '" + entryName + "' must be an object");
+      return;
+    }
+    Optional<String> destination =
+        text(node, "destination").or(() -> spec.destination());
+    validateAbsolutePath(path + ".destination", destination.orElse(null), errors);
+    validateFileContentSource(path, node, spec, errors);
+    text(node, "source")
+        .or(spec::fileSource)
+        .ifPresent(source -> validateAbsolutePath(path + ".source", source, errors));
+    text(node, "mode").or(spec::installMode)
+        .ifPresent(mode -> validateFileMode(path + ".mode", mode, errors));
+    text(node, "owner").or(spec::owner)
+        .ifPresent(owner -> requirePresent(path + ".owner", owner, entryName, errors));
+    text(node, "group").or(spec::group)
+        .ifPresent(group -> requirePresent(path + ".group", group, entryName, errors));
+  }
+
+  private void validateFileContentSource(
+      String path, JsonNode node, PlanSpecDocument spec, List<String> errors) {
+    boolean hasContent = contentPresent(node).orElseGet(() -> spec.contentNode().isPresent());
+    boolean hasSource = text(node, "source").or(spec::fileSource).isPresent();
+    if (hasContent == hasSource) {
+      errors.add(path + " must define exactly one of content or source");
+    }
+    contentNode(node)
+        .filter(value -> !value.isTextual())
+        .ifPresent(ignored -> errors.add(path + ".content must be a string"));
+    if (node == null) {
+      spec.contentNode()
+          .filter(value -> !value.isTextual())
+          .ifPresent(ignored -> errors.add(path + ".content must be a string"));
+    }
   }
 
   private void validateScriptItem(
@@ -498,6 +557,14 @@ final class WorkstationProfileValidator {
 
   private Optional<String> text(JsonNode node, String field) {
     return child(node, field).filter(JsonNode::isTextual).map(JsonNode::asText).filter(value -> !value.isBlank());
+  }
+
+  private Optional<Boolean> contentPresent(JsonNode node) {
+    return contentNode(node).map(ignored -> true);
+  }
+
+  private Optional<JsonNode> contentNode(JsonNode node) {
+    return child(node, "content");
   }
 
   private boolean array(JsonNode node, String field) {

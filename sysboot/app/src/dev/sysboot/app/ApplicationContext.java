@@ -22,6 +22,7 @@ import dev.sysboot.executor.DnfPackageProbe;
 import dev.sysboot.executor.DotbotExecutor;
 import dev.sysboot.executor.DotbotProbe;
 import dev.sysboot.executor.ExecutionPlanBuilder;
+import dev.sysboot.executor.FileWriteExecutor;
 import dev.sysboot.executor.FlatpakInstaller;
 import dev.sysboot.executor.FlatpakProbe;
 import dev.sysboot.executor.FlatpakRemoteInstaller;
@@ -175,6 +176,7 @@ public final class ApplicationContext {
         new AptRepositoryInstaller(baseRunner),
         new RpmRepositoryInstaller(baseRunner),
         new PacmanRepositoryInstaller(baseRunner),
+        new FileWriteExecutor(primaryRunner),
         new FlatpakInstaller(baseRunner),
         new FlatpakRemoteInstaller(baseRunner),
         new DotbotExecutor(baseRunner),

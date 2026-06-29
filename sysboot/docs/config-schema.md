@@ -33,6 +33,43 @@ Kubernetes-style `apiVersion`/`kind: WorkstationProfile` manifests are planned a
 They are not the stable Fluxion config schema yet, and their details may change until that path has
 parser, validation, dry-run, state, and TUI support comparable to `jobs`/`steps`.
 
+Experimental WorkstationProfile manifests currently support `file-writes` plan entries for local
+content or source-file writes:
+
+```yaml
+apiVersion: initkit.io/v1alpha1
+kind: WorkstationProfile
+metadata:
+  name: workstation
+spec:
+  target:
+    os:
+      distribution: fedora
+      release: "44"
+  plan:
+    - name: write-tool-config
+      kind: file-writes
+      spec:
+        files:
+          - name: tool-config
+            destination: /etc/tool/tool.conf
+            content: |
+              enabled=true
+            owner: root
+            group: root
+            mode: "0644"
+            sudo: true
+          - name: local-copy
+            destination: /home/me/.config/tool/local.conf
+            source: /home/me/dotfiles/tool/local.conf
+            when:
+              distribution: fedora
+```
+
+Each file item requires an absolute `destination` and exactly one of string `content` or absolute
+local `source`. `owner`, `group`, `mode`, `sudo`, and item-level `when` are optional. Dry-run
+previews destination, content-vs-source, mode, ownership, and sudo use without writing files.
+
 ---
 
 ## `os` object

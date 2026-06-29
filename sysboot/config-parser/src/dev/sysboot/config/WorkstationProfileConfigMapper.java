@@ -17,6 +17,8 @@ import dev.sysboot.core.BootstrapPolicy;
 import dev.sysboot.core.Checksum;
 import dev.sysboot.core.CompiledBinaryModule;
 import dev.sysboot.core.DotbotModule;
+import dev.sysboot.core.FileWriteItem;
+import dev.sysboot.core.FileWriteModule;
 import dev.sysboot.core.FlatpakModule;
 import dev.sysboot.core.HostFactsProvider;
 import dev.sysboot.core.InterruptModule;
@@ -144,6 +146,7 @@ final class WorkstationProfileConfigMapper {
       case "binary-downloads" -> Optional.of(compiledBinaryModule(entry, policy));
       case "shell-scripts" -> Optional.of(shellScriptModule(entry, policy));
       case "commands" -> Optional.of(shellCommandModule(entry, policy));
+      case "file-writes" -> fileWriteModule(entry, policy);
       case "nerd-fonts" -> Optional.of(nerdFontModule(entry));
       case "dotfiles-apply" -> Optional.of(dotbotModule(entry));
       case "interrupt" -> Optional.of(interruptModule(entry));
@@ -295,6 +298,53 @@ final class WorkstationProfileConfigMapper {
         spec.workingDir().map(Path::of),
         continueOnError(entry, policy),
         spec.probeCommand());
+  }
+
+  private Optional<BootstrapModule> fileWriteModule(PlanEntryDocument entry, BootstrapPolicy policy) {
+    PlanSpecDocument spec = requireField(entry.spec().orElse(null), planName(entry) + ".spec");
+    List<FileWriteItem> items = fileWriteItems(entry, spec);
+    if (items.isEmpty()) {
+      return Optional.empty();
+    }
+    return Optional.of(
+        new FileWriteModule(
+            new ModuleName(planName(entry)), items, continueOnError(entry, policy)));
+  }
+
+  private List<FileWriteItem> fileWriteItems(PlanEntryDocument entry, PlanSpecDocument spec) {
+    List<JsonNode> nodes = spec.fileWriteItems();
+    if (nodes.isEmpty()) {
+      return List.of(fileWriteItem(entry, spec, null, 0));
+    }
+    var items = new ArrayList<FileWriteItem>();
+    for (int index = 0; index < nodes.size(); index++) {
+      if (itemMatches(nodes.get(index))) {
+        items.add(fileWriteItem(entry, spec, nodes.get(index), index));
+      }
+    }
+    return List.copyOf(items);
+  }
+
+  private FileWriteItem fileWriteItem(
+      PlanEntryDocument entry, PlanSpecDocument spec, JsonNode node, int index) {
+    String name = text(node, "name").orElse(planName(entry) + "[" + index + "]");
+    return new FileWriteItem(
+        name,
+        path(node, "destination")
+            .or(() -> spec.destination().map(this::absolutePath))
+            .orElseThrow(),
+        content(node).or(spec::content),
+        path(node, "source").or(() -> spec.fileSource().map(this::absolutePath)),
+        text(node, "owner").or(spec::owner),
+        text(node, "group").or(spec::group),
+        text(node, "mode").or(spec::installMode),
+        bool(node, "sudo").or(spec::sudo).orElse(false));
+  }
+
+  private Optional<String> content(JsonNode node) {
+    return child(node, "content")
+        .filter(JsonNode::isTextual)
+        .map(JsonNode::asText);
   }
 
   private List<ShellScriptItem> scriptItems(PlanEntryDocument entry, PlanSpecDocument spec) {
