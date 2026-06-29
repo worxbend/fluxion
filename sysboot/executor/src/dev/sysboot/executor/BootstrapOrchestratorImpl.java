@@ -5,6 +5,7 @@ import dev.sysboot.core.AssertModule;
 import dev.sysboot.core.BootstrapConfig;
 import dev.sysboot.core.BootstrapModule;
 import dev.sysboot.core.BootstrapOrchestrator;
+import dev.sysboot.core.BootstrapState;
 import dev.sysboot.core.CompiledBinaryModule;
 import dev.sysboot.core.DefaultShellModule;
 import dev.sysboot.core.DotbotModule;
@@ -163,6 +164,7 @@ public final class BootstrapOrchestratorImpl implements BootstrapOrchestrator {
 
   @Override
   public void execute(BootstrapConfig config, ExecutionEventListener listener) {
+    prepareState(config);
     emitSkippedPlanEntries(config.skippedPlanEntries(), listener);
     if (executeSourceSetups(config, listener) == PhaseExecutionResult.HARD_FAILURE) {
       return;
@@ -382,7 +384,9 @@ public final class BootstrapOrchestratorImpl implements BootstrapOrchestrator {
     String itemKey = module.name().value();
     Optional<String> nextEntry = nextPlanEntry(module, followingModule);
     listener.onEvent(ExecutionEvent.itemStarted(module.name(), itemKey));
-    var result = new StepResult.Paused(itemKey, module.message(), nextEntry, module.exitCode());
+    var result =
+        new StepResult.Paused(
+            itemKey, interruptMessage(module, nextEntry), nextEntry, module.exitCode());
     listener.onEvent(ExecutionEvent.itemCompleted(module.name(), itemKey, result));
     recordInterrupt(module, nextEntry);
     throw new ExecutionPausedException(
@@ -719,6 +723,42 @@ public final class BootstrapOrchestratorImpl implements BootstrapOrchestrator {
         .flatMap(repo -> repo.load(profileName))
         .map(state -> state.isPhaseCompleted(phase.name().value(), fingerprint))
         .orElse(false);
+  }
+
+  private void prepareState(BootstrapConfig config) {
+    stateRepository.ifPresent(
+        repo -> {
+          String identity = config.profileName().value();
+          String fingerprint = fingerprintCalculator.manifestFingerprint(config);
+          BootstrapState current =
+              repo.load(profileName).orElse(BootstrapState.empty(profileName, "1.0.0"));
+          rejectStaleState(current, identity, fingerprint);
+          BootstrapState stamped = current.withManifestMetadata(identity, fingerprint);
+          repo.save(stamped);
+          skipEvaluator.refreshState(stamped);
+        });
+  }
+
+  private void rejectStaleState(
+      BootstrapState state, String identity, String fingerprint) {
+    if (!state.hasRecordedWork()) {
+      return;
+    }
+    if (state.manifestIdentity().filter(identity::equals).isEmpty()) {
+      throw staleState("manifest identity");
+    }
+    if (state.manifestFingerprint().filter(fingerprint::equals).isEmpty()) {
+      throw staleState("manifest fingerprint");
+    }
+  }
+
+  private StaleStateException staleState(String reason) {
+    return new StaleStateException(
+        "Saved state is stale: "
+            + reason
+            + " differs. Reset state with `fluxion state reset "
+            + profileName
+            + " --force` or re-run apply with --reset-state.");
   }
 
   private int resumeStartIndex(List<BootstrapModule> modules) {

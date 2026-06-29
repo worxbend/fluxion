@@ -22,16 +22,19 @@ public final class CompletedScreen {
 
     long success = counts.getOrDefault(ItemResult.SUCCESS, 0L);
     long failed = counts.getOrDefault(ItemResult.FAILED, 0L);
+    long interrupted = counts.getOrDefault(ItemResult.INTERRUPTED, 0L);
     long skipped = counts.getOrDefault(ItemResult.SKIPPED, 0L);
 
     List<ItemStatus> failures =
-        items.stream().filter(i -> i.result() == ItemResult.FAILED).toList();
+        items.stream()
+            .filter(i -> i.result() == ItemResult.FAILED || i.result() == ItemResult.INTERRUPTED)
+            .toList();
 
     var sb = new StringBuilder();
     sb.append("┌─ Bootstrap Complete ───────────────────────────┐\n");
     sb.append(
-        "│  ✓ Succeeded: %-4d  ✗ Failed: %-4d  ~ Skipped: %-4d │\n"
-            .formatted(success, failed, skipped));
+        "│  ✓ Succeeded: %-4d  ✗ Failed: %-4d  ! Interrupted: %-4d  ~ Skipped: %-4d │\n"
+            .formatted(success, failed, interrupted, skipped));
     sb.append("└────────────────────────────────────────────────┘\n");
 
     if (!failures.isEmpty()) {

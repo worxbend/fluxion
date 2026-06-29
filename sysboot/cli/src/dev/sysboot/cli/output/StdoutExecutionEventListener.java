@@ -3,21 +3,31 @@ package dev.sysboot.cli.output;
 import dev.sysboot.core.ExecutionEvent;
 import dev.sysboot.core.ExecutionEventListener;
 import dev.sysboot.core.StepResult;
+import java.nio.file.Path;
 import java.util.Optional;
 import java.util.function.Function;
+import java.util.function.Supplier;
 import picocli.CommandLine.Help.Ansi;
 
 public final class StdoutExecutionEventListener implements ExecutionEventListener {
 
   private final Function<ExecutionEvent, Optional<String>> resumeCommandProvider;
+  private final Supplier<Optional<Path>> statePathProvider;
 
   public StdoutExecutionEventListener() {
-    this(event -> Optional.empty());
+    this(event -> Optional.empty(), Optional::empty);
   }
 
   public StdoutExecutionEventListener(
       Function<ExecutionEvent, Optional<String>> resumeCommandProvider) {
+    this(resumeCommandProvider, Optional::empty);
+  }
+
+  public StdoutExecutionEventListener(
+      Function<ExecutionEvent, Optional<String>> resumeCommandProvider,
+      Supplier<Optional<Path>> statePathProvider) {
     this.resumeCommandProvider = resumeCommandProvider;
+    this.statePathProvider = statePathProvider;
   }
 
   @Override
@@ -48,7 +58,7 @@ public final class StdoutExecutionEventListener implements ExecutionEventListene
               Ansi.AUTO.string("@|bold,blue [DONE  ]|@ " + event.moduleName().value()));
       case ITEM_STARTED ->
           System.out.print(Ansi.AUTO.string("  @|yellow  -->|@  " + event.item() + " ... "));
-      case ITEM_COMPLETED -> event.result().ifPresent(result -> printResult(result));
+      case ITEM_COMPLETED -> event.result().ifPresent(result -> printResult(event, result));
       case ERROR -> System.out.println(Ansi.AUTO.string("@|bold,red [ERROR ]|@ " + event.item()));
     }
   }
@@ -63,7 +73,7 @@ public final class StdoutExecutionEventListener implements ExecutionEventListene
         .ifPresent(command -> System.out.println("  Resume with: " + command));
   }
 
-  private void printResult(StepResult result) {
+  private void printResult(ExecutionEvent event, StepResult result) {
     switch (result) {
       case StepResult.Success s ->
           System.out.println(
@@ -79,12 +89,16 @@ public final class StdoutExecutionEventListener implements ExecutionEventListene
       case StepResult.DryRun d ->
           System.out.println(
               Ansi.AUTO.string("@|cyan DRY-RUN|@: " + String.join(" ", d.wouldExecute())));
-      case StepResult.Paused p ->
-          System.out.println(
-              Ansi.AUTO.string(
-                  "@|bold,yellow PAUSED|@: "
-                      + p.message()
-                      + p.nextPlanEntry().map(next -> " (next: " + next + ")").orElse("")));
+      case StepResult.Paused p -> printPaused(event, p);
     }
+  }
+
+  private void printPaused(ExecutionEvent event, StepResult.Paused paused) {
+    System.out.println(Ansi.AUTO.string("@|bold,yellow PAUSED|@: " + paused.message()));
+    statePathProvider.get().ifPresent(path -> System.out.println("  State: " + path));
+    paused.nextPlanEntry().ifPresent(next -> System.out.println("  Next plan entry: " + next));
+    resumeCommandProvider
+        .apply(event)
+        .ifPresent(command -> System.out.println("  Resume with: " + command));
   }
 }

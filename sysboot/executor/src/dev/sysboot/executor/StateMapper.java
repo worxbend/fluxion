@@ -17,7 +17,7 @@ import java.util.Optional;
 
 final class StateMapper {
 
-  private static final int SCHEMA_VERSION = 5;
+  private static final int SCHEMA_VERSION = 6;
 
   private StateMapper() {}
 
@@ -34,7 +34,9 @@ final class StateMapper {
         entryRecords,
         phaseEntryRecords,
         planEntryRecords,
-        state.nextPlanEntry().orElse(null));
+        state.nextPlanEntry().orElse(null),
+        state.manifestIdentity().orElse(null),
+        state.manifestFingerprint().orElse(null));
   }
 
   static BootstrapState fromRecord(BootstrapStateRecord record) {
@@ -57,7 +59,9 @@ final class StateMapper {
         entries,
         phaseEntries,
         planEntries,
-        Optional.ofNullable(record.nextPlanEntry));
+        Optional.ofNullable(record.nextPlanEntry),
+        Optional.ofNullable(record.manifestIdentity),
+        Optional.ofNullable(record.manifestFingerprint));
   }
 
   private static StateEntryRecord entryToRecord(StateEntry e) {

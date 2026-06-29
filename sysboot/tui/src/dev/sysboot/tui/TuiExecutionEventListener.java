@@ -72,7 +72,7 @@ public final class TuiExecutionEventListener implements ExecutionEventListener {
       case StepResult.Failure ignored -> ItemResult.FAILED;
       case StepResult.Skipped ignored -> ItemResult.SKIPPED;
       case StepResult.DryRun ignored -> ItemResult.DRY_RUN;
-      case StepResult.Paused ignored -> ItemResult.FAILED;
+      case StepResult.Paused ignored -> ItemResult.INTERRUPTED;
     };
   }
 

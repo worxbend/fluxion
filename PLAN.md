@@ -683,6 +683,10 @@ Progress:
   state repository before stopping, returns CLI pause code `75`, and resumes a later run from a
   saved `nextPlanEntry` within the manifest plan phase. Dry-run emits an interrupt/state-write
   preview and does not create or modify state.
+- 2026-06-29: Agent-loop T013 added manifest identity/fingerprint metadata to persisted state,
+  rejects saved state for a different manifest plan before apply work starts, and added
+  `apply --reset-state` as the explicit reset path. Plain interrupt output now shows the pause
+  reason, instructions, state path, next plan entry, and resume command.
 
 Reference behavior from the pinned `binstaller` scan:
 
@@ -769,6 +773,9 @@ Progress:
 - 2026-06-29: T013 added selected/skipped WorkstationProfile reporting for `plan`, `dry-run`,
   `apply --no-tui --dry-run`, and TUI selection rendering without requiring a real terminal in
   tests. Skipped entries include the manifest plan entry name, kind, and reason.
+- 2026-06-29: Agent-loop T013 added first-class interrupted TUI item state instead of mapping
+  pauses to failure, counts interrupted entries separately in the completion summary, and treats
+  `ExecutionPausedException` as a controlled TUI stop after the pause event is emitted.
 
 Plain CLI:
 
@@ -905,7 +912,7 @@ policy, variable, host-facts, `when`, and skipped-reporting milestones recorded 
 10. `T010` - Extend scripts and commands (complex feature, completed).
 11. `T011` - Checkpoint installer kinds (validation, completed).
 12. `T012` - Add interrupt checkpoint model (complex feature, completed).
-13. `T013` - Report interrupt resume state (complex feature).
+13. `T013` - Report interrupt resume state (complex feature, completed).
 14. `T014` - Checkpoint interrupt resume (validation).
 15. `T015` - Add AUR package kind (moderate feature).
 16. `T016` - Add cargo package kind (complex feature).

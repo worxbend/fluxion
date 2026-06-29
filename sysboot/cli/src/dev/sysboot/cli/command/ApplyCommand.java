@@ -1,5 +1,6 @@
 package dev.sysboot.cli.command;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import dev.sysboot.app.ApplicationContext;
 import dev.sysboot.cli.error.CliFailureException;
 import dev.sysboot.cli.error.ExitCode;
@@ -7,7 +8,10 @@ import dev.sysboot.cli.option.GlobalOptions;
 import dev.sysboot.cli.output.StdoutExecutionEventListener;
 import dev.sysboot.core.BootstrapConfig;
 import dev.sysboot.core.ExecutionPausedException;
+import dev.sysboot.core.ExecutionEvent;
 import dev.sysboot.core.Phase;
+import dev.sysboot.core.StepResult;
+import dev.sysboot.executor.JsonStateRepository;
 import dev.sysboot.executor.PhaseExecutionPlanner;
 import java.util.Arrays;
 import java.util.List;
@@ -56,6 +60,11 @@ public final class ApplyCommand implements Runnable {
   private boolean reProbe;
 
   @Option(
+      names = {"--reset-state"},
+      description = "Delete saved state before applying this profile")
+  private boolean resetState;
+
+  @Option(
       names = {"--probe-only"},
       description = "Run probes and print status without installing")
   private boolean probeOnly;
@@ -76,6 +85,10 @@ public final class ApplyCommand implements Runnable {
   public void run() {
     boolean effectiveSkip = skipAlreadyInstalled || reProbe;
     boolean useTui = options.useTui();
+    var stateRepository = new JsonStateRepository(new ObjectMapper());
+    if (resetState) {
+      stateRepository.reset(profile);
+    }
     var context = ApplicationContext.create(!useTui, profile, effectiveSkip, reProbe);
     BootstrapConfig config = context.configLoader().load(options.resolvedConfigFile());
     BootstrapConfig filtered = applyFilters(config);
@@ -89,14 +102,8 @@ public final class ApplyCommand implements Runnable {
       var listener =
           new StdoutExecutionEventListener(
               event ->
-                  event
-                      .phaseContext()
-                      .map(
-                          phase ->
-                              ResumeCommandFormatter.command(
-                                  options.resolvedConfigFile(),
-                                  profile,
-                                  nextPhaseAfter(filtered, phase))));
+                  resumeCommandFor(event, filtered),
+              () -> Optional.of(stateRepository.path(profile)));
       if (dryRun) {
         context.orchestrator().dryRun(filtered, listener);
       } else {
@@ -207,5 +214,30 @@ public final class ApplyCommand implements Runnable {
       }
     }
     return Optional.empty();
+  }
+
+  private Optional<String> resumeCommandFor(ExecutionEvent event, BootstrapConfig config) {
+    Optional<String> phase =
+        event
+            .result()
+            .filter(StepResult.Paused.class::isInstance)
+            .flatMap(ignored -> phaseContainingModule(config, event.moduleName().value()))
+            .or(
+                () ->
+                    event
+                        .phaseContext()
+                        .flatMap(completedPhase -> nextPhaseAfter(config, completedPhase)));
+    return Optional.of(
+        ResumeCommandFormatter.command(options.resolvedConfigFile(), profile, phase));
+  }
+
+  private Optional<String> phaseContainingModule(BootstrapConfig config, String moduleName) {
+    return config.phases().stream()
+        .filter(
+            phase ->
+                phase.modules().stream()
+                    .anyMatch(module -> module.name().value().equals(moduleName)))
+        .map(phase -> phase.name().value())
+        .findFirst();
   }
 }

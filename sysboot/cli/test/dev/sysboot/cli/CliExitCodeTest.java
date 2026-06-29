@@ -434,14 +434,51 @@ class CliExitCodeTest {
           executeCapturingSystemOut("apply", "--no-tui", "-c", config.toString(), "--yes");
 
       assertThat(result.exitCode()).isEqualTo(ExitCode.PAUSED.value());
-      assertThat(result.stdout()).contains("PAUSED").contains("Log out before continuing.");
+      assertThat(result.stdout())
+          .contains("PAUSED")
+          .contains("Log out before continuing.")
+          .contains("Run fluxion apply again.")
+          .contains(".local/share/fluxion/default.state.json")
+          .contains("Next plan entry: after-pause")
+          .contains("Resume with: fluxion apply --no-tui")
+          .contains("--from-phase manifest-plan");
       assertThat(result.stderr()).contains("Error: Log out before continuing.");
       BootstrapState state =
           new JsonStateRepository(new ObjectMapper()).load("default").orElseThrow();
       assertThat(state.nextPlanEntry()).contains("after-pause");
+      assertThat(state.manifestIdentity()).contains("workstation-interrupt-test");
+      assertThat(state.manifestFingerprint()).isPresent();
       assertThat(state.planEntryEntries())
           .extracting(entry -> entry.entryName() + ":" + entry.status())
           .containsExactly("pause-login:COMPLETED");
+    } finally {
+      System.setProperty("user.home", originalHome);
+    }
+  }
+
+  @Test
+  void apply_whenStateManifestFingerprintDiffers_rejectsUntilResetRequested() throws Exception {
+    Path firstConfig = writeWorkstationProfileWithInterrupt("next");
+    Path changedConfig = writeWorkstationProfileWithInterrupt("current");
+    String originalHome = System.getProperty("user.home");
+    System.setProperty("user.home", tempDir.toString());
+    try {
+      CliResult first =
+          executeCapturingSystemOut("apply", "--no-tui", "-c", firstConfig.toString(), "--yes");
+      CliResult stale =
+          executeCapturingSystemOut("apply", "--no-tui", "-c", changedConfig.toString(), "--yes");
+      CliResult reset =
+          executeCapturingSystemOut(
+              "apply", "--no-tui", "--reset-state", "-c", changedConfig.toString(), "--yes");
+
+      assertThat(first.exitCode()).isEqualTo(ExitCode.PAUSED.value());
+      assertThat(stale.exitCode()).isEqualTo(ExitCode.INVALID_INPUT.value());
+      assertThat(stale.stderr())
+          .contains("Saved state is stale")
+          .contains("manifest fingerprint")
+          .contains("--reset-state");
+      assertThat(reset.exitCode()).isEqualTo(ExitCode.PAUSED.value());
+      assertThat(reset.stdout()).contains("Next plan entry: pause-login");
     } finally {
       System.setProperty("user.home", originalHome);
     }

@@ -14,7 +14,9 @@ public record BootstrapState(
     List<StateEntry> entries,
     List<PhaseStateEntry> phaseEntries,
     List<PlanEntryStateEntry> planEntryEntries,
-    Optional<String> nextPlanEntry) {
+    Optional<String> nextPlanEntry,
+    Optional<String> manifestIdentity,
+    Optional<String> manifestFingerprint) {
 
   public BootstrapState {
     Objects.requireNonNull(profileName);
@@ -27,11 +29,13 @@ public record BootstrapState(
     phaseEntries = List.copyOf(phaseEntries);
     planEntryEntries = List.copyOf(planEntryEntries);
     nextPlanEntry = nextPlanEntry == null ? Optional.empty() : nextPlanEntry;
+    manifestIdentity = manifestIdentity == null ? Optional.empty() : manifestIdentity;
+    manifestFingerprint = manifestFingerprint == null ? Optional.empty() : manifestFingerprint;
   }
 
   public BootstrapState(
       String profileName, Instant lastRunAt, String sysbootVersion, List<StateEntry> entries) {
-    this(profileName, lastRunAt, sysbootVersion, entries, List.of(), List.of(), Optional.empty());
+    this(profileName, lastRunAt, sysbootVersion, entries, List.of());
   }
 
   public BootstrapState(
@@ -40,7 +44,16 @@ public record BootstrapState(
       String sysbootVersion,
       List<StateEntry> entries,
       List<PhaseStateEntry> phaseEntries) {
-    this(profileName, lastRunAt, sysbootVersion, entries, phaseEntries, List.of(), Optional.empty());
+    this(
+        profileName,
+        lastRunAt,
+        sysbootVersion,
+        entries,
+        phaseEntries,
+        List.of(),
+        Optional.empty(),
+        Optional.empty(),
+        Optional.empty());
   }
 
   public Optional<StateEntry> findEntry(String itemKey, ItemType type) {
@@ -75,14 +88,7 @@ public record BootstrapState(
                         && e.itemType() == newEntry.itemType()))
             .collect(Collectors.toCollection(ArrayList::new));
     updated.add(newEntry);
-    return new BootstrapState(
-        profileName,
-        Instant.now(),
-        sysbootVersion,
-        List.copyOf(updated),
-        phaseEntries,
-        planEntryEntries,
-        nextPlanEntry);
+    return copy(List.copyOf(updated), phaseEntries, planEntryEntries, nextPlanEntry);
   }
 
   public BootstrapState withPhaseEntry(PhaseStateEntry newEntry) {
@@ -91,14 +97,7 @@ public record BootstrapState(
             .filter(e -> !e.phaseName().equals(newEntry.phaseName()))
             .collect(Collectors.toCollection(ArrayList::new));
     updated.add(newEntry);
-    return new BootstrapState(
-        profileName,
-        Instant.now(),
-        sysbootVersion,
-        entries,
-        List.copyOf(updated),
-        planEntryEntries,
-        nextPlanEntry);
+    return copy(entries, List.copyOf(updated), planEntryEntries, nextPlanEntry);
   }
 
   public BootstrapState withPlanEntry(PlanEntryStateEntry newEntry) {
@@ -107,13 +106,11 @@ public record BootstrapState(
             .filter(e -> !e.entryName().equals(newEntry.entryName()))
             .collect(Collectors.toCollection(ArrayList::new));
     updated.add(newEntry);
-    return new BootstrapState(
-        profileName, Instant.now(), sysbootVersion, entries, phaseEntries, updated, nextPlanEntry);
+    return copy(entries, phaseEntries, updated, nextPlanEntry);
   }
 
   public BootstrapState withNextPlanEntry(Optional<String> nextEntry) {
-    return new BootstrapState(
-        profileName, Instant.now(), sysbootVersion, entries, phaseEntries, planEntryEntries, nextEntry);
+    return copy(entries, phaseEntries, planEntryEntries, nextEntry);
   }
 
   public BootstrapState withoutNextPlanEntry() {
@@ -126,14 +123,7 @@ public record BootstrapState(
         entries.stream()
             .filter(e -> !e.itemKey().equals(itemKey))
             .collect(Collectors.toCollection(ArrayList::new));
-    return new BootstrapState(
-        profileName,
-        Instant.now(),
-        sysbootVersion,
-        List.copyOf(updated),
-        phaseEntries,
-        planEntryEntries,
-        nextPlanEntry);
+    return copy(List.copyOf(updated), phaseEntries, planEntryEntries, nextPlanEntry);
   }
 
   public BootstrapState withoutPhase(String phaseName) {
@@ -142,18 +132,62 @@ public record BootstrapState(
         phaseEntries.stream()
             .filter(e -> !e.phaseName().equals(phaseName))
             .collect(Collectors.toCollection(ArrayList::new));
+    return copy(entries, List.copyOf(updated), planEntryEntries, nextPlanEntry);
+  }
+
+  public BootstrapState withManifestMetadata(String identity, String fingerprint) {
+    Objects.requireNonNull(identity);
+    Objects.requireNonNull(fingerprint);
+    return copy(
+        entries,
+        phaseEntries,
+        planEntryEntries,
+        nextPlanEntry,
+        Optional.of(identity),
+        Optional.of(fingerprint));
+  }
+
+  public boolean hasRecordedWork() {
+    return !entries.isEmpty()
+        || !phaseEntries.isEmpty()
+        || !planEntryEntries.isEmpty()
+        || nextPlanEntry.isPresent();
+  }
+
+  public static BootstrapState empty(String profileName, String version) {
+    return new BootstrapState(profileName, Instant.now(), version, List.of());
+  }
+
+  private BootstrapState copy(
+      List<StateEntry> entries,
+      List<PhaseStateEntry> phaseEntries,
+      List<PlanEntryStateEntry> planEntryEntries,
+      Optional<String> nextPlanEntry) {
+    return copy(
+        entries,
+        phaseEntries,
+        planEntryEntries,
+        nextPlanEntry,
+        manifestIdentity,
+        manifestFingerprint);
+  }
+
+  private BootstrapState copy(
+      List<StateEntry> entries,
+      List<PhaseStateEntry> phaseEntries,
+      List<PlanEntryStateEntry> planEntryEntries,
+      Optional<String> nextPlanEntry,
+      Optional<String> manifestIdentity,
+      Optional<String> manifestFingerprint) {
     return new BootstrapState(
         profileName,
         Instant.now(),
         sysbootVersion,
         entries,
-        List.copyOf(updated),
+        phaseEntries,
         planEntryEntries,
-        nextPlanEntry);
-  }
-
-  public static BootstrapState empty(String profileName, String version) {
-    return new BootstrapState(
-        profileName, Instant.now(), version, List.of(), List.of(), List.of(), Optional.empty());
+        nextPlanEntry,
+        manifestIdentity,
+        manifestFingerprint);
   }
 }

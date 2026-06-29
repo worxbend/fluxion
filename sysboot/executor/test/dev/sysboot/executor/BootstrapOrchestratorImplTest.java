@@ -634,21 +634,24 @@ class BootstrapOrchestratorImplTest {
                 PackageManagerKind.DNF,
                 List.of(new PackageName("git")),
                 true));
-    String fingerprint = new PhaseFingerprintCalculator().fingerprint(phase);
+    BootstrapConfig config = buildPhasedConfig(List.of(phase));
+    var fingerprintCalculator = new PhaseFingerprintCalculator();
+    String fingerprint = fingerprintCalculator.fingerprint(phase);
     BootstrapState state =
         BootstrapState.empty("test", "1.0.0")
             .withPhaseEntry(
                 new PhaseStateEntry(
-                    "foundation", PhaseStatus.COMPLETED, Instant.now(), Optional.of(fingerprint)));
+                    "foundation", PhaseStatus.COMPLETED, Instant.now(), Optional.of(fingerprint)))
+            .withManifestMetadata("test", fingerprintCalculator.manifestFingerprint(config));
     orchestrator = orchestrator(alwaysRun(), Optional.of(new InMemoryStateRepository(state)));
 
-    orchestrator.execute(buildPhasedConfig(List.of(phase)), ignored -> {});
+    orchestrator.execute(config, ignored -> {});
 
     verify(dnfExecutor, never()).install(any());
   }
 
   @Test
-  void execute_whenCompletedPhaseFingerprintDiffers_runsPhaseAgain() {
+  void execute_whenManifestFingerprintDiffers_rejectsStaleState() {
     Phase oldPhase =
         phase(
             "foundation",
@@ -669,7 +672,10 @@ class BootstrapOrchestratorImplTest {
                 PackageManagerKind.DNF,
                 List.of(new PackageName("git"), new PackageName("curl")),
                 true));
-    String oldFingerprint = new PhaseFingerprintCalculator().fingerprint(oldPhase);
+    BootstrapConfig oldConfig = buildPhasedConfig(List.of(oldPhase));
+    BootstrapConfig changedConfig = buildPhasedConfig(List.of(changedPhase));
+    var fingerprintCalculator = new PhaseFingerprintCalculator();
+    String oldFingerprint = fingerprintCalculator.fingerprint(oldPhase);
     BootstrapState state =
         BootstrapState.empty("test", "1.0.0")
             .withPhaseEntry(
@@ -677,12 +683,16 @@ class BootstrapOrchestratorImplTest {
                     "foundation",
                     PhaseStatus.COMPLETED,
                     Instant.now(),
-                    Optional.of(oldFingerprint)));
+                    Optional.of(oldFingerprint)))
+            .withManifestMetadata("test", fingerprintCalculator.manifestFingerprint(oldConfig));
     orchestrator = orchestrator(alwaysRun(), Optional.of(new InMemoryStateRepository(state)));
 
-    orchestrator.execute(buildPhasedConfig(List.of(changedPhase)), ignored -> {});
+    org.assertj.core.api.Assertions.assertThatThrownBy(
+            () -> orchestrator.execute(changedConfig, ignored -> {}))
+        .isInstanceOf(StaleStateException.class)
+        .hasMessageContaining("manifest fingerprint");
 
-    verify(dnfExecutor, times(2)).install(any());
+    verify(dnfExecutor, never()).install(any());
   }
 
   @Test
@@ -1021,9 +1031,6 @@ class BootstrapOrchestratorImplTest {
 
   @Test
   void execute_whenNextPlanEntrySaved_resumesAtThatEntry() {
-    var repository =
-        new InMemoryStateRepository(
-            BootstrapState.empty("test", "1.0.0").withNextPlanEntry(Optional.of("after")));
     var config =
         buildConfig(
             List.of(
@@ -1033,6 +1040,12 @@ class BootstrapOrchestratorImplTest {
                     PackageManagerKind.DNF,
                     List.of(new PackageName("curl")),
                     false)));
+    var state =
+        BootstrapState.empty("test", "1.0.0")
+            .withNextPlanEntry(Optional.of("after"))
+            .withManifestMetadata(
+                "test", new PhaseFingerprintCalculator().manifestFingerprint(config));
+    var repository = new InMemoryStateRepository(state);
 
     orchestrator(alwaysRun(), Optional.of(repository)).execute(config, ignored -> {});
 

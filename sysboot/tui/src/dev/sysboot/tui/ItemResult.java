@@ -5,6 +5,7 @@ public enum ItemResult {
   RUNNING,
   SUCCESS,
   FAILED,
+  INTERRUPTED,
   SKIPPED,
   DRY_RUN
 }

@@ -2,6 +2,7 @@ package dev.sysboot.cli.error;
 
 import dev.sysboot.config.ConfigLoadException;
 import dev.sysboot.executor.ShellExecutionException;
+import dev.sysboot.executor.StaleStateException;
 import dev.sysboot.executor.StateReadException;
 import dev.sysboot.executor.UnsupportedPackageManagerException;
 import java.io.IOException;
@@ -48,7 +49,8 @@ public final class CliExceptionHandler
     }
     if (exception instanceof ParameterException
         || exception instanceof IllegalArgumentException
-        || exception instanceof InvalidPathException) {
+        || exception instanceof InvalidPathException
+        || exception instanceof StaleStateException) {
       return ExitCode.INVALID_INPUT;
     }
     if (exception instanceof IOException

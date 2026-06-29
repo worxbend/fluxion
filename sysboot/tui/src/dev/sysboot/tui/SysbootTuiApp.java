@@ -2,6 +2,7 @@ package dev.sysboot.tui;
 
 import dev.sysboot.core.BootstrapConfig;
 import dev.sysboot.core.BootstrapOrchestrator;
+import dev.sysboot.core.ExecutionPausedException;
 import java.io.IOException;
 import java.io.PrintStream;
 import java.time.Duration;
@@ -86,6 +87,8 @@ public final class SysbootTuiApp {
                 } else {
                   orchestrator.execute(config, eventListener);
                 }
+              } catch (ExecutionPausedException ignored) {
+                // The pause event has already been emitted; render it as a controlled stop.
               } catch (RuntimeException e) {
                 failure.set(e);
               }

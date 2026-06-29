@@ -2,6 +2,7 @@ package dev.sysboot.executor;
 
 import dev.sysboot.core.AptRepositoryModule;
 import dev.sysboot.core.AssertModule;
+import dev.sysboot.core.BootstrapConfig;
 import dev.sysboot.core.BootstrapModule;
 import dev.sysboot.core.CompiledBinaryModule;
 import dev.sysboot.core.DefaultShellModule;
@@ -39,6 +40,21 @@ final class PhaseFingerprintCalculator {
     phase.dependsOn().forEach(dep -> append(builder, "dependsOn", dep.value()));
     appendRestartPolicy(builder, phase.restartPolicy());
     phase.modules().forEach(module -> appendModule(builder, module));
+    return sha256(builder.toString());
+  }
+
+  String manifestFingerprint(BootstrapConfig config) {
+    var builder = new StringBuilder();
+    append(builder, "profile", config.profileName().value());
+    append(builder, "target", config.target().toString());
+    append(builder, "dryRun", config.policy().dryRunDefault().map(Object::toString));
+    append(
+        builder,
+        "continueOnError",
+        config.policy().continueOnErrorDefault().map(Object::toString));
+    append(builder, "requireSudo", config.policy().requireSudoDefault().map(Object::toString));
+    config.sourceSetups().forEach(setup -> append(builder, "sourceSetup", setup.toString()));
+    config.phases().forEach(phase -> append(builder, "phaseFingerprint", fingerprint(phase)));
     return sha256(builder.toString());
   }
 
