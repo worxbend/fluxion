@@ -1,18 +1,28 @@
 package dev.sysboot.config;
 
 import dev.sysboot.config.yaml.contract.MetadataDocument;
+import dev.sysboot.config.yaml.contract.PlanEntryDocument;
+import dev.sysboot.config.yaml.contract.PlanSpecDocument;
 import dev.sysboot.config.yaml.contract.TargetDocument;
 import dev.sysboot.config.yaml.contract.TargetOsDocument;
 import dev.sysboot.config.yaml.contract.WorkstationProfileDocument;
 import dev.sysboot.core.BootstrapConfig;
+import dev.sysboot.core.BootstrapModule;
+import dev.sysboot.core.FlatpakModule;
+import dev.sysboot.core.ModuleName;
 import dev.sysboot.core.OsTarget;
+import dev.sysboot.core.PackageManagerKind;
+import dev.sysboot.core.PackageModule;
+import dev.sysboot.core.PackageName;
 import dev.sysboot.core.Phase;
 import dev.sysboot.core.PhaseName;
 import dev.sysboot.core.ProfileName;
 import dev.sysboot.core.RestartPolicy;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
+import java.util.Optional;
 
 final class WorkstationProfileConfigMapper {
 
@@ -25,22 +35,72 @@ final class WorkstationProfileConfigMapper {
   BootstrapConfig map(WorkstationProfileDocument document, Path manifestPath) {
     validator.validate(document, manifestPath);
     MetadataDocument metadata = requireField(document.metadata().orElse(null), "metadata");
-    TargetDocument target =
-        requireField(document.spec().orElse(null), "spec").target().orElse(null);
+    var spec = requireField(document.spec().orElse(null), "spec");
+    TargetDocument target = spec.target().orElse(null);
     return BootstrapConfig.builder()
         .profileName(new ProfileName(requireField(metadata.name().orElse(null), "metadata.name")))
         .target(mapTarget(requireField(target, "spec.target")))
-        .addPhase(manifestPhase())
+        .addPhase(manifestPhase(spec.plan()))
         .build();
   }
 
-  private Phase manifestPhase() {
+  private Phase manifestPhase(List<PlanEntryDocument> plan) {
     return new Phase(
         new PhaseName("manifest-plan"),
         "WorkstationProfile plan",
-        List.of(),
+        mapPlanModules(plan),
         List.of(),
         new RestartPolicy.None());
+  }
+
+  private List<BootstrapModule> mapPlanModules(List<PlanEntryDocument> plan) {
+    var modules = new ArrayList<BootstrapModule>();
+    for (PlanEntryDocument entry : plan) {
+      mapPlanModule(entry).ifPresent(modules::add);
+    }
+    return List.copyOf(modules);
+  }
+
+  private Optional<BootstrapModule> mapPlanModule(PlanEntryDocument entry) {
+    return switch (planKind(entry)) {
+      case "apt-packages" -> Optional.of(packageModule(entry, PackageManagerKind.APT));
+      case "dnf-packages" -> Optional.of(packageModule(entry, PackageManagerKind.DNF));
+      case "pacman-packages" -> Optional.of(packageModule(entry, PackageManagerKind.PACMAN));
+      case "zypper-packages" -> Optional.of(packageModule(entry, PackageManagerKind.ZYPPER));
+      case "flatpak-packages" -> Optional.of(flatpakModule(entry));
+      default -> Optional.empty();
+    };
+  }
+
+  private PackageModule packageModule(PlanEntryDocument entry, PackageManagerKind kind) {
+    PlanSpecDocument spec = requireField(entry.spec().orElse(null), planName(entry) + ".spec");
+    return new PackageModule(new ModuleName(planName(entry)), kind, packageNames(spec), true);
+  }
+
+  private List<PackageName> packageNames(PlanSpecDocument spec) {
+    return spec.packages().stream().map(PackageName::new).toList();
+  }
+
+  private FlatpakModule flatpakModule(PlanEntryDocument entry) {
+    PlanSpecDocument spec = requireField(entry.spec().orElse(null), planName(entry) + ".spec");
+    return new FlatpakModule(new ModuleName(planName(entry)), spec.remote().orElse("flathub"), appIds(spec));
+  }
+
+  private List<String> appIds(PlanSpecDocument spec) {
+    var appIds = new ArrayList<String>();
+    appIds.addAll(spec.apps());
+    appIds.addAll(spec.appIds());
+    return List.copyOf(appIds);
+  }
+
+  private String planKind(PlanEntryDocument entry) {
+    return requireField(entry.kind().orElse(null), planName(entry) + ".kind")
+        .strip()
+        .toLowerCase(Locale.ROOT);
+  }
+
+  private String planName(PlanEntryDocument entry) {
+    return requireField(entry.name().orElse(null), "spec.plan[].name");
   }
 
   private OsTarget mapTarget(TargetDocument target) {

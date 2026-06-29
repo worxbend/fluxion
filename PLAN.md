@@ -223,6 +223,12 @@ Progress:
   `./mill executor.test.testOnly dev.sysboot.executor.ConfigValidatorTest`, and
   `just native-metadata-check` all completed successfully. No parser compatibility regressions or
   missing native metadata registrations were found, so no follow-up fix tasks were added.
+- 2026-06-29: T007 mapped WorkstationProfile package plan kinds into executable package and
+  Flatpak modules inside the synthetic `manifest-plan` phase. `apt-packages`, `dnf-packages`,
+  `pacman-packages`, and `zypper-packages` now create `PackageModule` instances with the matching
+  `PackageManagerKind`; `flatpak-packages` creates a `FlatpakModule` using `remote` or `flathub`.
+  Focused parser and executor planning tests passed for a manifest containing all supported
+  package plan kinds.
 
 Tasks:
 

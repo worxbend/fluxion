@@ -2,6 +2,7 @@ package dev.sysboot.executor;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import dev.sysboot.config.YamlConfigLoader;
 import dev.sysboot.core.AptRepositoryModule;
 import dev.sysboot.core.AssertModule;
 import dev.sysboot.core.BootstrapConfig;
@@ -21,12 +22,15 @@ import dev.sysboot.core.ProfileName;
 import dev.sysboot.core.RestartPolicy;
 import dev.sysboot.core.RpmRepositoryModule;
 import dev.sysboot.core.StepResult;
+import java.io.IOException;
 import java.net.URI;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.util.List;
 import java.util.Optional;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
 
 class ExecutionPlanBuilderTest {
 
@@ -54,6 +58,26 @@ class ExecutionPlanBuilderTest {
     ExecutionPlan.Item item = plan.phases().get(0).modules().get(0).items().get(0);
     assertThat(item.item().key()).isEqualTo("git");
     assertThat(item.commandPreview()).contains(List.of("sudo", "dnf", "install", "-y", "git"));
+  }
+
+  @Test
+  void build_whenWorkstationProfilePackagePlansLoaded_includesDryRunPlanItems(
+      @TempDir Path tmpDir) throws IOException {
+    Path configFile = tmpDir.resolve("config.yaml");
+    Files.writeString(configFile, workstationProfileWithAllPackageKinds());
+    BootstrapConfig config = new YamlConfigLoader().load(configFile);
+    var builder = new ExecutionPlanBuilder(new PackageManagerExecutorRegistry(packageExecutors()));
+
+    ExecutionPlan plan = builder.build(config);
+
+    assertThat(plan.profileName()).isEqualTo("package-plan-test");
+    assertThat(plan.phases().getFirst().modules()).extracting(ExecutionPlan.Module::name)
+        .containsExactly("apt-base", "dnf-base", "pacman-base", "zypper-base", "desktop-apps");
+    assertPlanItem(plan, 0, "curl", PackageManagerKind.APT);
+    assertPlanItem(plan, 1, "ripgrep", PackageManagerKind.DNF);
+    assertPlanItem(plan, 2, "fd", PackageManagerKind.PACMAN);
+    assertPlanItem(plan, 3, "htop", PackageManagerKind.ZYPPER);
+    assertFlatpakPlanItem(plan, 4, "org.mozilla.firefox");
   }
 
   @Test
@@ -273,6 +297,90 @@ class ExecutionPlanBuilderTest {
             .target(new OsTarget.FedoraTarget("44"));
     phases.forEach(builder::addPhase);
     return builder.build();
+  }
+
+  private static void assertPlanItem(
+      ExecutionPlan plan, int moduleIndex, String key, PackageManagerKind kind) {
+    ExecutionPlan.Item item =
+        plan.phases().getFirst().modules().get(moduleIndex).items().getFirst();
+    assertThat(item.item().key()).isEqualTo(key);
+    assertThat(item.item().packageManager()).contains(kind);
+    assertThat(item.commandPreview().orElseThrow())
+        .containsExactly("sudo", kind.name().toLowerCase(), "install", "-y", key);
+  }
+
+  private static void assertFlatpakPlanItem(ExecutionPlan plan, int moduleIndex, String key) {
+    ExecutionPlan.Module module = plan.phases().getFirst().modules().get(moduleIndex);
+    ExecutionPlan.Item item = module.items().getFirst();
+    assertThat(module.type()).isEqualTo("flatpak");
+    assertThat(item.item().key()).isEqualTo(key);
+    assertThat(item.item().itemType()).isEqualTo(ItemType.FLATPAK);
+    assertThat(item.commandPreview().orElseThrow())
+        .containsExactly("flatpak", "install", "-y", "fedora", key);
+  }
+
+  private static List<PackageManagerExecutor> packageExecutors() {
+    return List.of(
+        packageExecutor(PackageManagerKind.APT),
+        dnf(),
+        packageExecutor(PackageManagerKind.PACMAN),
+        packageExecutor(PackageManagerKind.ZYPPER));
+  }
+
+  private static PackageManagerExecutor packageExecutor(PackageManagerKind kind) {
+    return new PackageManagerExecutor() {
+      @Override
+      public boolean supports(PackageManagerKind candidate) {
+        return candidate == kind;
+      }
+
+      @Override
+      public List<String> installCommand(PackageName packageName) {
+        return List.of("sudo", kind.name().toLowerCase(), "install", "-y", packageName.value());
+      }
+
+      @Override
+      public StepResult install(PackageName packageName) {
+        return new StepResult.Success(packageName.value(), Duration.ZERO);
+      }
+    };
+  }
+
+  private static String workstationProfileWithAllPackageKinds() {
+    return """
+        apiVersion: initkit.io/v1alpha1
+        kind: WorkstationProfile
+        metadata:
+          name: package-plan-test
+        spec:
+          target:
+            os:
+              distribution: fedora
+              release: "44"
+          plan:
+            - name: apt-base
+              kind: apt-packages
+              spec:
+                packages: [curl, git]
+            - name: dnf-base
+              kind: dnf-packages
+              spec:
+                packages: [ripgrep]
+            - name: pacman-base
+              kind: pacman-packages
+              spec:
+                packages: [fd]
+            - name: zypper-base
+              kind: zypper-packages
+              spec:
+                packages: [htop]
+            - name: desktop-apps
+              kind: flatpak-packages
+              spec:
+                remote: fedora
+                apps: [org.mozilla.firefox]
+                appIds: [com.slack.Slack]
+        """;
   }
 
   private static PackageManagerExecutor dnf() {

@@ -278,6 +278,22 @@ class YamlConfigLoaderTest {
   }
 
   @Test
+  void load_whenWorkstationProfilePackagePlansPresent_mapsPackageAndFlatpakModules(
+      @TempDir Path tmpDir) throws IOException {
+    Path config = writeConfig(tmpDir, workstationProfileWithAllPackageKinds());
+
+    BootstrapConfig result = loader.load(config);
+
+    assertThat(result.phases()).hasSize(1);
+    assertThat(result.phases().getFirst().modules()).hasSize(5);
+    assertPackageModule(result, 0, "apt-base", PackageManagerKind.APT, "curl", "git");
+    assertPackageModule(result, 1, "dnf-base", PackageManagerKind.DNF, "ripgrep");
+    assertPackageModule(result, 2, "pacman-base", PackageManagerKind.PACMAN, "fd");
+    assertPackageModule(result, 3, "zypper-base", PackageManagerKind.ZYPPER, "htop");
+    assertFlatpakModule(result, 4, "desktop-apps", "fedora", "org.mozilla.firefox", "com.slack.Slack");
+  }
+
+  @Test
   void load_whenWorkstationProfileTargetsSupportedDistributions_mapsToOsTargets(
       @TempDir Path tmpDir)
       throws IOException {
@@ -815,5 +831,65 @@ class YamlConfigLoaderTest {
             """
                 .formatted(distribution, releaseYaml));
     return loader.load(config).target();
+  }
+
+  private static void assertPackageModule(
+      BootstrapConfig result,
+      int index,
+      String name,
+      PackageManagerKind kind,
+      String... packages) {
+    assertThat(result.phases().getFirst().modules().get(index)).isInstanceOf(PackageModule.class);
+    var module = (PackageModule) result.phases().getFirst().modules().get(index);
+    assertThat(module.name().value()).isEqualTo(name);
+    assertThat(module.packageManager()).isEqualTo(kind);
+    assertThat(module.packages()).extracting(pkg -> pkg.value()).containsExactly(packages);
+    assertThat(module.continueOnError()).isTrue();
+  }
+
+  private static void assertFlatpakModule(
+      BootstrapConfig result, int index, String name, String remote, String... appIds) {
+    assertThat(result.phases().getFirst().modules().get(index)).isInstanceOf(FlatpakModule.class);
+    var module = (FlatpakModule) result.phases().getFirst().modules().get(index);
+    assertThat(module.name().value()).isEqualTo(name);
+    assertThat(module.remote()).isEqualTo(remote);
+    assertThat(module.appIds()).containsExactly(appIds);
+  }
+
+  private static String workstationProfileWithAllPackageKinds() {
+    return """
+        apiVersion: initkit.io/v1alpha1
+        kind: WorkstationProfile
+        metadata:
+          name: package-plan-test
+        spec:
+          target:
+            os:
+              distribution: fedora
+              release: "44"
+          plan:
+            - name: apt-base
+              kind: apt-packages
+              spec:
+                packages: [curl, git]
+            - name: dnf-base
+              kind: dnf-packages
+              spec:
+                packages: [ripgrep]
+            - name: pacman-base
+              kind: pacman-packages
+              spec:
+                packages: [fd]
+            - name: zypper-base
+              kind: zypper-packages
+              spec:
+                packages: [htop]
+            - name: desktop-apps
+              kind: flatpak-packages
+              spec:
+                remote: fedora
+                apps: [org.mozilla.firefox]
+                appIds: [com.slack.Slack]
+        """;
   }
 }
