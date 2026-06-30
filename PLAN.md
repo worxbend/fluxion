@@ -878,6 +878,13 @@ Progress:
   manifest reference, use `fluxion` command names, document supported fields and safety notes, and
   align development and validation commands with the checked-in Mill wrapper plus root `just`
   recipes.
+- 2026-06-30: Refreshed-loop T006 added shipped WorkstationProfile manifests under
+  `sysboot/config/` for Ubuntu, Fedora, Arch/EndeavourOS, and openSUSE Tumbleweed. The examples
+  cover source setup, package actions, package and installer kinds, commands, file writes,
+  interrupts where useful, post-install configuration, and deliberate skipped entries without
+  secrets or private machine paths. Checks passed: `cd sysboot && ./mill cli.assembly`,
+  `just validate-configs`, an Ubuntu plan smoke with `--show-commands`, `git diff --check`, and
+  `jq empty .agent-loop/tasks.json`.
 
 Tasks:
 
@@ -886,10 +893,10 @@ Tasks:
 - Update `sysboot/docs/config-schema.md`. Done in T004.
 - Add `sysboot/docs/workstation-profile.md` for the manifest schema. Done in T004.
 - Add example manifests for:
-  - Ubuntu
-  - Fedora
-  - Arch/EndeavourOS
-  - openSUSE Tumbleweed
+  - Ubuntu. Done in T006.
+  - Fedora. Done in T006.
+  - Arch/EndeavourOS. Done in T006.
+  - openSUSE Tumbleweed. Done in T006.
 - Document `spec.target.os` as informational.
 - Document variable interpolation, dry-run, source setup, interrupt/resume, and safety model.
 
@@ -973,7 +980,7 @@ later documentation, example, and release validation tasks remain pending.
 3. `T003` - Checkpoint reporting parity (moderate validation) - passed in VALIDATION-25.
 4. `T004` - Document WorkstationProfile schema (moderate improvement) - complete.
 5. `T005` - Refresh README guidance (simple improvement) - complete.
-6. `T006` - Add WorkstationProfile examples (moderate feature).
+6. `T006` - Add WorkstationProfile examples (moderate feature) - complete.
 7. `T007` - Validate documentation examples (moderate validation).
 8. `T008` - Run final release validation (complex validation).
 

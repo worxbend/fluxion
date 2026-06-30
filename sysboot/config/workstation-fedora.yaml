@@ -1,0 +1,150 @@
+apiVersion: initkit.io/v1alpha1
+kind: WorkstationProfile
+metadata:
+  name: fedora-workstation-profile
+  labels:
+    distro: fedora
+    example: workstation-profile
+spec:
+  target:
+    os:
+      distribution: fedora
+      release: "44"
+  policy:
+    dryRun: false
+    continueOnError: true
+    requireSudo: true
+  vars:
+    configDir: ${HOME}/.config/fluxion/examples
+    binDir: ${HOME}/.local/bin
+  sources:
+    dnf:
+      - name: docker-dnf
+        kind: rpm-repository
+        spec:
+          id: docker-ce-stable
+          baseUrl: https://download.docker.com/linux/fedora/$releasever/$basearch/stable
+          repoFile: /etc/yum.repos.d/docker-ce.repo
+          gpgKeyUrl: https://download.docker.com/linux/fedora/gpg
+          gpgCheck: true
+    rpm:
+      - name: rpmfusion-free
+        kind: rpm-repository
+        spec:
+          id: rpmfusion-free
+          baseUrl: https://download1.rpmfusion.org/free/fedora/releases/$releasever/Everything/$basearch/os/
+          repoFile: /etc/yum.repos.d/rpmfusion-free.repo
+          gpgKeyUrl: https://rpmfusion.org/keys?action=AttachFile&do=get&target=RPM-GPG-KEY-rpmfusion-free-fedora
+          gpgCheck: true
+    flatpak:
+      - name: flathub
+        kind: flatpak-remote
+        spec:
+          remote: flathub
+          url: https://flathub.org/repo/flathub.flatpakrepo
+          system: true
+  plan:
+    - name: dnf-foundation
+      kind: dnf-packages
+      when:
+        distribution: fedora
+        commandExists: dnf
+      execution:
+        continueOnError: false
+      spec:
+        actions:
+          - check-update
+          - action: upgrade
+        packages:
+          - ca-certificates
+          - curl
+          - git
+          - ripgrep
+          - fd-find
+          - bat
+          - zsh
+          - gcc
+          - gcc-c++
+          - make
+          - podman
+          - docker-ce-cli
+
+    - name: skipped-optional-packages
+      kind: dnf-packages
+      when:
+        commandExists: fluxion-example-skipped-command
+      spec:
+        packages:
+          - ShellCheck
+
+    - name: desktop-flatpaks
+      kind: flatpak-packages
+      when:
+        distribution: fedora
+      spec:
+        remote: flathub
+        apps:
+          - com.github.tchx84.Flatseal
+          - org.mozilla.firefox
+
+    - name: sdkman-toolchains
+      kind: sdkman-packages
+      spec:
+        packages:
+          - candidate: java
+            version: 25.0.1-tem
+          - gradle
+          - maven
+
+    - name: cargo-tools
+      kind: cargo-packages
+      spec:
+        packages:
+          - cargo-binstall
+          - just
+
+    - name: dotfiles-apply
+      kind: dotfiles-apply
+      spec:
+        config: ${HOME}/.dotfiles/install.conf.yaml
+        installerVersion: v0.2.1
+        dotbotBinary: dotbot
+
+    - name: workstation-files
+      kind: file-writes
+      spec:
+        files:
+          - name: git-include
+            destination: ${configDir}/gitconfig
+            content: |
+              [pull]
+                rebase = true
+              [init]
+                defaultBranch = main
+            mode: "0644"
+
+    - name: workstation-commands
+      kind: commands
+      spec:
+        commands:
+          - name: create-config-dir
+            argv:
+              - mkdir
+              - -p
+              - ${configDir}
+          - name: enable-user-services-dir
+            run: systemctl --user daemon-reload
+            allowedExitCodes:
+              - 0
+              - 1
+        timeoutSeconds: 60
+
+    - name: relogin-after-toolchains
+      kind: interrupt
+      spec:
+        message: Start a fresh shell so SDKMAN, Cargo, and shell defaults are visible.
+        instructions:
+          - Open a new terminal session.
+          - Run the resume command printed by Fluxion.
+        resumeFrom: next
+        exitCode: 75

@@ -1,0 +1,126 @@
+apiVersion: initkit.io/v1alpha1
+kind: WorkstationProfile
+metadata:
+  name: opensuse-tumbleweed-workstation
+  labels:
+    distro: opensuse-tumbleweed
+    example: workstation-profile
+spec:
+  target:
+    os:
+      distribution: opensuse
+      release: tumbleweed
+  policy:
+    dryRun: false
+    continueOnError: true
+    requireSudo: true
+  vars:
+    configDir: ${HOME}/.config/fluxion/examples
+    binDir: ${HOME}/.local/bin
+  sources:
+    zypper:
+      - name: packman
+        kind: zypper-repository
+        spec:
+          id: packman
+          baseUrl: https://ftp.gwdg.de/pub/linux/misc/packman/suse/openSUSE_Tumbleweed/
+          repoFile: /etc/zypp/repos.d/packman.repo
+          gpgKeyUrl: https://ftp.gwdg.de/pub/linux/misc/packman/suse/openSUSE_Tumbleweed/repodata/repomd.xml.key
+          gpgCheck: true
+    flatpak:
+      - name: flathub
+        kind: flatpak-remote
+        spec:
+          remote: flathub
+          url: https://flathub.org/repo/flathub.flatpakrepo
+          system: true
+  plan:
+    - name: zypper-foundation
+      kind: zypper-packages
+      when:
+        distribution: opensuse
+        commandExists: zypper
+      execution:
+        continueOnError: false
+      spec:
+        actions:
+          - refresh
+          - action: dup
+        packages:
+          - ca-certificates
+          - curl
+          - git
+          - ripgrep
+          - fd
+          - bat
+          - zsh
+          - gcc
+          - gcc-c++
+          - make
+          - podman
+
+    - name: skipped-optional-packages
+      kind: zypper-packages
+      when:
+        commandExists: fluxion-example-skipped-command
+      spec:
+        packages:
+          - ShellCheck
+
+    - name: desktop-flatpaks
+      kind: flatpak-packages
+      when:
+        distribution: opensuse
+      spec:
+        remote: flathub
+        apps:
+          - com.github.tchx84.Flatseal
+          - org.mozilla.firefox
+
+    - name: local-binary-tool
+      kind: binary-downloads
+      spec:
+        binaryName: fluxion-demo-status
+        url: https://example.invalid/fluxion-demo-status-x86_64.tar.gz
+        checksum:
+          algorithm: SHA-256
+          value: "0000000000000000000000000000000000000000000000000000000000000000"
+        installPath: ${binDir}/fluxion-demo-status
+        archivePath: fluxion-demo-status
+        stripComponents: 1
+        mode: "0755"
+
+    - name: workstation-files
+      kind: file-writes
+      spec:
+        files:
+          - name: profile-notes
+            destination: ${configDir}/opensuse-profile.conf
+            content: |
+              profile=opensuse-tumbleweed-workstation
+              package_manager=zypper
+            mode: "0644"
+
+    - name: post-install-commands
+      kind: commands
+      spec:
+        shell: /bin/bash
+        commands:
+          - name: create-example-config
+            argv:
+              - mkdir
+              - -p
+              - ${configDir}
+          - name: git-default-branch
+            run: git config --global init.defaultBranch main
+        timeoutSeconds: 60
+
+    - name: relogin-after-shell-refresh
+      kind: interrupt
+      spec:
+        message: Reopen your terminal after shell and desktop configuration changes.
+        instructions:
+          - Close the current terminal.
+          - Open a new terminal and run the Fluxion resume command.
+        resumeFrom: next
+        exitCode: 75
