@@ -946,6 +946,22 @@ Progress:
   `git diff --check`, and JSON syntax checks all passed. No production code fixes were required.
   The only notable validation output remains the existing non-strict checksum warnings for sample
   compiled binaries in `system-bootstrap-fedora.yaml`.
+- 2026-06-30: VALIDATION-32 re-ran the release checkpoint gate after the completed refreshed-loop
+  work. `just verify`, `cd sysboot && ./mill cli.assembly`, `just native-smoke`, assembled-JAR
+  help/validate/dry-run smoke checks, dependency-direction inspection, runtime-DI and safety scans,
+  `git diff --check`, and JSON syntax checks all passed. No in-scope fixes were required. The
+  only notable validation output remains the existing non-strict checksum warnings for sample
+  compiled binaries in `system-bootstrap-fedora.yaml`; the existing guarded `flatpak list` test
+  helper is read-only and not a mutating package-manager test.
+- 2026-06-30: VALIDATION-33 re-ran the configured checkpoint gate. The first `just verify` found a
+  TUI regression in `SysbootTuiAppTest.run_rendersExecutionFramesBeforeCompletion`: fast completion
+  could skip rendering the queued RUNNING frame. The fix changed the TUI app loop to render queued
+  execution events one frame at a time and sleep only when idle. `cd sysboot && ./mill tui.test`,
+  rerun `just verify`, `cd sysboot && ./mill cli.assembly`, `just native-smoke`, assembled-JAR
+  help/validate/dry-run smoke checks, dependency-direction inspection, runtime-DI search,
+  `git diff --check`, and JSON syntax checks all passed after the fix. Residual risk is unchanged:
+  `system-bootstrap-fedora.yaml` still emits existing non-strict checksum warnings for illustrative
+  compiled-binary entries.
 
 Validation checklist:
 

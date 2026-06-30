@@ -29,6 +29,18 @@ public final class TuiExecutionEventListener implements ExecutionEventListener {
     return current;
   }
 
+  public Optional<ExecutionScreenState> drainOneInto(ExecutionScreenState state) {
+    ExecutionEvent event = eventQueue.poll();
+    if (event == null) {
+      return Optional.empty();
+    }
+    return Optional.of(applyEvent(state, event));
+  }
+
+  public boolean hasPendingEvents() {
+    return !eventQueue.isEmpty();
+  }
+
   private ExecutionScreenState applyEvent(ExecutionScreenState state, ExecutionEvent event) {
     return switch (event.kind()) {
       case PHASE_STARTED -> state.withLogLine("[PHASE] " + event.moduleName().value());

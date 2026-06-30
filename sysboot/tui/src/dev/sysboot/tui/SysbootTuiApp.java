@@ -7,6 +7,7 @@ import java.io.IOException;
 import java.io.PrintStream;
 import java.time.Duration;
 import java.util.List;
+import java.util.Optional;
 import java.util.concurrent.atomic.AtomicReference;
 
 public final class SysbootTuiApp {
@@ -97,14 +98,20 @@ public final class SysbootTuiApp {
   private ExecutionScreenState renderUntilComplete(
       BootstrapConfig config, ExecutionScreenState screen, Thread runner) throws IOException {
     ExecutionScreenState current = screen;
-    while (runner.isAlive()) {
-      current = eventListener.drainInto(current);
+    while (runner.isAlive() || eventListener.hasPendingEvents()) {
+      Optional<ExecutionScreenState> updated = eventListener.drainOneInto(current);
+      if (updated.isPresent()) {
+        current = updated.get();
+        stateRef.set(new AppState.Executing(current, config));
+        renderExecution(current);
+        continue;
+      }
       stateRef.set(new AppState.Executing(current, config));
       renderExecution(current);
       sleepUntilNextFrame();
     }
     join(runner);
-    return eventListener.drainInto(current);
+    return current;
   }
 
   private void renderExecution(ExecutionScreenState screen) {
