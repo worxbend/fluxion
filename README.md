@@ -24,6 +24,7 @@
 
 You write a YAML profile that says:
 
+- which config frontend you want: stable `jobs`/`steps` or an ordered `WorkstationProfile` manifest
 - which packages you want
 - which installer should handle them: `apt`, `dnf`, `pacman`, `zypper`, Flatpak, direct binary downloads, shell installers, Nerd Fonts, dotfiles, or commands
 - which jobs depend on other jobs
@@ -57,7 +58,7 @@ shell scripts.
 
 ## Tiny Example
 
-Current stable profiles use `jobs` and `steps`:
+Fluxion supports two config frontends. The stable DAG-oriented schema uses `jobs` and `steps`:
 
 ```yaml
 profile: my-laptop
@@ -90,8 +91,34 @@ jobs:
 Package managers install one item at a time. If `git` works but `some-wrong-name` fails, Fluxion
 still attempts the next package and reports the partial failure clearly.
 
-Fluxion is also being planned toward a Kubernetes-style `WorkstationProfile` manifest. See
-[PLAN.md](PLAN.md) for that schema roadmap.
+The newer `WorkstationProfile` manifest frontend is also supported for ordered plans selected by
+host facts and `when` rules:
+
+```yaml
+apiVersion: initkit.io/v1alpha1
+kind: WorkstationProfile
+metadata:
+  name: fedora-workstation
+spec:
+  target:
+    os:
+      distribution: fedora
+      release: "44"
+  policy:
+    continueOnError: true
+  plan:
+    - name: core-cli
+      kind: dnf-packages
+      when:
+        distribution: fedora
+      spec:
+        actions:
+          - action: check-update
+        packages: [git, curl, jq]
+```
+
+For manifests, `spec.target.os` is informational metadata. The host detector and per-entry `when`
+rules decide which entries run or skip.
 
 ## Install
 
@@ -110,6 +137,7 @@ When a release archive is unpacked and `fluxion` is on `PATH`:
 ```bash
 fluxion --help
 fluxion validate -c ~/.config/fluxion/default.yaml --no-tui
+fluxion plan -c ~/.config/fluxion/default.yaml --show-commands --no-tui
 ```
 
 If you are hacking on the repo, you do not need a global Mill install. The checked-in
@@ -163,6 +191,7 @@ fluxion state path default
 From a release download:
 
 ```bash
+fluxion plan -c config/example-fedora.yaml --show-commands --no-tui
 fluxion dry-run -c config/example-fedora.yaml --no-tui
 fluxion apply -c config/example-fedora.yaml
 ```
@@ -207,11 +236,18 @@ cd sysboot
 ./mill cli.run validate -c config/example-fedora.yaml --no-tui
 ```
 
-Release checks:
+Repository-level validation recipes run from the root checkout and use the checked-in
+`sysboot/mill` launcher by default:
 
 ```bash
 just verify
-just native-metadata-check
+just validate-configs
+just native-smoke
+```
+
+Focused assembly and native-image builds run from `sysboot/`:
+
+```bash
 cd sysboot
 ./mill cli.assembly
 ./mill cli.nativeImage
@@ -221,6 +257,7 @@ cd sysboot
 
 - [Command reference](sysboot/docs/commands.md)
 - [Config schema](sysboot/docs/config-schema.md)
+- [WorkstationProfile manifest reference](sysboot/docs/workstation-profile.md)
 - [Developer guide](sysboot/docs/development.md)
 - [Testing guide](sysboot/docs/testing.md)
 - [Architecture overview](sysboot/docs/architecture.md)
@@ -235,9 +272,13 @@ Copy-pasteable examples:
 
 ## Project Status
 
-Fluxion is young, useful, and still moving fast. The current stable schema is the `jobs`/`steps`
-profile format documented in `sysboot/docs/config-schema.md`. The planned Kubernetes-style manifest
-API is tracked in [PLAN.md](PLAN.md).
+Fluxion is young, useful, and still moving fast. The stable schema is the `jobs`/`steps` profile
+format documented in `sysboot/docs/config-schema.md`. The newer Kubernetes-style
+`WorkstationProfile` parser path is implemented and documented in
+`sysboot/docs/workstation-profile.md`; shipped distro examples are being expanded separately.
+
+Dry-run and plan modes are non-mutating. Fluxion redacts sudo input, sensitive environment values,
+tokens, and password-like text from rendered commands, events, failure text, and TUI state.
 
 Use dry-run. Read the plan. Then let it run.
 

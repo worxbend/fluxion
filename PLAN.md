@@ -873,11 +873,16 @@ Progress:
   source setup, policy, package and installer kinds, interrupt/resume, dry-run behavior, and
   safety guarantees. The docs state that `spec.target.os` is informational for manifests and that
   host facts plus `when` rules drive selected/skipped work.
+- 2026-06-30: Refreshed-loop T005 updated the root `README.md` and `sysboot/README.md` to present
+  WorkstationProfile as an implemented manifest frontend instead of future planning, link the new
+  manifest reference, use `fluxion` command names, document supported fields and safety notes, and
+  align development and validation commands with the checked-in Mill wrapper plus root `just`
+  recipes.
 
 Tasks:
 
-- Update `sysboot/README.md`.
-- Update root `README.md` if command examples change.
+- Update `sysboot/README.md`. Done in T005.
+- Update root `README.md` if command examples change. Done in T005.
 - Update `sysboot/docs/config-schema.md`. Done in T004.
 - Add `sysboot/docs/workstation-profile.md` for the manifest schema. Done in T004.
 - Add example manifests for:
@@ -967,7 +972,7 @@ later documentation, example, and release validation tasks remain pending.
 2. `T002` - Polish TUI reporting (moderate improvement) - complete.
 3. `T003` - Checkpoint reporting parity (moderate validation) - passed in VALIDATION-25.
 4. `T004` - Document WorkstationProfile schema (moderate improvement) - complete.
-5. `T005` - Refresh README guidance (simple improvement).
+5. `T005` - Refresh README guidance (simple improvement) - complete.
 6. `T006` - Add WorkstationProfile examples (moderate feature).
 7. `T007` - Validate documentation examples (moderate validation).
 8. `T008` - Run final release validation (complex validation).

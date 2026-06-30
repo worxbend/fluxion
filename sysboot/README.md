@@ -7,6 +7,7 @@ Linux bootstrapper for people who would rather write one YAML file than babysit 
 ## What It Does
 
 - Boots Fedora, Arch, openSUSE, Debian, and Ubuntu setups from YAML.
+- Supports the stable `jobs`/`steps` schema and the ordered `WorkstationProfile` manifest frontend.
 - Talks to `dnf`, `pacman`, `paru`, `yay`, `apt`, `zypper`, and Flatpak.
 - Runs jobs in dependency order with restart checkpoints.
 - Installs packages one by one, so one bad package does not trash the whole run.
@@ -43,6 +44,7 @@ The native binary lands at:
 fluxion validate -c ~/.config/fluxion/fedora.yaml
 fluxion generate --os auto --profile starter --preset developer --output ~/.config/fluxion/starter.yaml
 fluxion list -c ~/.config/fluxion/fedora.yaml
+fluxion plan -c ~/.config/fluxion/fedora.yaml --show-commands --no-tui
 fluxion dry-run -c ~/.config/fluxion/fedora.yaml
 fluxion apply -c ~/.config/fluxion/fedora.yaml
 ```
@@ -63,6 +65,7 @@ From the repo before installing:
 ```bash
 cd sysboot
 ./mill cli.run validate -c config/example-fedora.yaml
+./mill cli.run plan -c config/example-fedora.yaml --show-commands --no-tui
 ./out/cli/nativeImage.dest/native-executable apply -c config/example-fedora.yaml --no-tui
 ```
 
@@ -108,7 +111,8 @@ fluxion state reset default --force
 
 ## Config Shape
 
-Put profiles in `~/.config/fluxion/` or pass `-c`.
+Put profiles in `~/.config/fluxion/` or pass `-c`. Fluxion accepts both the stable
+`jobs`/`steps` schema and the newer `WorkstationProfile` manifest schema.
 
 ```yaml
 profile: fedora-workstation
@@ -150,11 +154,57 @@ jobs:
         installPath: /usr/local/bin/lazygit
 ```
 
-Supported step types:
+The same CLI commands also load `WorkstationProfile` manifests:
+
+```yaml
+apiVersion: initkit.io/v1alpha1
+kind: WorkstationProfile
+metadata:
+  name: fedora-workstation
+spec:
+  target:
+    os:
+      distribution: fedora
+      release: "44"
+  policy:
+    continueOnError: true
+  vars:
+    binDir: ${HOME}/.local/bin
+  sources:
+    flatpak:
+      - name: flathub
+        kind: flatpak-remote
+        spec:
+          remote: flathub
+          url: https://flathub.org/repo/flathub.flatpakrepo
+          system: true
+  plan:
+    - name: base-cli
+      kind: dnf-packages
+      when:
+        distribution: fedora
+      spec:
+        actions:
+          - action: check-update
+        packages: [git, curl, neovim]
+
+    - name: apps
+      kind: flatpak-packages
+      spec:
+        apps: [com.spotify.Client]
+```
+
+For manifests, `spec.target.os` is informational. Host facts and per-entry `when` rules decide
+which plan entries run or skip.
+
+Supported stable step types:
 
 - `packages`
 - `flatpak`
 - `flatpak-remote`
+- `apt-repository`
+- `rpm-repository`
+- `pacman-repository`
 - `shell-script`
 - `shell-command`
 - `compiled-binary`
@@ -167,15 +217,31 @@ Supported step types:
 - `assert`
 - `manual`
 
-Full schema lives in `docs/config-schema.md`.
+Supported WorkstationProfile plan kinds include `apt-packages`, `dnf-packages`, `pacman-packages`,
+`zypper-packages`, `aur-packages`, `cargo-packages`, `sdkman-packages`, `flatpak-packages`,
+`binary-downloads`, `shell-scripts`, `commands`, `nerd-fonts`, `dotfiles-apply`, `file-writes`,
+and `interrupt`.
+
+Full schema docs live in `docs/config-schema.md` and `docs/workstation-profile.md`.
 
 More docs:
 
 - `docs/commands.md`
 - `docs/architecture.md`
 - `docs/enhancements.md`
+- `docs/workstation-profile.md`
 
 ## Dev Loop
+
+From the repository root:
+
+```bash
+just verify
+just validate-configs
+just native-smoke
+```
+
+From `sysboot/`, use the checked-in Mill wrapper:
 
 ```bash
 cd sysboot
@@ -203,6 +269,7 @@ No Spring. No Gradle. No service locator soup. Constructors and Mill.
 3  bad config
 4  filesystem/IO problem
 5  package manager or external command failed
+75 execution paused at an interrupt or restart checkpoint
 ```
 
 ## Notes
@@ -210,7 +277,8 @@ No Spring. No Gradle. No service locator soup. Constructors and Mill.
 - Java 25.
 - Mill 1.1.6 through `./mill`.
 - Native image uses GraalVM Community 25.
-- Passwords and sudo input should never hit logs.
+- Dry-run, plan, status, diff, doctor, and validate are non-mutating.
+- Passwords, sudo input, sensitive environment values, tokens, and password-like text should never hit logs, events, failure text, or TUI state.
 - If TamboUI snapshots are not available, use `--no-tui`.
 
 That is the tool. One file says what the machine should become. `fluxion` does the boring part.
