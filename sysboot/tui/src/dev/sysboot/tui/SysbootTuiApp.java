@@ -64,8 +64,7 @@ public final class SysbootTuiApp {
         selectionPrompt
             .select(config)
             .orElseThrow(() -> new IOException("TUI selection cancelled"));
-    var screen =
-        ExecutionScreenState.initial(selected.profileName().value(), selected.modules().size());
+    var screen = ExecutionScreenState.initial(selected);
     stateRef.set(new AppState.Executing(screen, selected));
     AtomicReference<Throwable> failure = new AtomicReference<>();
     Thread runner = runOrchestrator(selected, dryRun, failure);

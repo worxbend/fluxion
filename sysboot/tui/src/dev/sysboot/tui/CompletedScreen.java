@@ -24,6 +24,7 @@ public final class CompletedScreen {
     long failed = counts.getOrDefault(ItemResult.FAILED, 0L);
     long interrupted = counts.getOrDefault(ItemResult.INTERRUPTED, 0L);
     long skipped = counts.getOrDefault(ItemResult.SKIPPED, 0L);
+    long selected = selectedCount(screen, items);
 
     List<ItemStatus> failures =
         items.stream()
@@ -33,8 +34,11 @@ public final class CompletedScreen {
     var sb = new StringBuilder();
     sb.append("┌─ Bootstrap Complete ───────────────────────────┐\n");
     sb.append(
-        "│  ✓ Succeeded: %-4d  ✗ Failed: %-4d  ! Interrupted: %-4d  ~ Skipped: %-4d │\n"
-            .formatted(success, failed, interrupted, skipped));
+        "│  Selected: %-4d  Completed: %-4d  Failed: %-4d │\n"
+            .formatted(selected, success, failed));
+    sb.append(
+        "│  Interrupted: %-4d  Skipped: %-4d                  │\n"
+            .formatted(interrupted, skipped));
     sb.append("└────────────────────────────────────────────────┘\n");
 
     if (!failures.isEmpty()) {
@@ -44,5 +48,12 @@ public final class CompletedScreen {
     }
 
     return sb.toString();
+  }
+
+  private static long selectedCount(ExecutionScreenState screen, List<ItemStatus> items) {
+    if (screen.selectedPlanEntries() > 0) {
+      return screen.selectedPlanEntries();
+    }
+    return items.stream().filter(item -> item.result() != ItemResult.SKIPPED).count();
   }
 }

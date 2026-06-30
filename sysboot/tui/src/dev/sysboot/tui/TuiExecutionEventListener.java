@@ -4,6 +4,7 @@ import dev.sysboot.core.ExecutionEvent;
 import dev.sysboot.core.ExecutionEventListener;
 import dev.sysboot.core.StepResult;
 import java.time.Duration;
+import java.util.Optional;
 import java.util.concurrent.LinkedBlockingQueue;
 
 public final class TuiExecutionEventListener implements ExecutionEventListener {
@@ -38,13 +39,14 @@ public final class TuiExecutionEventListener implements ExecutionEventListener {
       case MODULE_STARTED ->
           state
               .withModule(event.moduleName().value())
+              .withItemIfPlanEntry(
+                  ItemStatus.running(event.moduleName().value(), event.moduleName().value()))
               .withLogLine("[START] Module: " + event.moduleName().value());
       case MODULE_COMPLETED ->
-          state.withModuleCompleted().withLogLine("[DONE]  Module: " + event.moduleName().value());
+          completeModule(state, event.moduleName().value())
+              .withLogLine("[DONE]  Module: " + event.moduleName().value());
       case ITEM_STARTED ->
-          state
-              .withItem(ItemStatus.running(event.item(), event.moduleName().value()))
-              .withLogLine("[RUN]   " + event.item());
+          startItem(state, event).withLogLine("[RUN]   " + event.item());
       case ITEM_COMPLETED -> applyItemCompleted(state, event);
       case ERROR ->
           state.withLogLine("[ERROR] " + event.item() + " in " + event.moduleName().value());
@@ -59,11 +61,110 @@ public final class TuiExecutionEventListener implements ExecutionEventListener {
     StepResult result = event.result().get();
     ItemResult itemResult = toItemResult(result);
     Duration elapsed = extractElapsed(result);
+    if (state.hasPlanEntry(event.moduleName().value())) {
+      return updatePlanEntry(state, event, itemResult, elapsed, result);
+    }
     return state
         .withItem(
             ItemStatus.running(event.item(), event.moduleName().value())
                 .withResult(itemResult, elapsed))
         .withLogLine(formatLogLine(event.item(), result));
+  }
+
+  private ExecutionScreenState startItem(ExecutionScreenState state, ExecutionEvent event) {
+    if (state.hasPlanEntry(event.moduleName().value())) {
+      if (hasHardTerminalResult(state, event.moduleName().value())) {
+        return state;
+      }
+      return state.withItem(
+          ItemStatus.running(event.moduleName().value(), event.moduleName().value()));
+    }
+    return state.withItem(ItemStatus.running(event.item(), event.moduleName().value()));
+  }
+
+  private ExecutionScreenState completeModule(ExecutionScreenState state, String moduleName) {
+    if (!state.hasPlanEntry(moduleName)) {
+      return state.withModuleCompleted();
+    }
+    if (hasTerminalResult(state, moduleName)) {
+      return state.withModuleCompleted();
+    }
+    ItemStatus completed =
+        ItemStatus.running(moduleName, moduleName).withResult(ItemResult.SUCCESS, Duration.ZERO);
+    return state.withItem(completed).withModuleCompleted();
+  }
+
+  private boolean hasTerminalResult(ExecutionScreenState state, String moduleName) {
+    return state.items().stream()
+        .filter(item -> item.name().equals(moduleName) && item.module().equals(moduleName))
+        .map(ItemStatus::result)
+        .anyMatch(this::isTerminal);
+  }
+
+  private boolean hasHardTerminalResult(ExecutionScreenState state, String moduleName) {
+    return state.items().stream()
+        .filter(item -> item.name().equals(moduleName) && item.module().equals(moduleName))
+        .map(ItemStatus::result)
+        .anyMatch(this::isHardTerminal);
+  }
+
+  private boolean isTerminal(ItemResult result) {
+    return result == ItemResult.SUCCESS
+        || result == ItemResult.FAILED
+        || result == ItemResult.INTERRUPTED
+        || result == ItemResult.SKIPPED
+        || result == ItemResult.DRY_RUN;
+  }
+
+  private boolean isHardTerminal(ItemResult result) {
+    return result == ItemResult.FAILED || result == ItemResult.INTERRUPTED;
+  }
+
+  private ExecutionScreenState updatePlanEntry(
+      ExecutionScreenState state,
+      ExecutionEvent event,
+      ItemResult itemResult,
+      Duration elapsed,
+      StepResult result) {
+    ItemStatus status =
+        ItemStatus.running(event.moduleName().value(), event.moduleName().value())
+            .withResult(mergedResult(state, event.moduleName().value(), itemResult), elapsed)
+            .withDetail(detail(result));
+    return state.withItem(status).withLogLine(formatLogLine(event.item(), result));
+  }
+
+  private ItemResult mergedResult(
+      ExecutionScreenState state, String moduleName, ItemResult incomingResult) {
+    return state.items().stream()
+        .filter(item -> item.name().equals(moduleName) && item.module().equals(moduleName))
+        .findFirst()
+        .map(item -> mergeResult(item.result(), incomingResult))
+        .orElse(incomingResult);
+  }
+
+  private ItemResult mergeResult(ItemResult existing, ItemResult incoming) {
+    if (existing == ItemResult.FAILED || incoming == ItemResult.FAILED) {
+      return ItemResult.FAILED;
+    }
+    if (existing == ItemResult.INTERRUPTED || incoming == ItemResult.INTERRUPTED) {
+      return ItemResult.INTERRUPTED;
+    }
+    if (existing == ItemResult.DRY_RUN || incoming == ItemResult.DRY_RUN) {
+      return ItemResult.DRY_RUN;
+    }
+    if (existing == ItemResult.SKIPPED || incoming == ItemResult.SKIPPED) {
+      return ItemResult.SKIPPED;
+    }
+    return incoming;
+  }
+
+  private Optional<String> detail(StepResult result) {
+    return switch (result) {
+      case StepResult.Failure f -> Optional.of(f.errorMessage());
+      case StepResult.Skipped s -> Optional.of(s.reason());
+      case StepResult.Paused p -> Optional.of(p.message());
+      default -> Optional.empty();
+    };
   }
 
   private ItemResult toItemResult(StepResult result) {

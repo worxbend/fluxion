@@ -817,6 +817,11 @@ Progress:
   setup entries, selected/skipped WorkstationProfile entries, planned counts, and final execution
   counts where execution runs. Plan previews, dry-run events, failure text, and shell-runner debug
   command logs redact token/password-like values before rendering.
+- 2026-06-30: Refreshed-loop T002 polished TUI reporting. WorkstationProfile TUI execution now
+  seeds manifest-plan rows before runtime events, keeps disabled skipped entries visible with
+  reasons, marks interrupt entries distinctly, updates entry rows to completed, failed, skipped,
+  dry-run, or interrupted from shared orchestrator events, and shows selected/completed/failed/
+  interrupted/skipped counts on the final screen.
 
 Plain CLI:
 
