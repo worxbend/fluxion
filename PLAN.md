@@ -885,6 +885,13 @@ Progress:
   secrets or private machine paths. Checks passed: `cd sysboot && ./mill cli.assembly`,
   `just validate-configs`, an Ubuntu plan smoke with `--show-commands`, `git diff --check`, and
   `jq empty .agent-loop/tasks.json`.
+- 2026-06-30: VALIDATION-29 passed the checkpoint validation after T006. `just verify`,
+  `cd sysboot && ./mill cli.assembly`, `just native-smoke`, `git diff --check`, JSON syntax
+  checks for `.agent-loop/tasks.json` and `sysboot/graal/reflect-config.json`, an assembled-JAR
+  validate smoke for `sysboot/config/example-fedora.yaml`, and an assembled-JAR dry-run smoke for
+  `sysboot/config/workstation-ubuntu.yaml` all completed successfully. No in-scope regressions
+  were found and no code fixes were required. The only notable output remains the existing checksum
+  warnings for sample compiled binaries in `system-bootstrap-fedora.yaml`.
 
 Tasks:
 
@@ -918,6 +925,14 @@ java -jar out/cli/assembly.dest/out.jar validate -c config/example-fedora.yaml -
 ### M12 - Final Validation And Release Readiness
 
 Goal: ensure the new manifest path is safe before presenting it as supported.
+
+Progress:
+
+- 2026-06-30: VALIDATION-29 ran the release-style gate successfully: `just verify`,
+  `cd sysboot && ./mill cli.assembly`, and `just native-smoke`. This covered full compile,
+  native metadata, all JVM tests, shipped config validation, CLI assembly, native image build,
+  native help/version, and native validation of every shipped config. No release-readiness blocker
+  was found in this checkpoint.
 
 Validation checklist:
 
