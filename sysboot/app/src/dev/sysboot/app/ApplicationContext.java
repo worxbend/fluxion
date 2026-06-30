@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import dev.sysboot.config.YamlConfigLoader;
 import dev.sysboot.core.BootstrapOrchestrator;
 import dev.sysboot.core.ConfigLoader;
+import dev.sysboot.core.HostFactsProvider;
 import dev.sysboot.core.ShellRunner;
 import dev.sysboot.core.SudoPasswordProvider;
 import dev.sysboot.executor.AptPackageInstaller;
@@ -65,18 +66,21 @@ public final class ApplicationContext {
   private final Optional<SysbootTuiApp> tuiApp;
   private final ParallelProbeRunner parallelProbeRunner;
   private final ExecutionPlanBuilder executionPlanBuilder;
+  private final HostFactsProvider hostFactsProvider;
 
   private ApplicationContext(
       BootstrapOrchestrator orchestrator,
       ConfigLoader configLoader,
       Optional<SysbootTuiApp> tuiApp,
       ParallelProbeRunner parallelProbeRunner,
-      ExecutionPlanBuilder executionPlanBuilder) {
+      ExecutionPlanBuilder executionPlanBuilder,
+      HostFactsProvider hostFactsProvider) {
     this.orchestrator = orchestrator;
     this.configLoader = configLoader;
     this.tuiApp = tuiApp;
     this.parallelProbeRunner = parallelProbeRunner;
     this.executionPlanBuilder = executionPlanBuilder;
+    this.hostFactsProvider = hostFactsProvider;
   }
 
   public BootstrapOrchestrator orchestrator() {
@@ -97,6 +101,10 @@ public final class ApplicationContext {
 
   public ExecutionPlanBuilder executionPlanBuilder() {
     return executionPlanBuilder;
+  }
+
+  public HostFactsProvider hostFactsProvider() {
+    return hostFactsProvider;
   }
 
   public static ApplicationContext create(
@@ -135,7 +143,8 @@ public final class ApplicationContext {
         new YamlConfigLoader(hostFactsProvider),
         Optional.of(tuiApp),
         new ParallelProbeRunner(probeRegistry),
-        new ExecutionPlanBuilder(registry));
+        new ExecutionPlanBuilder(registry),
+        hostFactsProvider);
   }
 
   public static ApplicationContext forCli(
@@ -159,7 +168,8 @@ public final class ApplicationContext {
         new YamlConfigLoader(hostFactsProvider),
         Optional.empty(),
         new ParallelProbeRunner(probeRegistry),
-        new ExecutionPlanBuilder(registry));
+        new ExecutionPlanBuilder(registry),
+        hostFactsProvider);
   }
 
   private static BootstrapOrchestratorImpl buildOrchestrator(

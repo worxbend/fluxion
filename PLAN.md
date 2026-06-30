@@ -755,18 +755,18 @@ support gives safer validation, preview, state, and TUI reporting.
 
 Progress:
 
-- 2026-06-30: VALIDATION-19 ran the configured checkpoint gate against the current completed
-  parity-kind work. `just verify`, `cd sysboot && ./mill cli.assembly`, `just native-smoke`,
-  `git diff --check`, and JSON syntax checks for `.agent-loop/tasks.json` plus
-  `sysboot/graal/reflect-config.json` all passed. No regressions were found and no code fixes were
-  needed. Remaining risk: `.agent-loop/tasks.json` still lists T018 `file-writes` and T019 parity
-  checkpoint work as pending, and no `file-writes` implementation is present yet.
 - 2026-06-30: T018 added WorkstationProfile `file-writes` support with parser validation,
   `FileWriteModule`/`FileWriteItem`, filesystem/sudo execution boundaries, dry-run and plan
   previews, state/fingerprint/TUI/list/probe switch handling, docs, and focused tests. Checks
   passed: `just verify`, `cd sysboot && ./mill cli.assembly`, `cd sysboot && ./mill executor.test`,
   `cd sysboot && ./mill integration-tests.test`, `cd sysboot && ./mill config-parser.test`,
   `git diff --check`, and JSON syntax checks.
+- 2026-06-30: T019 parity-kind checkpoint passed after AUR, cargo, SDKMAN, and file-writes work.
+  Checks passed: `cd sysboot && ./mill config-parser.test`,
+  `cd sysboot && ./mill executor.test`, `cd sysboot && ./mill cli.test`,
+  `cd sysboot && ./mill integration-tests.test`, and `cd sysboot && ./mill __.test`. No code fixes
+  were needed. Focused parity tests use mocks, capturing shell runners, temp directories, and fake
+  filesystem boundaries rather than live package managers, real sudo, or network downloads.
 
 Already added as typed WorkstationProfile kinds:
 
@@ -812,6 +812,11 @@ Progress:
 - 2026-06-29: Agent-loop T013 added first-class interrupted TUI item state instead of mapping
   pauses to failure, counts interrupted entries separately in the completion summary, and treats
   `ExecutionPausedException` as a controlled TUI stop after the pause event is emitted.
+- 2026-06-30: Refreshed-loop T001 polished plain CLI reporting. Default `plan`, `dry-run`, and
+  plain `apply` now print manifest/profile name, mode, detected host facts, state path, source
+  setup entries, selected/skipped WorkstationProfile entries, planned counts, and final execution
+  counts where execution runs. Plan previews, dry-run events, failure text, and shell-runner debug
+  command logs redact token/password-like values before rendering.
 
 Plain CLI:
 
@@ -933,35 +938,18 @@ WorkstationProfile tasks; do not port its Scala/Mill implementation directly.
 ## Agent Loop Tasks
 
 Strict pending task queue is written to `.agent-loop/tasks.json`; validation defaults are in
-`.agent-loop/config.json`. The queue starts with remaining work after the completed parser,
-policy, variable, host-facts, `when`, and skipped-reporting milestones recorded above.
+`.agent-loop/config.json`. The queue starts with the remaining work after the completed parser,
+policy, variable, host-facts, `when`, source setup, package behavior, installer-kind, interrupt,
+and parity-kind milestones recorded above. T001 is complete; later tasks remain pending.
 
-1. `T001` - Decode source setup specs (moderate feature).
-2. `T002` - Map source setup modules (complex feature).
-3. `T003` - Plan source setup prelude (complex feature, completed).
-4. `T004` - Checkpoint source prelude (validation, completed).
-5. `T005` - Add package manager actions (complex feature, completed).
-6. `T006` - Verify package item isolation (moderate fix, completed).
-7. `T007` - Checkpoint package behavior (validation, completed).
-8. `T008` - Map basic installer kinds (complex feature, completed).
-9. `T009` - Extend binary downloads (complex feature, completed).
-10. `T010` - Extend scripts and commands (complex feature, completed).
-11. `T011` - Checkpoint installer kinds (validation, completed).
-12. `T012` - Add interrupt checkpoint model (complex feature, completed).
-13. `T013` - Report interrupt resume state (complex feature, completed).
-14. `T014` - Checkpoint interrupt resume (validation, completed).
-15. `T015` - Add AUR package kind (moderate feature, completed).
-16. `T016` - Add cargo package kind (complex feature, completed).
-17. `T017` - Add SDKMAN package kind (complex feature, completed).
-18. `T018` - Add file write kind (complex feature, completed).
-19. `T019` - Checkpoint parity kinds (validation).
-20. `T020` - Polish plain CLI reporting (moderate improvement).
-21. `T021` - Polish TUI reporting (moderate improvement).
-22. `T022` - Checkpoint reporting parity (validation).
-23. `T023` - Document WorkstationProfile schema (moderate improvement).
-24. `T024` - Add WorkstationProfile examples (moderate feature).
-25. `T025` - Validate documentation examples (validation).
-26. `T026` - Run final release validation (complex validation).
+1. `T001` - Polish plain CLI reporting (moderate improvement) - complete.
+2. `T002` - Polish TUI reporting (moderate improvement).
+3. `T003` - Checkpoint reporting parity (moderate validation).
+4. `T004` - Document WorkstationProfile schema (moderate improvement).
+5. `T005` - Refresh README guidance (simple improvement).
+6. `T006` - Add WorkstationProfile examples (moderate feature).
+7. `T007` - Validate documentation examples (moderate validation).
+8. `T008` - Run final release validation (complex validation).
 
 ## Engineering Rules For Every Task
 

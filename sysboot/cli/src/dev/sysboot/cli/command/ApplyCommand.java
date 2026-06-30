@@ -5,14 +5,17 @@ import dev.sysboot.app.ApplicationContext;
 import dev.sysboot.cli.error.CliFailureException;
 import dev.sysboot.cli.error.ExitCode;
 import dev.sysboot.cli.option.GlobalOptions;
+import dev.sysboot.cli.output.PlainExecutionReport;
 import dev.sysboot.cli.output.StdoutExecutionEventListener;
 import dev.sysboot.core.BootstrapConfig;
 import dev.sysboot.core.ExecutionPausedException;
 import dev.sysboot.core.ExecutionEvent;
 import dev.sysboot.core.Phase;
 import dev.sysboot.core.StepResult;
+import dev.sysboot.executor.ExecutionPlan;
 import dev.sysboot.executor.JsonStateRepository;
 import dev.sysboot.executor.PhaseExecutionPlanner;
+import java.io.PrintWriter;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Optional;
@@ -104,14 +107,17 @@ public final class ApplyCommand implements Runnable {
               event ->
                   resumeCommandFor(event, filtered),
               () -> Optional.of(stateRepository.path(profile)));
-      if (dryRun) {
-        context.orchestrator().dryRun(filtered, listener);
-      } else {
-        try {
+      writePlainReport(context, filtered, stateRepository);
+      try {
+        if (dryRun) {
+          context.orchestrator().dryRun(filtered, listener);
+        } else {
           context.orchestrator().execute(filtered, listener);
-        } catch (ExecutionPausedException e) {
-          throw new CliFailureException(ExitCode.PAUSED, e.getMessage(), e);
         }
+      } catch (ExecutionPausedException e) {
+        throw new CliFailureException(ExitCode.PAUSED, e.getMessage(), e);
+      } finally {
+        listener.printSummary();
       }
     } else {
       try {
@@ -122,6 +128,29 @@ public final class ApplyCommand implements Runnable {
       } catch (java.io.IOException e) {
         throw new CliFailureException(ExitCode.IO_ERROR, "TUI error: " + e.getMessage(), e);
       }
+    }
+  }
+
+  private void writePlainReport(
+      ApplicationContext context, BootstrapConfig config, JsonStateRepository stateRepository) {
+    ExecutionPlan plan = buildPlan(context, config);
+    var out = new PrintWriter(System.out, true);
+    PlainExecutionReport.writeHeader(
+        out,
+        "apply",
+        dryRun ? "dry-run" : "live",
+        plan.profileName(),
+        context.hostFactsProvider().facts(),
+        Optional.of(stateRepository.path(profile)));
+    PlainExecutionReport.writeWorkstationSelection(out, plan);
+  }
+
+  private ExecutionPlan buildPlan(ApplicationContext context, BootstrapConfig config) {
+    try {
+      return context.executionPlanBuilder().build(config);
+    } catch (dev.sysboot.executor.CyclicDependencyException e) {
+      throw new CliFailureException(
+          ExitCode.CONFIGURATION_ERROR, "Cycle detected: " + e.getMessage(), e);
     }
   }
 

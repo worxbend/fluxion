@@ -1,17 +1,23 @@
 package dev.sysboot.cli.command;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import dev.sysboot.app.ApplicationContext;
 import dev.sysboot.cli.error.CliFailureException;
 import dev.sysboot.cli.error.ExitCode;
 import dev.sysboot.cli.option.GlobalOptions;
+import dev.sysboot.cli.output.CommandTextRedactor;
 import dev.sysboot.cli.output.JsonOutput;
+import dev.sysboot.cli.output.PlainExecutionReport;
 import dev.sysboot.core.BootstrapConfig;
+import dev.sysboot.core.HostFacts;
 import dev.sysboot.core.InstallationStatus;
 import dev.sysboot.core.SkippedPlanEntry;
 import dev.sysboot.executor.ExecutionPlan;
+import dev.sysboot.executor.JsonStateRepository;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import picocli.CommandLine.Command;
 import picocli.CommandLine.Mixin;
 import picocli.CommandLine.Model.CommandSpec;
@@ -46,6 +52,8 @@ public final class PlanCommand implements Runnable {
   @Option(names = "--show-commands", description = "Show executor command previews when available")
   private boolean showCommands;
 
+  private final CommandTextRedactor redactor = new CommandTextRedactor();
+
   @Override
   public void run() {
     var context = ApplicationContext.create(true, profile, skipAlreadyInstalled, false);
@@ -68,12 +76,17 @@ public final class PlanCommand implements Runnable {
       case JSON -> JsonOutput.write(spec.commandLine().getOut(), jsonPlan(plan, probeResults));
       case TABLE -> writeTablePlan(plan, probeResults);
       case TREE -> writeTreePlan(plan, probeResults);
-      case TEXT -> writeTextPlan(plan, probeResults);
+      case TEXT -> writeTextPlan(plan, probeResults, context.hostFactsProvider().facts());
     }
   }
 
-  private void writeTextPlan(ExecutionPlan plan, Map<String, InstallationStatus> probeResults) {
+  private void writeTextPlan(
+      ExecutionPlan plan, Map<String, InstallationStatus> probeResults, HostFacts hostFacts) {
     var out = spec.commandLine().getOut();
+    var statePath = new JsonStateRepository(new ObjectMapper()).path(profile);
+    PlainExecutionReport.writeHeader(
+        out, "plan", "plan", plan.profileName(), hostFacts, Optional.of(statePath));
+    PlainExecutionReport.writeWorkstationSelection(out, plan);
     out.println("Execution plan for: " + plan.profileName());
     out.println();
     writeTextSourceSetups(plan);
@@ -100,6 +113,7 @@ public final class PlanCommand implements Runnable {
       out.println();
     }
     writeSkippedText(plan.skippedEntries());
+    PlainExecutionReport.writePlanFinalCounts(out, plan);
   }
 
   private void writeTablePlan(ExecutionPlan plan, Map<String, InstallationStatus> probeResults) {
@@ -150,7 +164,7 @@ public final class PlanCommand implements Runnable {
   }
 
   private String commandPreview(ExecutionPlan.Item item) {
-    return String.join(" ", item.commandPreview().orElseThrow());
+    return String.join(" ", redactor.redactCommand(item.commandPreview().orElseThrow()));
   }
 
   private Map<String, Object> jsonPlan(
@@ -282,7 +296,8 @@ public final class PlanCommand implements Runnable {
         "packageManager",
         item.item().packageManager().map(kind -> kind.name().toLowerCase()).orElse(null));
     output.put("status", computeSkipLabel(item.item().key(), probeResults));
-    output.put("commandPreview", item.commandPreview().orElse(List.of()));
+    output.put(
+        "commandPreview", item.commandPreview().map(redactor::redactCommand).orElse(List.of()));
     return output;
   }
 

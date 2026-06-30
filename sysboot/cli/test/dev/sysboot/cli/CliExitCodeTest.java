@@ -144,7 +144,12 @@ class CliExitCodeTest {
             "apply", "--no-tui", "--dry-run", "-c", config.toString(), "--yes");
 
     assertThat(result.exitCode()).isEqualTo(ExitCode.SUCCESS.value());
-    assertThat(result.stdout()).contains("DRY-RUN").contains("dnf install -y git");
+    assertThat(result.stdout())
+        .contains("Operation: apply")
+        .contains("Mode: dry-run")
+        .contains("DRY-RUN")
+        .contains("dnf install -y git")
+        .contains("Final counts: ok=0 failed=0 skipped=0 dry_run=1 paused=0");
     assertThat(result.stdout()).doesNotContain("OK (");
     assertThat(result.stderr()).isEmpty();
   }
@@ -381,13 +386,18 @@ class CliExitCodeTest {
   void dryRunAndApplyNoTuiDryRun_reportSameWorkstationProfileSelection() throws Exception {
     Path config = writeWorkstationProfileWithSkippedPlan();
 
+    CliResult plan = execute("plan", "--no-tui", "-c", config.toString());
     CliResult dryRun = executeCapturingSystemOut("dry-run", "--no-tui", "-c", config.toString());
     CliResult apply =
         executeCapturingSystemOut(
             "apply", "--no-tui", "--dry-run", "-c", config.toString(), "--yes");
 
+    assertThat(plan.exitCode()).isEqualTo(ExitCode.SUCCESS.value());
     assertThat(dryRun.exitCode()).isEqualTo(ExitCode.SUCCESS.value());
     assertThat(apply.exitCode()).isEqualTo(ExitCode.SUCCESS.value());
+    assertWorkstationSelection(plan.stdout(), "plan");
+    assertWorkstationSelection(dryRun.stdout(), "dry-run");
+    assertWorkstationSelection(apply.stdout(), "apply");
     assertThat(dryRun.stdout())
         .contains("SKIPPED")
         .contains("arch-only")
@@ -400,8 +410,35 @@ class CliExitCodeTest {
         .contains("when.distribution expected one of [no-such-os]")
         .contains("DRY-RUN")
         .contains("git");
+    assertThat(plan.stderr()).isEmpty();
     assertThat(dryRun.stderr()).isEmpty();
     assertThat(apply.stderr()).isEmpty();
+  }
+
+  @Test
+  void plainReporting_redactsSensitiveCommandAndFailureText() throws Exception {
+    Path config = writeWorkstationProfileWithSensitiveCommand();
+    String originalHome = System.getProperty("user.home");
+    System.setProperty("user.home", tempDir.toString());
+    try {
+      CliResult plan = execute("plan", "--show-commands", "--no-tui", "-c", config.toString());
+      CliResult apply = executeCapturingSystemOut("apply", "--no-tui", "-c", config.toString());
+
+      assertThat(plan.exitCode()).isEqualTo(ExitCode.SUCCESS.value());
+      assertThat(plan.stdout())
+          .contains("token=<redacted>")
+          .doesNotContain("super-secret-token");
+      assertThat(apply.exitCode()).isEqualTo(ExitCode.SUCCESS.value());
+      assertThat(apply.stdout())
+          .contains("FAILED")
+          .contains("token=<redacted>")
+          .contains("Final counts: ok=0 failed=1 skipped=0 dry_run=0 paused=0")
+          .doesNotContain("super-secret-token");
+      assertThat(plan.stderr()).isEmpty();
+      assertThat(apply.stderr()).isEmpty();
+    } finally {
+      System.setProperty("user.home", originalHome);
+    }
   }
 
   @Test
@@ -1019,6 +1056,19 @@ class CliExitCodeTest {
     }
   }
 
+  private void assertWorkstationSelection(String output, String operation) {
+    assertThat(output)
+        .contains("Operation: " + operation)
+        .contains("Manifest/Profile: workstation-skip-test")
+        .contains("Host: os=linux")
+        .contains("State: ")
+        .contains("Selected WorkstationProfile entries:")
+        .contains("selected type=packages items=git")
+        .contains("Skipped WorkstationProfile entries:")
+        .contains("arch-only type=dnf-packages")
+        .contains("Planned counts: source_setups=0 selected=1 skipped=1 items=1");
+  }
+
   private Path writeConfig() throws IOException {
     Path config = tempDir.resolve("profile.yaml");
     Files.writeString(
@@ -1113,6 +1163,30 @@ class CliExitCodeTest {
                 distribution: no-such-os
               spec:
                 packages: [curl]
+        """);
+    return config;
+  }
+
+  private Path writeWorkstationProfileWithSensitiveCommand() throws IOException {
+    Path config = tempDir.resolve("workstation-sensitive.yaml");
+    Files.writeString(
+        config,
+        """
+        apiVersion: initkit.io/v1alpha1
+        kind: WorkstationProfile
+        metadata:
+          name: workstation-sensitive-test
+        spec:
+          target:
+            os:
+              distribution: fedora
+              release: "44"
+          plan:
+            - name: sensitive-command
+              kind: commands
+              spec:
+                commands:
+                  - ["/bin/bash", "-lc", "printf 'token=super-secret-token' >&2; exit 7"]
         """);
     return config;
   }

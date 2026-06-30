@@ -14,6 +14,7 @@ import org.slf4j.LoggerFactory;
 public final class DefaultShellRunner implements ShellRunner {
 
   private static final Logger log = LoggerFactory.getLogger(DefaultShellRunner.class);
+  private final SensitiveTextRedactor redactor = new SensitiveTextRedactor();
 
   @Override
   public ProcessResult run(List<String> command, Map<String, String> env, Duration timeout) {
@@ -46,7 +47,12 @@ public final class DefaultShellRunner implements ShellRunner {
 
   private List<String> maskSensitive(List<String> command) {
     return command.stream()
-        .map(arg -> arg.length() > 60 ? arg.substring(0, 57) + "..." : arg)
+        .map(arg -> redactor.redact(arg, List.of()))
+        .map(this::truncate)
         .toList();
+  }
+
+  private String truncate(String argument) {
+    return argument.length() > 60 ? argument.substring(0, 57) + "..." : argument;
   }
 }

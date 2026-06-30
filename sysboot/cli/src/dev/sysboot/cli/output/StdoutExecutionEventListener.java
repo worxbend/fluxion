@@ -13,6 +13,12 @@ public final class StdoutExecutionEventListener implements ExecutionEventListene
 
   private final Function<ExecutionEvent, Optional<String>> resumeCommandProvider;
   private final Supplier<Optional<Path>> statePathProvider;
+  private final CommandTextRedactor redactor;
+  private int succeeded;
+  private int failed;
+  private int skipped;
+  private int dryRun;
+  private int paused;
 
   public StdoutExecutionEventListener() {
     this(event -> Optional.empty(), Optional::empty);
@@ -28,6 +34,7 @@ public final class StdoutExecutionEventListener implements ExecutionEventListene
       Supplier<Optional<Path>> statePathProvider) {
     this.resumeCommandProvider = resumeCommandProvider;
     this.statePathProvider = statePathProvider;
+    this.redactor = new CommandTextRedactor();
   }
 
   @Override
@@ -48,7 +55,7 @@ public final class StdoutExecutionEventListener implements ExecutionEventListene
                   "@|yellow [BLOCK ]|@ "
                       + event.moduleName().value()
                       + " waits for "
-                      + event.item()));
+                      + redactor.redact(event.item())));
       case RESTART_REQUIRED -> printRestartRequired(event);
       case MODULE_STARTED ->
           System.out.println(
@@ -57,15 +64,24 @@ public final class StdoutExecutionEventListener implements ExecutionEventListene
           System.out.println(
               Ansi.AUTO.string("@|bold,blue [DONE  ]|@ " + event.moduleName().value()));
       case ITEM_STARTED ->
-          System.out.print(Ansi.AUTO.string("  @|yellow  -->|@  " + event.item() + " ... "));
+          System.out.print(
+              Ansi.AUTO.string("  @|yellow  -->|@  " + redactor.redact(event.item()) + " ... "));
       case ITEM_COMPLETED -> event.result().ifPresent(result -> printResult(event, result));
-      case ERROR -> System.out.println(Ansi.AUTO.string("@|bold,red [ERROR ]|@ " + event.item()));
+      case ERROR ->
+          System.out.println(
+              Ansi.AUTO.string("@|bold,red [ERROR ]|@ " + redactor.redact(event.item())));
     }
+  }
+
+  public void printSummary() {
+    System.out.printf(
+        "Final counts: ok=%d failed=%d skipped=%d dry_run=%d paused=%d%n",
+        succeeded, failed, skipped, dryRun, paused);
   }
 
   private void printRestartRequired(ExecutionEvent event) {
     System.out.println(Ansi.AUTO.string("@|bold,yellow [RESTART]|@ " + event.moduleName().value()));
-    for (String line : event.item().split("\n")) {
+    for (String line : redactor.redact(event.item()).split("\n")) {
       System.out.println("  " + line);
     }
     resumeCommandProvider
@@ -76,25 +92,51 @@ public final class StdoutExecutionEventListener implements ExecutionEventListene
   private void printResult(ExecutionEvent event, StepResult result) {
     switch (result) {
       case StepResult.Success s ->
-          System.out.println(
-              Ansi.AUTO.string(
-                  "@|green OK|@ ("
-                      + String.format("%.1fs", s.elapsed().toMillis() / 1000.0)
-                      + ")"));
+          printSuccess(s);
       case StepResult.Failure f ->
-          System.out.println(
-              Ansi.AUTO.string("@|red FAILED|@ (exit " + f.exitCode() + "): " + f.errorMessage()));
+          printFailure(f);
       case StepResult.Skipped s ->
-          System.out.println(Ansi.AUTO.string("@|yellow SKIPPED|@: " + s.reason()));
+          printSkipped(s);
       case StepResult.DryRun d ->
-          System.out.println(
-              Ansi.AUTO.string("@|cyan DRY-RUN|@: " + String.join(" ", d.wouldExecute())));
+          printDryRun(d);
       case StepResult.Paused p -> printPaused(event, p);
     }
   }
 
+  private void printSuccess(StepResult.Success success) {
+    succeeded++;
+    System.out.println(
+        Ansi.AUTO.string(
+            "@|green OK|@ ("
+                + String.format("%.1fs", success.elapsed().toMillis() / 1000.0)
+                + ")"));
+  }
+
+  private void printFailure(StepResult.Failure failure) {
+    failed++;
+    System.out.println(
+        Ansi.AUTO.string(
+            "@|red FAILED|@ (exit "
+                + failure.exitCode()
+                + "): "
+                + redactor.redact(failure.errorMessage())));
+  }
+
+  private void printSkipped(StepResult.Skipped skip) {
+    skipped++;
+    System.out.println(Ansi.AUTO.string("@|yellow SKIPPED|@: " + redactor.redact(skip.reason())));
+  }
+
+  private void printDryRun(StepResult.DryRun dryRunResult) {
+    dryRun++;
+    var command = redactor.redactCommand(dryRunResult.wouldExecute());
+    System.out.println(Ansi.AUTO.string("@|cyan DRY-RUN|@: " + String.join(" ", command)));
+  }
+
   private void printPaused(ExecutionEvent event, StepResult.Paused paused) {
-    System.out.println(Ansi.AUTO.string("@|bold,yellow PAUSED|@: " + paused.message()));
+    this.paused++;
+    System.out.println(
+        Ansi.AUTO.string("@|bold,yellow PAUSED|@: " + redactor.redact(paused.message())));
     statePathProvider.get().ifPresent(path -> System.out.println("  State: " + path));
     paused.nextPlanEntry().ifPresent(next -> System.out.println("  Next plan entry: " + next));
     resumeCommandProvider
