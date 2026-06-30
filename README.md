@@ -269,13 +269,17 @@ Copy-pasteable examples:
 - [Fedora](sysboot/config/example-fedora.yaml)
 - [Arch / EndeavourOS](sysboot/config/example-arch.yaml)
 - [openSUSE](sysboot/config/example-opensuse.yaml)
+- [WorkstationProfile Ubuntu](sysboot/config/workstation-ubuntu.yaml)
+- [WorkstationProfile Fedora](sysboot/config/workstation-fedora.yaml)
+- [WorkstationProfile Arch / EndeavourOS](sysboot/config/workstation-arch.yaml)
+- [WorkstationProfile openSUSE Tumbleweed](sysboot/config/workstation-opensuse-tumbleweed.yaml)
 
 ## Project Status
 
 Fluxion is young, useful, and still moving fast. The stable schema is the `jobs`/`steps` profile
 format documented in `sysboot/docs/config-schema.md`. The newer Kubernetes-style
-`WorkstationProfile` parser path is implemented and documented in
-`sysboot/docs/workstation-profile.md`; shipped distro examples are being expanded separately.
+`WorkstationProfile` parser path is implemented, documented in
+`sysboot/docs/workstation-profile.md`, and covered by shipped distro examples.
 
 Dry-run and plan modes are non-mutating. Fluxion redacts sudo input, sensitive environment values,
 tokens, and password-like text from rendered commands, events, failure text, and TUI state.

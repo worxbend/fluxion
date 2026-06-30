@@ -892,6 +892,12 @@ Progress:
   `sysboot/config/workstation-ubuntu.yaml` all completed successfully. No in-scope regressions
   were found and no code fixes were required. The only notable output remains the existing checksum
   warnings for sample compiled binaries in `system-bootstrap-fedora.yaml`.
+- 2026-06-30: Refreshed-loop T007 validated documentation examples. `cd sysboot && ./mill
+  cli.assembly`, `just validate-configs`, the assembled-JAR validate smoke for
+  `sysboot/config/example-fedora.yaml`, and the assembled-JAR `--no-tui` dry-run for
+  `sysboot/config/workstation-ubuntu.yaml` all passed. Documentation fixes were limited to adding
+  the current `report` command to `sysboot/README.md` and replacing a stale root `README.md` note
+  about WorkstationProfile examples with links to the shipped distro manifests.
 
 Tasks:
 
@@ -904,8 +910,9 @@ Tasks:
   - Fedora. Done in T006.
   - Arch/EndeavourOS. Done in T006.
   - openSUSE Tumbleweed. Done in T006.
-- Document `spec.target.os` as informational.
-- Document variable interpolation, dry-run, source setup, interrupt/resume, and safety model.
+- Document `spec.target.os` as informational. Done in T004.
+- Document variable interpolation, dry-run, source setup, interrupt/resume, and safety model. Done
+  in T004.
 
 Acceptance:
 
@@ -996,7 +1003,7 @@ later documentation, example, and release validation tasks remain pending.
 4. `T004` - Document WorkstationProfile schema (moderate improvement) - complete.
 5. `T005` - Refresh README guidance (simple improvement) - complete.
 6. `T006` - Add WorkstationProfile examples (moderate feature) - complete.
-7. `T007` - Validate documentation examples (moderate validation).
+7. `T007` - Validate documentation examples (moderate validation) - complete.
 8. `T008` - Run final release validation (complex validation).
 
 ## Engineering Rules For Every Task

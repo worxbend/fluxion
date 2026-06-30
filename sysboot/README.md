@@ -94,6 +94,7 @@ Commands:
   explain    explain why a phase or item runs
   status     show last run status, or `--resume-command`
   state      show/reset/forget saved state
+  report     render persisted run reports
   generate   create a starter YAML profile
   snapshot   write a host inventory JSON
   import     generate profile fragments from this host
