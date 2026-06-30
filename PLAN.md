@@ -822,6 +822,11 @@ Progress:
   reasons, marks interrupt entries distinctly, updates entry rows to completed, failed, skipped,
   dry-run, or interrupted from shared orchestrator events, and shows selected/completed/failed/
   interrupted/skipped counts on the final screen.
+- 2026-06-30: VALIDATION-25 passed the reporting parity checkpoint after refreshed-loop T001/T002.
+  `just verify`, `cd sysboot && ./mill cli.assembly`, `just native-smoke`, `git diff --check`,
+  `jq empty .agent-loop/tasks.json`, and `jq empty sysboot/graal/reflect-config.json` all
+  completed successfully. No regressions were found and no in-scope fixes were needed. Remaining
+  risk moves to pending documentation, example manifests, and the final release validation gate.
 
 Plain CLI:
 
@@ -945,11 +950,12 @@ WorkstationProfile tasks; do not port its Scala/Mill implementation directly.
 Strict pending task queue is written to `.agent-loop/tasks.json`; validation defaults are in
 `.agent-loop/config.json`. The queue starts with the remaining work after the completed parser,
 policy, variable, host-facts, `when`, source setup, package behavior, installer-kind, interrupt,
-and parity-kind milestones recorded above. T001 is complete; later tasks remain pending.
+and parity-kind milestones recorded above. T001, T002, and the reporting checkpoint are complete;
+later documentation, example, and release validation tasks remain pending.
 
 1. `T001` - Polish plain CLI reporting (moderate improvement) - complete.
-2. `T002` - Polish TUI reporting (moderate improvement).
-3. `T003` - Checkpoint reporting parity (moderate validation).
+2. `T002` - Polish TUI reporting (moderate improvement) - complete.
+3. `T003` - Checkpoint reporting parity (moderate validation) - passed in VALIDATION-25.
 4. `T004` - Document WorkstationProfile schema (moderate improvement).
 5. `T005` - Refresh README guidance (simple improvement).
 6. `T006` - Add WorkstationProfile examples (moderate feature).
