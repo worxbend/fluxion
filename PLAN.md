@@ -940,6 +940,12 @@ Progress:
   native metadata, all JVM tests, shipped config validation, CLI assembly, native image build,
   native help/version, and native validation of every shipped config. No release-readiness blocker
   was found in this checkpoint.
+- 2026-06-30: VALIDATION-31 completed the final release-readiness gate for refreshed-loop T008.
+  `just verify`, `cd sysboot && ./mill cli.assembly`, assembled-JAR help/validate/dry-run smoke
+  checks, `just native-smoke`, dependency-direction inspection, runtime-DI and safety scans,
+  `git diff --check`, and JSON syntax checks all passed. No production code fixes were required.
+  The only notable validation output remains the existing non-strict checksum warnings for sample
+  compiled binaries in `system-bootstrap-fedora.yaml`.
 
 Validation checklist:
 
@@ -994,8 +1000,7 @@ WorkstationProfile tasks; do not port its Scala/Mill implementation directly.
 Strict pending task queue is written to `.agent-loop/tasks.json`; validation defaults are in
 `.agent-loop/config.json`. The queue starts with the remaining work after the completed parser,
 policy, variable, host-facts, `when`, source setup, package behavior, installer-kind, interrupt,
-and parity-kind milestones recorded above. T001, T002, and the reporting checkpoint are complete;
-later documentation, example, and release validation tasks remain pending.
+and parity-kind milestones recorded above. The refreshed-loop tasks T001 through T008 are complete.
 
 1. `T001` - Polish plain CLI reporting (moderate improvement) - complete.
 2. `T002` - Polish TUI reporting (moderate improvement) - complete.
@@ -1004,7 +1009,7 @@ later documentation, example, and release validation tasks remain pending.
 5. `T005` - Refresh README guidance (simple improvement) - complete.
 6. `T006` - Add WorkstationProfile examples (moderate feature) - complete.
 7. `T007` - Validate documentation examples (moderate validation) - complete.
-8. `T008` - Run final release validation (complex validation).
+8. `T008` - Run final release validation (complex validation) - complete.
 
 ## Engineering Rules For Every Task
 
