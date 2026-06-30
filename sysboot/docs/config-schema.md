@@ -4,7 +4,10 @@ All config files are YAML. Place them in `~/.config/fluxion/` or pass with `-c`.
 
 ---
 
-## Top-level fields
+## Stable jobs/steps schema
+
+The stable Fluxion config schema is the `profile`/`os`/`jobs` form with `steps` inside each job.
+Use this schema when you want an explicit job DAG with `dependsOn` ordering.
 
 | Field | Type | Required | Description |
 |---|---|---|---|
@@ -22,19 +25,23 @@ At least one job, phase, or legacy module is required. When `jobs` is present an
 
 ## Schema compatibility
 
-Fluxion's stable config schema is the current `profile`/`os`/`jobs` form with `steps` inside each
-job. This schema remains supported.
+Fluxion supports two config frontends:
+
+- Stable jobs/steps: `profile`, `os`, and `jobs[].steps[]`. This remains the stable DAG-oriented
+  schema and is documented on this page.
+- WorkstationProfile manifests: `apiVersion`, `kind: WorkstationProfile`, `metadata`, and `spec`.
+  This is the newer manifest frontend for ordered workstation plans. See
+  [workstation-profile.md](workstation-profile.md).
 
 Legacy `phases` and flat top-level `modules` configs also remain supported for compatibility:
 `phases` is treated as an alias for `jobs`, and top-level `modules` is used only when neither
 `jobs` nor `phases` is present.
 
-Kubernetes-style `apiVersion`/`kind: WorkstationProfile` manifests are planned and experimental.
-They are not the stable Fluxion config schema yet, and their details may change until that path has
-parser, validation, dry-run, state, and TUI support comparable to `jobs`/`steps`.
+The currently accepted WorkstationProfile `apiVersion` string is `initkit.io/v1alpha1` as a
+compatibility identifier. Fluxion is the product and command name; use `fluxion validate`,
+`fluxion plan`, `fluxion dry-run`, and `fluxion apply` for both schemas.
 
-Experimental WorkstationProfile manifests currently support `file-writes` plan entries for local
-content or source-file writes:
+Minimal WorkstationProfile manifest:
 
 ```yaml
 apiVersion: initkit.io/v1alpha1
@@ -47,28 +54,17 @@ spec:
       distribution: fedora
       release: "44"
   plan:
-    - name: write-tool-config
-      kind: file-writes
+    - name: core-cli
+      kind: dnf-packages
+      when:
+        distribution: fedora
       spec:
-        files:
-          - name: tool-config
-            destination: /etc/tool/tool.conf
-            content: |
-              enabled=true
-            owner: root
-            group: root
-            mode: "0644"
-            sudo: true
-          - name: local-copy
-            destination: /home/me/.config/tool/local.conf
-            source: /home/me/dotfiles/tool/local.conf
-            when:
-              distribution: fedora
+        packages: [git, curl]
 ```
 
-Each file item requires an absolute `destination` and exactly one of string `content` or absolute
-local `source`. `owner`, `group`, `mode`, `sudo`, and item-level `when` are optional. Dry-run
-previews destination, content-vs-source, mode, ownership, and sudo use without writing files.
+For manifests, `spec.target.os` is informational metadata used to map the manifest into Fluxion's
+core target model and validation reports. It does not decide which plan entries run. Host facts and
+per-entry `when` rules drive selected and skipped WorkstationProfile work.
 
 ---
 

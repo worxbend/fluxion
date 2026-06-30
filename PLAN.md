@@ -865,12 +865,21 @@ cd sysboot
 
 Goal: document the current schema and new manifest schema without confusing users.
 
+Progress:
+
+- 2026-06-30: Refreshed-loop T004 updated `sysboot/docs/config-schema.md` to identify
+  `jobs`/`steps` as the stable DAG schema and WorkstationProfile as the newer Fluxion manifest
+  frontend. Added `sysboot/docs/workstation-profile.md` covering target semantics, variables,
+  source setup, policy, package and installer kinds, interrupt/resume, dry-run behavior, and
+  safety guarantees. The docs state that `spec.target.os` is informational for manifests and that
+  host facts plus `when` rules drive selected/skipped work.
+
 Tasks:
 
 - Update `sysboot/README.md`.
 - Update root `README.md` if command examples change.
-- Update `sysboot/docs/config-schema.md`.
-- Add `sysboot/docs/workstation-profile.md` for the Kubernetes-style schema.
+- Update `sysboot/docs/config-schema.md`. Done in T004.
+- Add `sysboot/docs/workstation-profile.md` for the manifest schema. Done in T004.
 - Add example manifests for:
   - Ubuntu
   - Fedora
@@ -882,8 +891,9 @@ Tasks:
 Acceptance:
 
 - Every documented example validates.
-- README examples use `fluxion`, not `initkit`.
-- Schema docs clearly identify stable vs experimental fields.
+- README examples use `fluxion`.
+- Schema docs clearly identify stable `jobs`/`steps` versus the WorkstationProfile manifest
+  frontend.
 
 Validation:
 
@@ -956,7 +966,7 @@ later documentation, example, and release validation tasks remain pending.
 1. `T001` - Polish plain CLI reporting (moderate improvement) - complete.
 2. `T002` - Polish TUI reporting (moderate improvement) - complete.
 3. `T003` - Checkpoint reporting parity (moderate validation) - passed in VALIDATION-25.
-4. `T004` - Document WorkstationProfile schema (moderate improvement).
+4. `T004` - Document WorkstationProfile schema (moderate improvement) - complete.
 5. `T005` - Refresh README guidance (simple improvement).
 6. `T006` - Add WorkstationProfile examples (moderate feature).
 7. `T007` - Validate documentation examples (moderate validation).
