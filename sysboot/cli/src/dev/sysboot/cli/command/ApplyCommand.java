@@ -8,8 +8,8 @@ import dev.sysboot.cli.option.GlobalOptions;
 import dev.sysboot.cli.output.PlainExecutionReport;
 import dev.sysboot.cli.output.StdoutExecutionEventListener;
 import dev.sysboot.core.BootstrapConfig;
-import dev.sysboot.core.ExecutionPausedException;
 import dev.sysboot.core.ExecutionEvent;
+import dev.sysboot.core.ExecutionPausedException;
 import dev.sysboot.core.Phase;
 import dev.sysboot.core.StepResult;
 import dev.sysboot.executor.ExecutionPlan;
@@ -104,20 +104,33 @@ public final class ApplyCommand implements Runnable {
     if (!useTui) {
       var listener =
           new StdoutExecutionEventListener(
-              event ->
-                  resumeCommandFor(event, filtered),
-              () -> Optional.of(stateRepository.path(profile)));
+                  event -> resumeCommandFor(event, filtered),
+                  () -> Optional.of(stateRepository.path(profile)))
+              .streamingOutput(options.verbose());
       writePlainReport(context, filtered, stateRepository);
+      var failure = new java.util.concurrent.atomic.AtomicReference<RuntimeException>();
       try {
         if (dryRun) {
           context.orchestrator().dryRun(filtered, listener);
         } else {
-          context.orchestrator().execute(filtered, listener);
+          InterruptibleRun.run(
+              cancellation -> {
+                try {
+                  context.orchestrator().execute(filtered, listener, cancellation);
+                } catch (ExecutionPausedException e) {
+                  failure.set(e);
+                }
+              },
+              () ->
+                  System.out.println(
+                      System.lineSeparator()
+                          + "Stopping after the current step; press Ctrl-C again to force quit."));
         }
-      } catch (ExecutionPausedException e) {
-        throw new CliFailureException(ExitCode.PAUSED, e.getMessage(), e);
       } finally {
         listener.printSummary();
+      }
+      if (failure.get() instanceof ExecutionPausedException paused) {
+        throw new CliFailureException(ExitCode.PAUSED, paused.getMessage(), paused);
       }
     } else {
       try {
