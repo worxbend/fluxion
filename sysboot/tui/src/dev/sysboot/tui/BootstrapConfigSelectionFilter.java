@@ -2,6 +2,7 @@ package dev.sysboot.tui;
 
 import dev.sysboot.core.AptRepositoryModule;
 import dev.sysboot.core.AssertModule;
+import dev.sysboot.core.BinstallerModule;
 import dev.sysboot.core.BootstrapConfig;
 import dev.sysboot.core.BootstrapModule;
 import dev.sysboot.core.CompiledBinaryModule;
@@ -20,10 +21,10 @@ import dev.sysboot.core.PacmanRepositoryModule;
 import dev.sysboot.core.Phase;
 import dev.sysboot.core.PhaseName;
 import dev.sysboot.core.RpmRepositoryModule;
+import dev.sysboot.core.SdkmanModule;
 import dev.sysboot.core.ShellCommandModule;
 import dev.sysboot.core.ShellReloadModule;
 import dev.sysboot.core.ShellScriptModule;
-import dev.sysboot.core.SdkmanModule;
 import dev.sysboot.core.ToolchainModule;
 import dev.sysboot.core.ZypperModule;
 import java.util.List;
@@ -107,6 +108,7 @@ final class BootstrapConfigSelectionFilter {
       case ManualModule manualModule -> Optional.of(manualModule);
       case InterruptModule interruptModule -> Optional.of(interruptModule);
       case SdkmanModule sdkmanModule -> filterSdkmanModule(sdkmanModule, entries);
+      case BinstallerModule binstallerModule -> Optional.of(binstallerModule);
     };
   }
 

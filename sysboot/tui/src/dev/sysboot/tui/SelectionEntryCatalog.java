@@ -2,6 +2,7 @@ package dev.sysboot.tui;
 
 import dev.sysboot.core.AptRepositoryModule;
 import dev.sysboot.core.AssertModule;
+import dev.sysboot.core.BinstallerModule;
 import dev.sysboot.core.BootstrapModule;
 import dev.sysboot.core.CompiledBinaryModule;
 import dev.sysboot.core.DefaultShellModule;
@@ -16,10 +17,10 @@ import dev.sysboot.core.OhMyZshModule;
 import dev.sysboot.core.PackageModule;
 import dev.sysboot.core.PacmanRepositoryModule;
 import dev.sysboot.core.RpmRepositoryModule;
+import dev.sysboot.core.SdkmanModule;
 import dev.sysboot.core.ShellCommandModule;
 import dev.sysboot.core.ShellReloadModule;
 import dev.sysboot.core.ShellScriptModule;
-import dev.sysboot.core.SdkmanModule;
 import dev.sysboot.core.ToolchainModule;
 import dev.sysboot.core.ZypperModule;
 import java.util.List;
@@ -62,6 +63,7 @@ final class SelectionEntryCatalog {
       case InterruptModule interruptModule -> List.of(interruptModule.name().value());
       case SdkmanModule sdkmanModule ->
           sdkmanModule.packages().stream().map(pkg -> pkg.itemKey()).toList();
+      case BinstallerModule binstallerModule -> List.of(binstallerModule.itemKey());
     };
   }
 }

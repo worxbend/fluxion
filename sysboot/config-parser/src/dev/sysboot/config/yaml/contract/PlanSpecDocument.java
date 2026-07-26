@@ -163,6 +163,21 @@ public final class PlanSpecDocument {
   @JsonProperty("nerdfontBinary")
   private String nerdfontBinary;
 
+  @JsonProperty("binstallerBinary")
+  private String binstallerBinary;
+
+  @JsonProperty("only")
+  private List<String> only;
+
+  @JsonProperty("skip")
+  private List<String> skip;
+
+  @JsonProperty("locked")
+  private Boolean locked;
+
+  @JsonProperty("lockFile")
+  private String lockFile;
+
   @JsonProperty("probeCommand")
   private String probeCommand;
 
@@ -310,6 +325,14 @@ public final class PlanSpecDocument {
     return config().or(this::configPath);
   }
 
+  /**
+   * Path to an existing Nerd Fonts installer config. A textual {@code config} names a file; an
+   * object {@code config} is an inline definition handled by {@link #nerdFontConfig()}.
+   */
+  public Optional<String> nerdFontsConfigPath() {
+    return config().or(this::configPath);
+  }
+
   public Optional<NerdFontConfigDocument> nerdFontConfig() {
     if (config == null || config.isNull() || !config.isObject()) {
       return Optional.empty();
@@ -420,6 +443,26 @@ public final class PlanSpecDocument {
 
   public Optional<String> nerdfontBinary() {
     return DocumentDefaults.optional(nerdfontBinary);
+  }
+
+  public Optional<String> binstallerBinary() {
+    return DocumentDefaults.optional(binstallerBinary);
+  }
+
+  public List<String> only() {
+    return DocumentDefaults.list(only);
+  }
+
+  public List<String> skip() {
+    return DocumentDefaults.list(skip);
+  }
+
+  public boolean locked() {
+    return DocumentDefaults.optional(locked).orElse(false);
+  }
+
+  public Optional<String> lockFile() {
+    return DocumentDefaults.optional(lockFile);
   }
 
   public Optional<String> probeCommand() {

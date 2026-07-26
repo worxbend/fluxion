@@ -22,7 +22,8 @@ import com.fasterxml.jackson.annotation.JsonTypeInfo;
   @JsonSubTypes.Type(value = ShellReloadModuleDocument.class, name = "shell-reload"),
   @JsonSubTypes.Type(value = ShellCommandModuleDocument.class, name = "shell-command"),
   @JsonSubTypes.Type(value = AssertModuleDocument.class, name = "assert"),
-  @JsonSubTypes.Type(value = ManualModuleDocument.class, name = "manual")
+  @JsonSubTypes.Type(value = ManualModuleDocument.class, name = "manual"),
+  @JsonSubTypes.Type(value = BinstallerModuleDocument.class, name = "binstaller-profile")
 })
 public abstract sealed class ModuleDocument
     permits PackagesModuleDocument,
@@ -41,7 +42,8 @@ public abstract sealed class ModuleDocument
         ShellReloadModuleDocument,
         ShellCommandModuleDocument,
         AssertModuleDocument,
-        ManualModuleDocument {
+        ManualModuleDocument,
+        BinstallerModuleDocument {
 
   @JsonProperty("name")
   public String name;

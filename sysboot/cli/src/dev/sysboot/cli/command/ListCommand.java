@@ -6,6 +6,7 @@ import dev.sysboot.cli.output.JsonOutput;
 import dev.sysboot.cli.output.OutputFormat;
 import dev.sysboot.core.AptRepositoryModule;
 import dev.sysboot.core.AssertModule;
+import dev.sysboot.core.BinstallerModule;
 import dev.sysboot.core.BootstrapConfig;
 import dev.sysboot.core.BootstrapModule;
 import dev.sysboot.core.CompiledBinaryModule;
@@ -21,10 +22,10 @@ import dev.sysboot.core.OhMyZshModule;
 import dev.sysboot.core.PackageModule;
 import dev.sysboot.core.PacmanRepositoryModule;
 import dev.sysboot.core.RpmRepositoryModule;
+import dev.sysboot.core.SdkmanModule;
 import dev.sysboot.core.ShellCommandModule;
 import dev.sysboot.core.ShellReloadModule;
 import dev.sysboot.core.ShellScriptModule;
-import dev.sysboot.core.SdkmanModule;
 import dev.sysboot.core.ToolchainModule;
 import dev.sysboot.core.ZypperModule;
 import java.util.LinkedHashMap;
@@ -109,6 +110,7 @@ public final class ListCommand implements Runnable {
       case ManualModule ignored -> "☐ manual";
       case InterruptModule ignored -> "⏸ interrupt";
       case SdkmanModule ignored -> "🧰 sdkman";
+      case BinstallerModule ignored -> "📥 binstaller";
     };
   }
 
@@ -135,6 +137,7 @@ public final class ListCommand implements Runnable {
       case ManualModule ignored -> "manual";
       case InterruptModule ignored -> "interrupt";
       case SdkmanModule ignored -> "sdkman-packages";
+      case BinstallerModule ignored -> "binstaller-profile";
     };
   }
 
@@ -161,7 +164,14 @@ public final class ListCommand implements Runnable {
       case ManualModule mm -> mm.message();
       case InterruptModule im -> im.message();
       case SdkmanModule sm -> sm.packages().size() + " SDKMAN packages";
+      case BinstallerModule bsm -> binstallerDescription(bsm);
     };
+  }
+
+  private String binstallerDescription(BinstallerModule module) {
+    String selection =
+        module.only().isEmpty() ? "" : " (only " + String.join(", ", module.only()) + ")";
+    return module.config() + selection;
   }
 
   private int itemCount(BootstrapModule module) {

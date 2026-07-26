@@ -9,19 +9,19 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import dev.sysboot.core.AptRepositoryModule;
-import dev.sysboot.core.BootstrapPolicy;
 import dev.sysboot.core.AssertModule;
 import dev.sysboot.core.BinaryUrl;
 import dev.sysboot.core.BootstrapConfig;
+import dev.sysboot.core.BootstrapPolicy;
 import dev.sysboot.core.BootstrapState;
 import dev.sysboot.core.Checksum;
 import dev.sysboot.core.CompiledBinaryModule;
 import dev.sysboot.core.DotbotModule;
 import dev.sysboot.core.EventKind;
 import dev.sysboot.core.ExecutionEvent;
+import dev.sysboot.core.ExecutionPausedException;
 import dev.sysboot.core.FlatpakModule;
 import dev.sysboot.core.FlatpakRemoteModule;
-import dev.sysboot.core.ExecutionPausedException;
 import dev.sysboot.core.InterruptModule;
 import dev.sysboot.core.InterruptResumeMode;
 import dev.sysboot.core.ManualModule;
@@ -48,9 +48,9 @@ import dev.sysboot.core.ScriptPath;
 import dev.sysboot.core.ShellCommandModule;
 import dev.sysboot.core.ShellRunner;
 import dev.sysboot.core.ShellScriptModule;
+import dev.sysboot.core.SkippedPlanEntry;
 import dev.sysboot.core.StateEntry;
 import dev.sysboot.core.StateRepository;
-import dev.sysboot.core.SkippedPlanEntry;
 import dev.sysboot.core.StepResult;
 import java.io.IOException;
 import java.net.URI;
@@ -59,8 +59,8 @@ import java.nio.file.Path;
 import java.security.MessageDigest;
 import java.time.Duration;
 import java.time.Instant;
-import java.util.HexFormat;
 import java.util.ArrayList;
+import java.util.HexFormat;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -461,6 +461,10 @@ class BootstrapOrchestratorImplTest {
   void dryRun_whenInstallerModulesConfigured_previewsWithoutExecuting() {
     var noExecutionRunner = new FailingShellRunner();
     orchestrator = orchestratorWithRunner(noExecutionRunner);
+    // The orchestrator now previews through the injected executor rather than building a throwaway
+    // one, so the stub has to supply the preview it is asked for.
+    when(shellScriptExecutor.commandPreview(any()))
+        .thenReturn(List.of("<interpreter>", "./scripts/bootstrap.sh", "--dry"));
     List<dev.sysboot.core.BootstrapModule> modules =
         List.of(
             new CompiledBinaryModule(
@@ -541,12 +545,8 @@ class BootstrapOrchestratorImplTest {
                 "/usr/local/bin/rg"),
             List.of("<interpreter>", "./scripts/bootstrap.sh", "--dry"),
             List.of("/bin/bash", "-lc", "git config --global init.defaultBranch main"),
-            List.of("nerdfont-install", "--config", "<config>"),
-            List.of(
-                "dotbot-go",
-                "v0.2.1",
-                "--config",
-                "/home/test/.dotfiles/install.conf.yaml"));
+            List.of("nerdfont-install", "--config", "<generated from profile>", "--dry-run"),
+            List.of("dotbot", "-c", "/home/test/.dotfiles/install.conf.yaml", "--dry-run"));
     verify(shellScriptExecutor, never()).execute(any());
     verify(binaryInstaller, never()).install(any());
   }
@@ -583,8 +583,7 @@ class BootstrapOrchestratorImplTest {
   void execute_whenRequiredSourceSetupFails_doesNotInstallPackages() {
     when(rpmRepositoryInstaller.add(any()))
         .thenReturn(
-            new StepResult.Failure(
-                "/etc/yum.repos.d/docker.repo", "failed", 1, Duration.ZERO));
+            new StepResult.Failure("/etc/yum.repos.d/docker.repo", "failed", 1, Duration.ZERO));
     var stateRepository = new InMemoryStateRepository(BootstrapState.empty("test", "1.0.0"));
     orchestrator = orchestrator(alwaysRun(), Optional.of(stateRepository));
 
@@ -598,8 +597,7 @@ class BootstrapOrchestratorImplTest {
   void execute_whenSourceSetupFailsAndPolicyAllowsContinuation_installsPackages() {
     when(rpmRepositoryInstaller.add(any()))
         .thenReturn(
-            new StepResult.Failure(
-                "/etc/yum.repos.d/docker.repo", "failed", 1, Duration.ZERO));
+            new StepResult.Failure("/etc/yum.repos.d/docker.repo", "failed", 1, Duration.ZERO));
     var policy = new BootstrapPolicy(Optional.empty(), Optional.of(true), Optional.empty());
 
     orchestrator.execute(configWithSourceAndPackage(policy), ignored -> {});
@@ -1050,7 +1048,9 @@ class BootstrapOrchestratorImplTest {
     orchestrator(alwaysRun(), Optional.of(repository)).execute(config, ignored -> {});
 
     assertThat(repository.state().nextPlanEntry()).isEmpty();
-    assertThat(repository.state().entries()).extracting(StateEntry::itemKey).containsExactly("curl");
+    assertThat(repository.state().entries())
+        .extracting(StateEntry::itemKey)
+        .containsExactly("curl");
     verify(dnfExecutor, times(1)).install(any());
   }
 

@@ -2,6 +2,7 @@ package dev.sysboot.config;
 
 import dev.sysboot.config.yaml.contract.AptRepositoryModuleDocument;
 import dev.sysboot.config.yaml.contract.AssertModuleDocument;
+import dev.sysboot.config.yaml.contract.BinstallerModuleDocument;
 import dev.sysboot.config.yaml.contract.ChecksumDocument;
 import dev.sysboot.config.yaml.contract.CompiledBinaryModuleDocument;
 import dev.sysboot.config.yaml.contract.ConfigDocument;
@@ -11,6 +12,7 @@ import dev.sysboot.config.yaml.contract.FlatpakModuleDocument;
 import dev.sysboot.config.yaml.contract.FlatpakRemoteModuleDocument;
 import dev.sysboot.config.yaml.contract.ManualModuleDocument;
 import dev.sysboot.config.yaml.contract.ModuleDocument;
+import dev.sysboot.config.yaml.contract.NerdFontConfigDocument;
 import dev.sysboot.config.yaml.contract.NerdFontModuleDocument;
 import dev.sysboot.config.yaml.contract.OhMyZshModuleDocument;
 import dev.sysboot.config.yaml.contract.OsDocument;
@@ -26,6 +28,7 @@ import dev.sysboot.config.yaml.contract.ToolchainModuleDocument;
 import dev.sysboot.core.AptRepositoryModule;
 import dev.sysboot.core.AssertModule;
 import dev.sysboot.core.BinaryUrl;
+import dev.sysboot.core.BinstallerModule;
 import dev.sysboot.core.BootstrapConfig;
 import dev.sysboot.core.BootstrapModule;
 import dev.sysboot.core.Checksum;
@@ -169,6 +172,7 @@ final class ConfigMapper {
       case ShellCommandModuleDocument sc -> mapShellCommandModule(sc);
       case AssertModuleDocument am -> mapAssertModule(am);
       case ManualModuleDocument mm -> mapManualModule(mm);
+      case BinstallerModuleDocument bs -> mapBinstallerModule(bs);
     };
   }
 
@@ -324,7 +328,12 @@ final class ConfigMapper {
   }
 
   private NerdFontModule mapNerdFontModule(NerdFontModuleDocument dto) {
-    var configDocument = requireField(dto.config, "nerd-fonts.config");
+    // `configPath` points at an installer config the user already maintains, so an inline `config`
+    // block is only required when Fluxion has to generate one.
+    var configDocument =
+        dto.configPath != null && dto.config == null
+            ? new NerdFontConfigDocument()
+            : requireField(dto.config, "nerd-fonts.config");
     var dest =
         configDocument.destination != null
             ? Path.of(configDocument.destination.replace("~", System.getProperty("user.home")))
@@ -338,8 +347,11 @@ final class ConfigMapper {
     return new NerdFontModule(
         new ModuleName(requireField(dto.name, "name")),
         requireField(dto.installerVersion, "nerd-fonts.installerVersion"),
-        dto.nerdfontBinary != null ? dto.nerdfontBinary : "nerdfont-install",
+        dto.nerdfontBinary != null
+            ? dto.nerdfontBinary
+            : dev.sysboot.core.KnownTools.NERD_FONTS_INSTALLER.executableName(),
         config,
+        Optional.ofNullable(dto.configPath).map(path -> Path.of(expandHome(path))),
         Optional.ofNullable(dto.probeCommand));
   }
 
@@ -356,7 +368,10 @@ final class ConfigMapper {
     return new ShellCommandModule(
         new ModuleName(requireField(dto.name, "name")),
         requireField(dto.commands, "shell-command.commands").stream()
-            .map(command -> ShellCommandItem.shell(command, dto.shell != null ? dto.shell : "/bin/bash", workingDir))
+            .map(
+                command ->
+                    ShellCommandItem.shell(
+                        command, dto.shell != null ? dto.shell : "/bin/bash", workingDir))
             .toList(),
         dto.shell != null ? dto.shell : "/bin/bash",
         workingDir,
@@ -380,6 +395,20 @@ final class ConfigMapper {
         new ModuleName(requireField(dto.name, "name")),
         requireField(dto.message, "manual.message"),
         Optional.ofNullable(dto.probeCommand));
+  }
+
+  private BinstallerModule mapBinstallerModule(BinstallerModuleDocument dto) {
+    return new BinstallerModule(
+        new ModuleName(requireField(dto.name, "name")),
+        Path.of(expandHome(requireField(dto.config, "binstaller-profile.config"))),
+        dto.only != null ? dto.only : List.of(),
+        dto.skip != null ? dto.skip : List.of(),
+        dto.locked,
+        Optional.ofNullable(dto.lockFile).map(path -> Path.of(expandHome(path))),
+        requireField(dto.installerVersion, "binstaller-profile.installerVersion"),
+        requireField(dto.binstallerBinary, "binstaller-profile.binstallerBinary"),
+        Optional.ofNullable(dto.probeCommand),
+        dto.continueOnError);
   }
 
   private Optional<Checksum> mapChecksum(ChecksumDocument dto) {

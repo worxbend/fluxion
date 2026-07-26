@@ -11,6 +11,7 @@ import dev.sysboot.config.yaml.contract.TargetOsDocument;
 import dev.sysboot.config.yaml.contract.WhenDocument;
 import dev.sysboot.config.yaml.contract.WorkstationProfileDocument;
 import dev.sysboot.core.BinaryUrl;
+import dev.sysboot.core.BinstallerModule;
 import dev.sysboot.core.BootstrapConfig;
 import dev.sysboot.core.BootstrapModule;
 import dev.sysboot.core.BootstrapPolicy;
@@ -23,6 +24,7 @@ import dev.sysboot.core.FlatpakModule;
 import dev.sysboot.core.HostFactsProvider;
 import dev.sysboot.core.InterruptModule;
 import dev.sysboot.core.InterruptResumeMode;
+import dev.sysboot.core.KnownTools;
 import dev.sysboot.core.ModuleName;
 import dev.sysboot.core.NerdFontConfig;
 import dev.sysboot.core.NerdFontModule;
@@ -36,13 +38,13 @@ import dev.sysboot.core.PhaseName;
 import dev.sysboot.core.ProfileName;
 import dev.sysboot.core.RestartPolicy;
 import dev.sysboot.core.ScriptPath;
+import dev.sysboot.core.SdkmanModule;
+import dev.sysboot.core.SdkmanPackage;
 import dev.sysboot.core.ShellCommandItem;
 import dev.sysboot.core.ShellCommandModule;
 import dev.sysboot.core.ShellEnvironmentVariable;
 import dev.sysboot.core.ShellScriptItem;
 import dev.sysboot.core.ShellScriptModule;
-import dev.sysboot.core.SdkmanModule;
-import dev.sysboot.core.SdkmanPackage;
 import dev.sysboot.core.SkippedPlanEntry;
 import java.net.URI;
 import java.nio.file.Path;
@@ -92,7 +94,9 @@ final class WorkstationProfileConfigMapper {
       List<SkippedPlanEntry> sourceEntries) {
     var entries = new ArrayList<SkippedPlanEntry>();
     planEntries.stream()
-        .map(entry -> new SkippedPlanEntry(entry.name(), normalizedKind(entry.kind()), entry.reason()))
+        .map(
+            entry ->
+                new SkippedPlanEntry(entry.name(), normalizedKind(entry.kind()), entry.reason()))
         .forEach(entries::add);
     entries.addAll(sourceEntries);
     return List.copyOf(entries);
@@ -106,8 +110,7 @@ final class WorkstationProfileConfigMapper {
     return policy
         .map(
             value ->
-                new BootstrapPolicy(
-                    value.dryRun(), value.continueOnError(), value.requireSudo()))
+                new BootstrapPolicy(value.dryRun(), value.continueOnError(), value.requireSudo()))
         .orElseGet(BootstrapPolicy::empty);
   }
 
@@ -134,8 +137,7 @@ final class WorkstationProfileConfigMapper {
     return switch (planKind(entry)) {
       case "apt-packages" -> Optional.of(packageModule(entry, PackageManagerKind.APT, policy));
       case "aur-packages" -> Optional.of(packageModule(entry, aurPackageManager(entry), policy));
-      case "cargo-packages" ->
-          Optional.of(packageModule(entry, PackageManagerKind.CARGO, policy));
+      case "cargo-packages" -> Optional.of(packageModule(entry, PackageManagerKind.CARGO, policy));
       case "dnf-packages" -> Optional.of(packageModule(entry, PackageManagerKind.DNF, policy));
       case "pacman-packages" ->
           Optional.of(packageModule(entry, PackageManagerKind.PACMAN, policy));
@@ -149,6 +151,7 @@ final class WorkstationProfileConfigMapper {
       case "file-writes" -> fileWriteModule(entry, policy);
       case "nerd-fonts" -> Optional.of(nerdFontModule(entry));
       case "dotfiles-apply" -> Optional.of(dotbotModule(entry));
+      case "binstaller-profile" -> Optional.of(binstallerModule(entry, policy));
       case "interrupt" -> Optional.of(interruptModule(entry));
       default -> Optional.empty();
     };
@@ -277,8 +280,7 @@ final class WorkstationProfileConfigMapper {
         spec.expectedVersion());
   }
 
-  private ShellScriptModule shellScriptModule(
-      PlanEntryDocument entry, BootstrapPolicy policy) {
+  private ShellScriptModule shellScriptModule(PlanEntryDocument entry, BootstrapPolicy policy) {
     PlanSpecDocument spec = requireField(entry.spec().orElse(null), planName(entry) + ".spec");
     return new ShellScriptModule(
         new ModuleName(planName(entry)),
@@ -288,8 +290,7 @@ final class WorkstationProfileConfigMapper {
         spec.probeCommand());
   }
 
-  private ShellCommandModule shellCommandModule(
-      PlanEntryDocument entry, BootstrapPolicy policy) {
+  private ShellCommandModule shellCommandModule(PlanEntryDocument entry, BootstrapPolicy policy) {
     PlanSpecDocument spec = requireField(entry.spec().orElse(null), planName(entry) + ".spec");
     return new ShellCommandModule(
         new ModuleName(planName(entry)),
@@ -300,7 +301,8 @@ final class WorkstationProfileConfigMapper {
         spec.probeCommand());
   }
 
-  private Optional<BootstrapModule> fileWriteModule(PlanEntryDocument entry, BootstrapPolicy policy) {
+  private Optional<BootstrapModule> fileWriteModule(
+      PlanEntryDocument entry, BootstrapPolicy policy) {
     PlanSpecDocument spec = requireField(entry.spec().orElse(null), planName(entry) + ".spec");
     List<FileWriteItem> items = fileWriteItems(entry, spec);
     if (items.isEmpty()) {
@@ -342,9 +344,7 @@ final class WorkstationProfileConfigMapper {
   }
 
   private Optional<String> content(JsonNode node) {
-    return child(node, "content")
-        .filter(JsonNode::isTextual)
-        .map(JsonNode::asText);
+    return child(node, "content").filter(JsonNode::isTextual).map(JsonNode::asText);
   }
 
   private List<ShellScriptItem> scriptItems(PlanEntryDocument entry, PlanSpecDocument spec) {
@@ -371,7 +371,9 @@ final class WorkstationProfileConfigMapper {
         script,
         url,
         stringList(node, "args").orElseGet(spec::args),
-        path(node, "cwd").or(() -> path(node, "workingDir")).or(() -> spec.workingDir().map(Path::of)),
+        path(node, "cwd")
+            .or(() -> path(node, "workingDir"))
+            .or(() -> spec.workingDir().map(Path::of)),
         environment(spec.envNode(), child(node, "env")),
         bool(node, "sudo").or(spec::sudo).orElse(false),
         intList(node, "allowedExitCodes").orElseGet(spec::allowedExitCodes),
@@ -382,7 +384,8 @@ final class WorkstationProfileConfigMapper {
   }
 
   private Optional<ScriptPath> scriptPath(JsonNode node, PlanSpecDocument spec) {
-    return text(node, "script").or(spec::script)
+    return text(node, "script")
+        .or(spec::script)
         .map(raw -> new ScriptPath(Path.of(expandHome(raw))));
   }
 
@@ -406,7 +409,9 @@ final class WorkstationProfileConfigMapper {
         shellCommand(node),
         argv(node),
         text(node, "shell").or(spec::shell).orElse("/bin/bash"),
-        path(node, "cwd").or(() -> path(node, "workingDir")).or(() -> spec.workingDir().map(Path::of)),
+        path(node, "cwd")
+            .or(() -> path(node, "workingDir"))
+            .or(() -> spec.workingDir().map(Path::of)),
         environment(spec.envNode(), child(node, "env")),
         bool(node, "sudo").or(spec::sudo).orElse(false),
         intList(node, "allowedExitCodes").orElseGet(spec::allowedExitCodes),
@@ -432,12 +437,13 @@ final class WorkstationProfileConfigMapper {
 
   private Optional<List<String>> commandWithArgs(JsonNode node) {
     return text(node, "command")
-        .map(command -> {
-          var values = new ArrayList<String>();
-          values.add(command);
-          values.addAll(stringList(node, "args").orElse(List.of()));
-          return List.copyOf(values);
-        });
+        .map(
+            command -> {
+              var values = new ArrayList<String>();
+              values.add(command);
+              values.addAll(stringList(node, "args").orElse(List.of()));
+              return List.copyOf(values);
+            });
   }
 
   private List<ShellEnvironmentVariable> environment(
@@ -448,15 +454,15 @@ final class WorkstationProfileConfigMapper {
     return List.copyOf(values.values());
   }
 
-  private void addEnvironment(
-      Map<String, ShellEnvironmentVariable> values, JsonNode env) {
+  private void addEnvironment(Map<String, ShellEnvironmentVariable> values, JsonNode env) {
     if (env == null || !env.isObject()) {
       return;
     }
     Iterator<Map.Entry<String, JsonNode>> fields = env.fields();
     while (fields.hasNext()) {
       Map.Entry<String, JsonNode> field = fields.next();
-      environmentVariable(field.getKey(), field.getValue()).ifPresent(value -> values.put(field.getKey(), value));
+      environmentVariable(field.getKey(), field.getValue())
+          .ifPresent(value -> values.put(field.getKey(), value));
     }
   }
 
@@ -468,7 +474,10 @@ final class WorkstationProfileConfigMapper {
       return Optional.empty();
     }
     return text(value, "value")
-        .map(raw -> new ShellEnvironmentVariable(name, raw, bool(value, "sensitive").orElse(sensitiveName(name))));
+        .map(
+            raw ->
+                new ShellEnvironmentVariable(
+                    name, raw, bool(value, "sensitive").orElse(sensitiveName(name))));
   }
 
   private boolean sensitiveName(String name) {
@@ -481,7 +490,11 @@ final class WorkstationProfileConfigMapper {
   }
 
   private boolean itemMatches(JsonNode node) {
-    return child(node, "when").map(value -> whenEvaluator.matches(Optional.of(MAPPER.convertValue(value, WhenDocument.class)))).orElse(true);
+    return child(node, "when")
+        .map(
+            value ->
+                whenEvaluator.matches(Optional.of(MAPPER.convertValue(value, WhenDocument.class))))
+        .orElse(true);
   }
 
   private Optional<JsonNode> child(JsonNode node, String field) {
@@ -493,7 +506,10 @@ final class WorkstationProfileConfigMapper {
   }
 
   private Optional<String> text(JsonNode node, String field) {
-    return child(node, field).filter(JsonNode::isTextual).map(JsonNode::asText).filter(value -> !value.isBlank());
+    return child(node, field)
+        .filter(JsonNode::isTextual)
+        .map(JsonNode::asText)
+        .filter(value -> !value.isBlank());
   }
 
   private Optional<Boolean> bool(JsonNode node, String field) {
@@ -505,15 +521,19 @@ final class WorkstationProfileConfigMapper {
   }
 
   private Optional<List<Integer>> intList(JsonNode node, String field) {
-    return child(node, field).filter(JsonNode::isArray).map(values -> {
-      var result = new ArrayList<Integer>();
-      values.forEach(value -> {
-        if (value.canConvertToInt()) {
-          result.add(value.asInt());
-        }
-      });
-      return List.copyOf(result);
-    });
+    return child(node, field)
+        .filter(JsonNode::isArray)
+        .map(
+            values -> {
+              var result = new ArrayList<Integer>();
+              values.forEach(
+                  value -> {
+                    if (value.canConvertToInt()) {
+                      result.add(value.asInt());
+                    }
+                  });
+              return List.copyOf(result);
+            });
   }
 
   private Optional<List<String>> stringList(JsonNode node, String field) {
@@ -526,11 +546,12 @@ final class WorkstationProfileConfigMapper {
 
   private List<String> stringArray(JsonNode node) {
     var values = new ArrayList<String>();
-    node.forEach(value -> {
-      if (value.isTextual() && !value.asText().isBlank()) {
-        values.add(value.asText());
-      }
-    });
+    node.forEach(
+        value -> {
+          if (value.isTextual() && !value.asText().isBlank()) {
+            values.add(value.asText());
+          }
+        });
     return List.copyOf(values);
   }
 
@@ -540,12 +561,18 @@ final class WorkstationProfileConfigMapper {
   }
 
   private Optional<Duration> timeout(JsonNode node) {
-    return text(node, "timeout").map(this::duration)
-        .or(() -> child(node, "timeoutSeconds").filter(JsonNode::canConvertToInt).map(value -> Duration.ofSeconds(value.asInt())));
+    return text(node, "timeout")
+        .map(this::duration)
+        .or(
+            () ->
+                child(node, "timeoutSeconds")
+                    .filter(JsonNode::canConvertToInt)
+                    .map(value -> Duration.ofSeconds(value.asInt())));
   }
 
   private Duration timeout(PlanSpecDocument spec) {
-    return spec.timeout().map(this::duration)
+    return spec.timeout()
+        .map(this::duration)
         .or(() -> spec.timeoutSeconds().map(Duration::ofSeconds))
         .orElse(Duration.ofMinutes(30));
   }
@@ -571,10 +598,31 @@ final class WorkstationProfileConfigMapper {
     PlanSpecDocument spec = requireField(entry.spec().orElse(null), planName(entry) + ".spec");
     return new NerdFontModule(
         new ModuleName(planName(entry)),
-        spec.installerVersion().orElse("v1.0.5"),
-        spec.nerdfontBinary().orElse("nerdfont-install"),
+        spec.installerVersion().orElse(KnownTools.NERD_FONTS_INSTALLER.version()),
+        spec.nerdfontBinary().orElse(KnownTools.NERD_FONTS_INSTALLER.executableName()),
         nerdFontConfig(spec),
+        spec.configIsObject()
+            ? Optional.empty()
+            : spec.nerdFontsConfigPath().map(path -> Path.of(expandHome(path))),
         spec.probeCommand());
+  }
+
+  private BinstallerModule binstallerModule(PlanEntryDocument entry, BootstrapPolicy policy) {
+    PlanSpecDocument spec = requireField(entry.spec().orElse(null), planName(entry) + ".spec");
+    return new BinstallerModule(
+        new ModuleName(planName(entry)),
+        Path.of(
+            expandHome(
+                requireField(
+                    spec.dotfilesConfig().orElse(null), planName(entry) + ".spec.config"))),
+        spec.only(),
+        spec.skip(),
+        spec.locked(),
+        spec.lockFile().map(path -> Path.of(expandHome(path))),
+        spec.installerVersion().orElse(KnownTools.BINSTALLER.version()),
+        spec.binstallerBinary().orElse(KnownTools.BINSTALLER.executableName()),
+        spec.probeCommand(),
+        continueOnError(entry, policy));
   }
 
   private DotbotModule dotbotModule(PlanEntryDocument entry) {
@@ -583,9 +631,10 @@ final class WorkstationProfileConfigMapper {
         new ModuleName(planName(entry)),
         Path.of(
             expandHome(
-                requireField(spec.dotfilesConfig().orElse(null), planName(entry) + ".spec.config"))),
-        spec.installerVersion().orElse("v0.2.1"),
-        spec.dotbotBinary().orElse("dotbot"),
+                requireField(
+                    spec.dotfilesConfig().orElse(null), planName(entry) + ".spec.config"))),
+        spec.installerVersion().orElse(KnownTools.DOTBOT_GO.version()),
+        spec.dotbotBinary().orElse(KnownTools.DOTBOT_GO.executableName()),
         spec.probeCommand());
   }
 

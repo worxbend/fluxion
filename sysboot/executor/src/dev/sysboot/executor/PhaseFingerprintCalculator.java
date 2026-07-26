@@ -2,6 +2,7 @@ package dev.sysboot.executor;
 
 import dev.sysboot.core.AptRepositoryModule;
 import dev.sysboot.core.AssertModule;
+import dev.sysboot.core.BinstallerModule;
 import dev.sysboot.core.BootstrapConfig;
 import dev.sysboot.core.BootstrapModule;
 import dev.sysboot.core.CompiledBinaryModule;
@@ -19,10 +20,10 @@ import dev.sysboot.core.PacmanRepositoryModule;
 import dev.sysboot.core.Phase;
 import dev.sysboot.core.RestartPolicy;
 import dev.sysboot.core.RpmRepositoryModule;
+import dev.sysboot.core.SdkmanModule;
 import dev.sysboot.core.ShellCommandModule;
 import dev.sysboot.core.ShellReloadModule;
 import dev.sysboot.core.ShellScriptModule;
-import dev.sysboot.core.SdkmanModule;
 import dev.sysboot.core.ToolchainModule;
 import dev.sysboot.core.ZypperModule;
 import java.nio.charset.StandardCharsets;
@@ -51,9 +52,7 @@ final class PhaseFingerprintCalculator {
     append(builder, "target", config.target().toString());
     append(builder, "dryRun", config.policy().dryRunDefault().map(Object::toString));
     append(
-        builder,
-        "continueOnError",
-        config.policy().continueOnErrorDefault().map(Object::toString));
+        builder, "continueOnError", config.policy().continueOnErrorDefault().map(Object::toString));
     append(builder, "requireSudo", config.policy().requireSudoDefault().map(Object::toString));
     config.sourceSetups().forEach(setup -> append(builder, "sourceSetup", setup.toString()));
     config.phases().forEach(phase -> append(builder, "phaseFingerprint", fingerprint(phase)));
@@ -158,6 +157,16 @@ final class PhaseFingerprintCalculator {
         sm.packages().forEach(pkg -> append(builder, "package", pkg.itemKey()));
         append(builder, "continueOnError", sm.continueOnError());
       }
+      case BinstallerModule bsm -> {
+        append(builder, "type", "binstaller-profile");
+        append(builder, "config", bsm.config().toString());
+        bsm.only().forEach(tool -> append(builder, "only", tool));
+        bsm.skip().forEach(tool -> append(builder, "skip", tool));
+        append(builder, "locked", bsm.locked());
+        bsm.lockFile().ifPresent(path -> append(builder, "lockFile", path.toString()));
+        append(builder, "installerVersion", bsm.installerVersion());
+        append(builder, "continueOnError", bsm.continueOnError());
+      }
     }
   }
 
@@ -175,8 +184,7 @@ final class PhaseFingerprintCalculator {
     action.args().forEach(arg -> append(builder, "actionArg", arg));
   }
 
-  private void appendShellScriptItem(
-      StringBuilder builder, dev.sysboot.core.ShellScriptItem item) {
+  private void appendShellScriptItem(StringBuilder builder, dev.sysboot.core.ShellScriptItem item) {
     append(builder, "scriptItem", item.name());
     append(builder, "script", item.script().map(Object::toString));
     append(builder, "url", item.url().map(Object::toString));
@@ -235,16 +243,19 @@ final class PhaseFingerprintCalculator {
 
   private void appendFileWrite(StringBuilder builder, FileWriteModule module) {
     append(builder, "type", "file-writes");
-    module.items().forEach(item -> {
-      append(builder, "file", item.name());
-      append(builder, "destination", item.destination().toString());
-      append(builder, "content", item.content().map(this::sha256));
-      append(builder, "source", item.source().map(Path::toString));
-      append(builder, "owner", item.owner());
-      append(builder, "group", item.group());
-      append(builder, "mode", item.mode());
-      append(builder, "sudo", item.sudo());
-    });
+    module
+        .items()
+        .forEach(
+            item -> {
+              append(builder, "file", item.name());
+              append(builder, "destination", item.destination().toString());
+              append(builder, "content", item.content().map(this::sha256));
+              append(builder, "source", item.source().map(Path::toString));
+              append(builder, "owner", item.owner());
+              append(builder, "group", item.group());
+              append(builder, "mode", item.mode());
+              append(builder, "sudo", item.sudo());
+            });
     append(builder, "continueOnError", module.continueOnError());
   }
 

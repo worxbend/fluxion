@@ -2,10 +2,12 @@ package dev.sysboot.executor;
 
 import dev.sysboot.core.AptRepositoryModule;
 import dev.sysboot.core.AssertModule;
+import dev.sysboot.core.BinstallerModule;
 import dev.sysboot.core.BootstrapConfig;
 import dev.sysboot.core.BootstrapModule;
 import dev.sysboot.core.BootstrapOrchestrator;
 import dev.sysboot.core.BootstrapState;
+import dev.sysboot.core.CancellationSignal;
 import dev.sysboot.core.CompiledBinaryModule;
 import dev.sysboot.core.DefaultShellModule;
 import dev.sysboot.core.DotbotModule;
@@ -24,20 +26,20 @@ import dev.sysboot.core.NerdFontModule;
 import dev.sysboot.core.OhMyZshModule;
 import dev.sysboot.core.PackageModule;
 import dev.sysboot.core.PacmanRepositoryModule;
-import dev.sysboot.core.PlanEntryStateEntry;
-import dev.sysboot.core.PlanEntryStatus;
 import dev.sysboot.core.Phase;
 import dev.sysboot.core.PhaseName;
 import dev.sysboot.core.PhaseStateEntry;
 import dev.sysboot.core.PhaseStatus;
+import dev.sysboot.core.PlanEntryStateEntry;
+import dev.sysboot.core.PlanEntryStatus;
 import dev.sysboot.core.ProcessResult;
 import dev.sysboot.core.RestartPolicy;
 import dev.sysboot.core.RpmRepositoryModule;
+import dev.sysboot.core.SdkmanModule;
 import dev.sysboot.core.ShellCommandModule;
 import dev.sysboot.core.ShellReloadModule;
 import dev.sysboot.core.ShellRunner;
 import dev.sysboot.core.ShellScriptModule;
-import dev.sysboot.core.SdkmanModule;
 import dev.sysboot.core.SkipDecision;
 import dev.sysboot.core.SkippedPlanEntry;
 import dev.sysboot.core.SourceSetup;
@@ -58,7 +60,7 @@ public final class BootstrapOrchestratorImpl implements BootstrapOrchestrator {
 
   private final PackageManagerExecutorRegistry executorRegistry;
   private final ModuleExecutorRegistry moduleExecutorRegistry;
-  private final ShellScriptExecutor shellScriptExecutor;
+  private final PhaseExecutors.Registry phaseExecutors;
   private final CompiledBinaryInstaller binaryInstaller;
   private final AptRepositoryInstaller aptRepositoryInstaller;
   private final RpmRepositoryInstaller rpmRepositoryInstaller;
@@ -66,12 +68,6 @@ public final class BootstrapOrchestratorImpl implements BootstrapOrchestrator {
   private final FileWriteExecutor fileWriteExecutor;
   private final FlatpakInstaller flatpakInstaller;
   private final FlatpakRemoteInstaller flatpakRemoteInstaller;
-  private final DotbotExecutor dotbotExecutor;
-  private final DefaultShellExecutor defaultShellExecutor;
-  private final OhMyZshExecutor ohMyZshExecutor;
-  private final ToolchainExecutor toolchainExecutor;
-  private final NerdFontExecutor nerdFontExecutor;
-  private final ShellReloadExecutor shellReloadExecutor;
   private final SkipEvaluator skipEvaluator;
   private final Optional<StateRepository> stateRepository;
   private final String profileName;
@@ -109,7 +105,18 @@ public final class BootstrapOrchestratorImpl implements BootstrapOrchestrator {
             List.of(
                 new PackageModuleExecutor(executorRegistry),
                 new SdkmanModuleExecutor(primaryRunner)));
-    this.shellScriptExecutor = shellScriptExecutor;
+    this.phaseExecutors =
+        new PhaseExecutors.Registry(
+            primaryRunner,
+            PhaseExecutors.injected(
+                primaryRunner,
+                shellScriptExecutor,
+                dotbotExecutor,
+                defaultShellExecutor,
+                ohMyZshExecutor,
+                toolchainExecutor,
+                nerdFontExecutor,
+                shellReloadExecutor));
     this.binaryInstaller = binaryInstaller;
     this.aptRepositoryInstaller = aptRepositoryInstaller;
     this.rpmRepositoryInstaller = rpmRepositoryInstaller;
@@ -117,12 +124,6 @@ public final class BootstrapOrchestratorImpl implements BootstrapOrchestrator {
     this.fileWriteExecutor = fileWriteExecutor;
     this.flatpakInstaller = flatpakInstaller;
     this.flatpakRemoteInstaller = flatpakRemoteInstaller;
-    this.dotbotExecutor = dotbotExecutor;
-    this.defaultShellExecutor = defaultShellExecutor;
-    this.ohMyZshExecutor = ohMyZshExecutor;
-    this.toolchainExecutor = toolchainExecutor;
-    this.nerdFontExecutor = nerdFontExecutor;
-    this.shellReloadExecutor = shellReloadExecutor;
     this.skipEvaluator = skipEvaluator;
     this.stateRepository = stateRepository;
     this.profileName = profileName;
@@ -173,6 +174,12 @@ public final class BootstrapOrchestratorImpl implements BootstrapOrchestrator {
 
   @Override
   public void execute(BootstrapConfig config, ExecutionEventListener listener) {
+    execute(config, listener, CancellationSignal.never());
+  }
+
+  @Override
+  public void execute(
+      BootstrapConfig config, ExecutionEventListener listener, CancellationSignal cancellation) {
     prepareState(config);
     emitSkippedPlanEntries(config.skippedPlanEntries(), listener);
     if (executeSourceSetups(config, listener) == PhaseExecutionResult.HARD_FAILURE) {
@@ -183,6 +190,10 @@ public final class BootstrapOrchestratorImpl implements BootstrapOrchestrator {
     Set<PhaseName> blocked = new HashSet<>();
 
     for (Phase phase : ordered) {
+      if (cancellation.isCancelled()) {
+        recordCancellation(phase, listener);
+        return;
+      }
       if (isBlocked(phase, failed)) {
         blocked.add(phase.name());
         String failedDependency = firstFailedDep(phase, failed);
@@ -204,7 +215,10 @@ public final class BootstrapOrchestratorImpl implements BootstrapOrchestrator {
 
       listener.onEvent(ExecutionEvent.phaseStarted(phase.name()));
       ShellRunner phaseRunner = selectShellRunner(phase.restartPolicy());
-      PhaseExecutionResult phaseResult = executePhase(phase, listener, phaseRunner);
+      PhaseExecutionResult phaseResult = executePhase(phase, listener, phaseRunner, cancellation);
+      if (phaseResult == PhaseExecutionResult.CANCELLED) {
+        return;
+      }
 
       if (phaseResult == PhaseExecutionResult.HARD_FAILURE) {
         failed.add(phase.name());
@@ -250,11 +264,19 @@ public final class BootstrapOrchestratorImpl implements BootstrapOrchestrator {
   }
 
   private PhaseExecutionResult executePhase(
-      Phase phase, ExecutionEventListener listener, ShellRunner phaseRunner) {
+      Phase phase,
+      ExecutionEventListener listener,
+      ShellRunner phaseRunner,
+      CancellationSignal cancellation) {
     List<BootstrapModule> modules = phase.modules();
     int startIndex = resumeStartIndex(modules);
     for (int index = startIndex; index < modules.size(); index++) {
       BootstrapModule module = modules.get(index);
+      if (cancellation.isCancelled()) {
+        // The item in flight has already finished; record the next one so `resume` picks up here.
+        recordCancellation(phase, module, listener);
+        return PhaseExecutionResult.CANCELLED;
+      }
       listener.onEvent(ExecutionEvent.moduleStarted(module.name()));
       boolean moduleFailed = false;
       try {
@@ -302,8 +324,7 @@ public final class BootstrapOrchestratorImpl implements BootstrapOrchestrator {
     return result instanceof StepResult.Failure;
   }
 
-  private void dryRunSourceSetups(
-      List<SourceSetup> sourceSetups, ExecutionEventListener listener) {
+  private void dryRunSourceSetups(List<SourceSetup> sourceSetups, ExecutionEventListener listener) {
     for (SourceSetup setup : sourceSetups) {
       var item = sourceSetupExecutor.item(setup);
       listener.onEvent(ExecutionEvent.moduleStarted(setup.name()));
@@ -321,6 +342,7 @@ public final class BootstrapOrchestratorImpl implements BootstrapOrchestrator {
           .execute(
               module, listener, new ModuleExecutionContext(skipEvaluator, this::recordSuccess));
     }
+    PhaseExecutors executors = phaseExecutors.forRunner(phaseRunner);
     return switch (module) {
       case AptRepositoryModule arm -> executeAptRepositoryModule(arm, listener);
       case RpmRepositoryModule rrm -> executeRpmRepositoryModule(rrm, listener);
@@ -328,56 +350,63 @@ public final class BootstrapOrchestratorImpl implements BootstrapOrchestrator {
       case FileWriteModule fwm -> executeFileWriteModule(fwm, listener);
       case FlatpakModule fm -> executeFlatpakModule(fm, listener);
       case FlatpakRemoteModule frm -> executeFlatpakRemoteModule(frm, listener);
-      case ShellScriptModule sm -> executeShellScript(sm, listener, phaseRunner);
+      case ShellScriptModule sm -> executeShellScript(sm, listener, executors);
       case CompiledBinaryModule bm -> executeBinaryInstall(bm, listener);
       case DotbotModule dm ->
           executeItem(
               dm.name(),
               dm.name().value(),
               ItemType.DOTBOT,
-              () -> new DotbotExecutor(phaseRunner).execute(dm),
+              () -> executors.dotbot().execute(dm),
               listener);
       case DefaultShellModule dsm ->
           executeItem(
               dsm.name(),
               dsm.name().value(),
               ItemType.DEFAULT_SHELL,
-              () -> new DefaultShellExecutor(phaseRunner).execute(dsm),
+              () -> executors.defaultShell().execute(dsm),
               listener);
       case OhMyZshModule omz ->
           executeItem(
               omz.name(),
               omz.name().value(),
               ItemType.OH_MY_ZSH,
-              () -> new OhMyZshExecutor(phaseRunner).execute(omz),
+              () -> executors.ohMyZsh().execute(omz),
               listener);
       case ToolchainModule tm ->
           executeItem(
               tm.name(),
               tm.name().value(),
               ItemType.TOOLCHAIN,
-              () -> new ToolchainExecutor(phaseRunner).execute(tm),
+              () -> executors.toolchain().execute(tm),
               listener);
       case NerdFontModule nfm ->
           executeItem(
               nfm.name(),
               nfm.name().value(),
               ItemType.NERD_FONT,
-              () -> new NerdFontExecutor(phaseRunner).execute(nfm),
+              () -> executors.nerdFont().execute(nfm),
               listener);
       case ShellReloadModule srm ->
           executeItem(
               srm.name(),
               srm.name().value(),
               ItemType.SHELL_RELOAD,
-              () -> new ShellReloadExecutor(phaseRunner).execute(srm),
+              () -> executors.shellReload().execute(srm),
               listener);
       case ShellCommandModule sc ->
           executeItem(
               sc.name(),
               sc.name().value(),
               ItemType.SHELL_COMMAND,
-              () -> new ShellCommandExecutor(phaseRunner).execute(sc),
+              () -> executors.shellCommand().execute(sc),
+              listener);
+      case BinstallerModule bsm ->
+          executeItem(
+              bsm.name(),
+              bsm.itemKey(),
+              ItemType.BINSTALLER_PROFILE,
+              () -> executors.binstaller().execute(bsm),
               listener);
       case AssertModule am -> executeAssert(am, listener, phaseRunner);
       case ManualModule mm -> executeManual(mm, listener, phaseRunner);
@@ -532,7 +561,7 @@ public final class BootstrapOrchestratorImpl implements BootstrapOrchestrator {
   }
 
   private boolean executeShellScript(
-      ShellScriptModule module, ExecutionEventListener listener, ShellRunner phaseRunner) {
+      ShellScriptModule module, ExecutionEventListener listener, PhaseExecutors executors) {
     String scriptKey = module.items().getFirst().key();
     listener.onEvent(ExecutionEvent.itemStarted(module.name(), scriptKey));
     SkipDecision decision = skipEvaluator.evaluate(scriptKey, ItemType.SHELL_SCRIPT);
@@ -544,13 +573,14 @@ public final class BootstrapOrchestratorImpl implements BootstrapOrchestrator {
               new StepResult.Skipped(scriptKey, skip.reason().toString())));
       return false;
     }
-    StepResult result = new ShellScriptExecutor(phaseRunner).execute(module);
+    StepResult result = executors.shellScript().execute(module);
     listener.onEvent(ExecutionEvent.itemCompleted(module.name(), scriptKey, result));
     recordSuccess(module.name(), scriptKey, ItemType.SHELL_SCRIPT, result);
     return result instanceof StepResult.Failure && !module.continueOnError();
   }
 
-  private boolean executeBinaryInstall(CompiledBinaryModule module, ExecutionEventListener listener) {
+  private boolean executeBinaryInstall(
+      CompiledBinaryModule module, ExecutionEventListener listener) {
     String installKey = module.installPath().toString();
     listener.onEvent(ExecutionEvent.itemStarted(module.name(), module.binaryName()));
     SkipDecision decision = skipEvaluator.evaluate(installKey, ItemType.COMPILED_BINARY);
@@ -582,10 +612,23 @@ public final class BootstrapOrchestratorImpl implements BootstrapOrchestrator {
               moduleName, itemKey, new StepResult.Skipped(itemKey, skip.reason().toString())));
       return false;
     }
-    StepResult result = action.get();
+    StepResult result = streamingOutput(moduleName, itemKey, listener, action);
     listener.onEvent(ExecutionEvent.itemCompleted(moduleName, itemKey, result));
     recordSuccess(moduleName, itemKey, itemType, result);
     return result instanceof StepResult.Failure;
+  }
+
+  /**
+   * Runs {@code action} with command output forwarded to the listener line by line, so a long
+   * package upgrade reports progress while it runs rather than only when it finishes.
+   */
+  private StepResult streamingOutput(
+      ModuleName moduleName,
+      String itemKey,
+      ExecutionEventListener listener,
+      java.util.function.Supplier<StepResult> action) {
+    return ExecutionOutput.withSink(
+        line -> listener.onEvent(ExecutionEvent.itemOutput(moduleName, itemKey, line)), action);
   }
 
   private void dryRunModule(BootstrapModule module, ExecutionEventListener listener) {
@@ -640,7 +683,7 @@ public final class BootstrapOrchestratorImpl implements BootstrapOrchestrator {
                       emitDryRun(
                           sm.name(),
                           item.name(),
-                          new ShellScriptExecutor(new DefaultShellRunner()).commandPreview(item),
+                          primaryExecutors().shellScript().commandPreview(item),
                           listener));
       case CompiledBinaryModule bm ->
           emitDryRun(bm.name(), bm.binaryName(), binaryInstaller.dryRunCommand(bm), listener);
@@ -648,7 +691,7 @@ public final class BootstrapOrchestratorImpl implements BootstrapOrchestrator {
           emitDryRun(
               dm.name(),
               dm.config().toString(),
-              List.of("dotbot-go", dm.installerVersion(), "--config", dm.config().toString()),
+              primaryExecutors().dotbot().commandPreview(dm),
               listener);
       case DefaultShellModule dsm ->
           emitDryRun(
@@ -665,7 +708,7 @@ public final class BootstrapOrchestratorImpl implements BootstrapOrchestrator {
           emitDryRun(
               nfm.name(),
               "nerd-fonts",
-              List.of(nfm.nerdfontBinary(), "--config", "<config>"),
+              primaryExecutors().nerdFont().commandPreview(nfm),
               listener);
       case ShellReloadModule srm ->
           emitDryRun(
@@ -680,8 +723,14 @@ public final class BootstrapOrchestratorImpl implements BootstrapOrchestrator {
                       emitDryRun(
                           sc.name(),
                           item.name(),
-                          new ShellCommandExecutor(new DefaultShellRunner()).commandPreview(item),
+                          primaryExecutors().shellCommand().commandPreview(item),
                           listener));
+      case BinstallerModule bsm ->
+          emitDryRun(
+              bsm.name(),
+              bsm.itemKey(),
+              primaryExecutors().binstaller().commandPreview(bsm),
+              listener);
       case AssertModule am ->
           emitDryRun(
               am.name(), am.name().value(), List.of(am.shell(), "-lc", am.command()), listener);
@@ -777,8 +826,7 @@ public final class BootstrapOrchestratorImpl implements BootstrapOrchestrator {
         });
   }
 
-  private void rejectStaleState(
-      BootstrapState state, String identity, String fingerprint) {
+  private void rejectStaleState(BootstrapState state, String identity, String fingerprint) {
     if (!state.hasRecordedWork()) {
       return;
     }
@@ -826,6 +874,10 @@ public final class BootstrapOrchestratorImpl implements BootstrapOrchestrator {
                       repo.save(updated);
                       skipEvaluator.refreshState(updated);
                     }));
+  }
+
+  private PhaseExecutors primaryExecutors() {
+    return phaseExecutors.forRunner(primaryRunner);
   }
 
   private ShellRunner selectShellRunner(RestartPolicy policy) {
@@ -945,8 +997,31 @@ public final class BootstrapOrchestratorImpl implements BootstrapOrchestrator {
     return module.message() + resumeTarget + " " + String.join(" ", module.instructions());
   }
 
+  private void recordCancellation(Phase phase, ExecutionEventListener listener) {
+    recordPhaseState(
+        phase.name(),
+        PhaseStatus.BLOCKED,
+        fingerprintCalculator.fingerprint(phase),
+        Optional.of("Cancelled before this phase started"));
+    listener.onEvent(ExecutionEvent.cancelled(phase.name(), Optional.empty()));
+  }
+
+  private void recordCancellation(
+      Phase phase, BootstrapModule nextModule, ExecutionEventListener listener) {
+    stateRepository.ifPresent(
+        repo -> {
+          var current = repo.load(profileName).orElse(BootstrapState.empty(profileName, "1.0.0"));
+          var updated = current.withNextPlanEntry(Optional.of(nextModule.name().value()));
+          repo.save(updated);
+          skipEvaluator.refreshState(updated);
+        });
+    listener.onEvent(
+        ExecutionEvent.cancelled(phase.name(), Optional.of(nextModule.name().value())));
+  }
+
   private enum PhaseExecutionResult {
     COMPLETED,
-    HARD_FAILURE
+    HARD_FAILURE,
+    CANCELLED
   }
 }

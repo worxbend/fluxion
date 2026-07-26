@@ -2,6 +2,7 @@ package dev.sysboot.executor;
 
 import dev.sysboot.core.AptRepositoryModule;
 import dev.sysboot.core.AssertModule;
+import dev.sysboot.core.BinstallerModule;
 import dev.sysboot.core.BootstrapModule;
 import dev.sysboot.core.CompiledBinaryModule;
 import dev.sysboot.core.DefaultShellModule;
@@ -20,10 +21,10 @@ import dev.sysboot.core.PackageManagerKind;
 import dev.sysboot.core.PackageModule;
 import dev.sysboot.core.PacmanRepositoryModule;
 import dev.sysboot.core.RpmRepositoryModule;
+import dev.sysboot.core.SdkmanModule;
 import dev.sysboot.core.ShellCommandModule;
 import dev.sysboot.core.ShellReloadModule;
 import dev.sysboot.core.ShellScriptModule;
-import dev.sysboot.core.SdkmanModule;
 import dev.sysboot.core.ToolchainModule;
 import dev.sysboot.core.ZypperModule;
 import java.util.ArrayList;
@@ -132,7 +133,10 @@ public final class ParallelProbeRunner {
                     item ->
                         targets.add(
                             new ModuleItem(
-                                sm.name(), item.name(), item.key(), ItemType.SHELL_SCRIPT,
+                                sm.name(),
+                                item.name(),
+                                item.key(),
+                                ItemType.SHELL_SCRIPT,
                                 Optional.empty())));
         case CompiledBinaryModule bm ->
             targets.add(
@@ -163,13 +167,16 @@ public final class ParallelProbeRunner {
             sc.items()
                 .forEach(
                     item ->
-                        targets.add(new ModuleItem(sc.name(), item.name(), ItemType.SHELL_COMMAND)));
+                        targets.add(
+                            new ModuleItem(sc.name(), item.name(), ItemType.SHELL_COMMAND)));
         case AssertModule am ->
             targets.add(new ModuleItem(am.name(), am.name().value(), ItemType.ASSERT));
         case ManualModule mm ->
             targets.add(new ModuleItem(mm.name(), mm.name().value(), ItemType.MANUAL));
         case InterruptModule im ->
             targets.add(new ModuleItem(im.name(), im.name().value(), ItemType.INTERRUPT));
+        case BinstallerModule bsm ->
+            targets.add(new ModuleItem(bsm.name(), bsm.itemKey(), ItemType.BINSTALLER_PROFILE));
         case SdkmanModule sm ->
             sm.packages()
                 .forEach(

@@ -1,8 +1,8 @@
 package dev.sysboot.config;
 
 import com.fasterxml.jackson.databind.JsonNode;
-import dev.sysboot.config.yaml.contract.PlanEntryDocument;
 import dev.sysboot.config.yaml.contract.PackageActionDocument;
+import dev.sysboot.config.yaml.contract.PlanEntryDocument;
 import dev.sysboot.config.yaml.contract.PlanSpecDocument;
 import dev.sysboot.config.yaml.contract.PolicyDocument;
 import dev.sysboot.config.yaml.contract.WorkstationChecksumDocument;
@@ -43,12 +43,12 @@ final class WorkstationProfileValidator {
           "commands",
           "file-writes",
           "nerd-fonts",
-          "dotfiles-apply");
+          "dotfiles-apply",
+          "binstaller-profile");
   private static final Map<String, Set<String>> SUPPORTED_PACKAGE_ACTIONS =
       Map.of(
           "apt-packages", Set.of("update", "upgrade", "dist-upgrade"),
-          "dnf-packages",
-              Set.of("check-update", "upgrade", "swap", "groupupdate", "group-update"),
+          "dnf-packages", Set.of("check-update", "upgrade", "swap", "groupupdate", "group-update"),
           "aur-packages", Set.of(),
           "cargo-packages", Set.of(),
           "pacman-packages", Set.of("sync-upgrade", "syu", "upgrade"),
@@ -68,6 +68,7 @@ final class WorkstationProfileValidator {
           "file-writes",
           "nerd-fonts",
           "dotfiles-apply",
+          "binstaller-profile",
           "commands",
           "interrupt");
 
@@ -106,8 +107,7 @@ final class WorkstationProfileValidator {
     }
   }
 
-  private void validateStatePath(
-      PolicyDocument policy, Path manifestPath, List<String> errors) {
+  private void validateStatePath(PolicyDocument policy, Path manifestPath, List<String> errors) {
     if (policy == null || policy.statePath().isEmpty()) {
       return;
     }
@@ -127,17 +127,19 @@ final class WorkstationProfileValidator {
   }
 
   private void validatePlanEntry(
-      PlanEntryDocument entry,
-      int index,
-      Map<String, String> names,
-      List<String> errors) {
+      PlanEntryDocument entry, int index, Map<String, String> names, List<String> errors) {
     String path = "spec.plan[%d]".formatted(index);
     validatePlanName(entry.name().orElse(null), path, names, errors);
-    entry.kind()
+    entry
+        .kind()
         .ifPresentOrElse(
             kind ->
                 validatePlanKind(
-                    kind, path, entry.name().orElse("<unnamed>"), entry.spec().orElse(null), errors),
+                    kind,
+                    path,
+                    entry.name().orElse("<unnamed>"),
+                    entry.spec().orElse(null),
+                    errors),
             () -> errors.add(path + ".kind is required"));
   }
 
@@ -220,8 +222,7 @@ final class WorkstationProfileValidator {
         .ifPresent(version -> validateSdkmanValue(path + ".version", "version", version, errors));
   }
 
-  private void validateSdkmanValue(
-      String path, String label, String value, List<String> errors) {
+  private void validateSdkmanValue(String path, String label, String value, List<String> errors) {
     if (isBlank(value)) {
       errors.add(path + " SDKMAN " + label + " must not be blank");
       return;
@@ -238,7 +239,8 @@ final class WorkstationProfileValidator {
     }
     Set<String> supported = SUPPORTED_PACKAGE_ACTIONS.get(kind);
     for (int index = 0; index < spec.actions().size(); index++) {
-      validatePackageAction(kind, path, entryName, supported, spec.actions().get(index), index, errors);
+      validatePackageAction(
+          kind, path, entryName, supported, spec.actions().get(index), index, errors);
     }
   }
 
@@ -311,8 +313,8 @@ final class WorkstationProfileValidator {
       case "file-writes" -> validateFileWriteSpec(path, entryName, spec, errors);
       case "nerd-fonts" -> validateNerdFontSpec(path, entryName, spec, errors);
       case "dotfiles-apply" -> validateDotfilesSpec(path, entryName, spec, errors);
-      default -> {
-      }
+      case "binstaller-profile" -> validateBinstallerSpec(path, entryName, spec, errors);
+      default -> {}
     }
   }
 
@@ -321,7 +323,8 @@ final class WorkstationProfileValidator {
     if (!"interrupt".equals(kind) || spec == null) {
       return;
     }
-    spec.message().ifPresent(message -> requirePresent(path + ".spec.message", message, "interrupt", errors));
+    spec.message()
+        .ifPresent(message -> requirePresent(path + ".spec.message", message, "interrupt", errors));
     validatePresentItems(path + ".spec.instructions", spec.instructions(), errors);
     spec.resumeFrom().ifPresent(value -> validateResumeFrom(path, value, errors));
     spec.exitCode().ifPresent(value -> validateExitCode(path, value, errors));
@@ -346,9 +349,14 @@ final class WorkstationProfileValidator {
     validateHttpsUrl(path + ".spec.url", spec.url().orElse(null), errors);
     validateAbsolutePath(path + ".spec.installPath", spec.installPath().orElse(null), errors);
     spec.checksumUrl().ifPresent(url -> validateHttpsUrl(path + ".spec.checksumUrl", url, errors));
-    spec.signatureUrl().ifPresent(url -> validateHttpsUrl(path + ".spec.signatureUrl", url, errors));
-    spec.archivePath().ifPresent(archivePath -> requirePresent(path + ".spec.archivePath", archivePath, entryName, errors));
-    spec.symlinkPath().ifPresent(symlink -> validateAbsolutePath(path + ".spec.symlinkPath", symlink, errors));
+    spec.signatureUrl()
+        .ifPresent(url -> validateHttpsUrl(path + ".spec.signatureUrl", url, errors));
+    spec.archivePath()
+        .ifPresent(
+            archivePath ->
+                requirePresent(path + ".spec.archivePath", archivePath, entryName, errors));
+    spec.symlinkPath()
+        .ifPresent(symlink -> validateAbsolutePath(path + ".spec.symlinkPath", symlink, errors));
     spec.installMode().ifPresent(mode -> validateFileMode(path + ".spec.mode", mode, errors));
     spec.stripComponents().ifPresent(value -> validateStripComponents(path, value, errors));
   }
@@ -393,7 +401,8 @@ final class WorkstationProfileValidator {
     for (int index = 0; index < commands.size(); index++) {
       validateCommandItem(path + ".spec.commands[" + index + "]", commands.get(index), errors);
     }
-    spec.shell().ifPresent(shell -> requirePresent(path + ".spec.shell", shell, "commands", errors));
+    spec.shell()
+        .ifPresent(shell -> requirePresent(path + ".spec.shell", shell, "commands", errors));
     spec.workingDir().ifPresent(dir -> validatePath(path + ".spec.workingDir", dir, errors));
     validateCommonStructuredFields(path + ".spec", spec, errors);
   }
@@ -417,18 +426,20 @@ final class WorkstationProfileValidator {
       errors.add(path + " for plan entry '" + entryName + "' must be an object");
       return;
     }
-    Optional<String> destination =
-        text(node, "destination").or(() -> spec.destination());
+    Optional<String> destination = text(node, "destination").or(() -> spec.destination());
     validateAbsolutePath(path + ".destination", destination.orElse(null), errors);
     validateFileContentSource(path, node, spec, errors);
     text(node, "source")
         .or(spec::fileSource)
         .ifPresent(source -> validateAbsolutePath(path + ".source", source, errors));
-    text(node, "mode").or(spec::installMode)
+    text(node, "mode")
+        .or(spec::installMode)
         .ifPresent(mode -> validateFileMode(path + ".mode", mode, errors));
-    text(node, "owner").or(spec::owner)
+    text(node, "owner")
+        .or(spec::owner)
         .ifPresent(owner -> requirePresent(path + ".owner", owner, entryName, errors));
-    text(node, "group").or(spec::group)
+    text(node, "group")
+        .or(spec::group)
         .ifPresent(group -> requirePresent(path + ".group", group, entryName, errors));
   }
 
@@ -453,7 +464,8 @@ final class WorkstationProfileValidator {
       String path, String entryName, JsonNode node, PlanSpecDocument spec, List<String> errors) {
     if (node == null || node.isNull()) {
       if (spec.script().isEmpty() && spec.url().isEmpty()) {
-        errors.add(path + ".script or " + path + ".url for plan entry '" + entryName + "' is required");
+        errors.add(
+            path + ".script or " + path + ".url for plan entry '" + entryName + "' is required");
       }
       validatePresentItems(path + ".args", spec.args(), errors);
       return;
@@ -472,7 +484,8 @@ final class WorkstationProfileValidator {
       errors.add(path + " must define exactly one of script or url");
     }
     text(node, "url").ifPresent(url -> validateHttpsUrl(path + ".url", url, errors));
-    text(node, "cwd").or(() -> text(node, "workingDir"))
+    text(node, "cwd")
+        .or(() -> text(node, "workingDir"))
         .ifPresent(dir -> validatePath(path + ".cwd", dir, errors));
     validateAllowedExitCodes(path, node, errors);
     validateTimeout(path, node, errors);
@@ -492,11 +505,13 @@ final class WorkstationProfileValidator {
       return;
     }
     boolean hasShellRun = text(node, "run").isPresent() || text(node, "shellCommand").isPresent();
-    boolean hasArgv = array(node, "run") || array(node, "argv") || text(node, "command").isPresent();
+    boolean hasArgv =
+        array(node, "run") || array(node, "argv") || text(node, "command").isPresent();
     if (hasShellRun == hasArgv) {
       errors.add(path + " must define exactly one shell string or direct argv command");
     }
-    text(node, "cwd").or(() -> text(node, "workingDir"))
+    text(node, "cwd")
+        .or(() -> text(node, "workingDir"))
         .ifPresent(dir -> validatePath(path + ".cwd", dir, errors));
     validateAllowedExitCodes(path, node, errors);
     validateTimeout(path, node, errors);
@@ -516,11 +531,14 @@ final class WorkstationProfileValidator {
   private void validateAllowedExitCodes(String path, JsonNode node, List<String> errors) {
     child(node, "allowedExitCodes")
         .filter(JsonNode::isArray)
-        .ifPresent(values -> values.forEach(value -> {
-          if (!value.canConvertToInt() || value.asInt() < 0) {
-            errors.add(path + ".allowedExitCodes must contain non-negative integers");
-          }
-        }));
+        .ifPresent(
+            values ->
+                values.forEach(
+                    value -> {
+                      if (!value.canConvertToInt() || value.asInt() < 0) {
+                        errors.add(path + ".allowedExitCodes must contain non-negative integers");
+                      }
+                    }));
   }
 
   private void validateTimeout(String path, JsonNode node, List<String> errors) {
@@ -556,7 +574,10 @@ final class WorkstationProfileValidator {
   }
 
   private Optional<String> text(JsonNode node, String field) {
-    return child(node, field).filter(JsonNode::isTextual).map(JsonNode::asText).filter(value -> !value.isBlank());
+    return child(node, field)
+        .filter(JsonNode::isTextual)
+        .map(JsonNode::asText)
+        .filter(value -> !value.isBlank());
   }
 
   private Optional<Boolean> contentPresent(JsonNode node) {
@@ -568,7 +589,10 @@ final class WorkstationProfileValidator {
   }
 
   private boolean array(JsonNode node, String field) {
-    return child(node, field).filter(JsonNode::isArray).filter(value -> value.size() > 0).isPresent();
+    return child(node, field)
+        .filter(JsonNode::isArray)
+        .filter(value -> value.size() > 0)
+        .isPresent();
   }
 
   private Optional<JsonNode> child(JsonNode node, String field) {
@@ -619,10 +643,26 @@ final class WorkstationProfileValidator {
         entryName,
         errors);
     requirePresent(
-        path + ".spec.dotbotBinary",
-        spec.dotbotBinary().orElse("dotbot"),
-        entryName,
-        errors);
+        path + ".spec.dotbotBinary", spec.dotbotBinary().orElse("dotbot"), entryName, errors);
+  }
+
+  private void validateBinstallerSpec(
+      String path, String entryName, PlanSpecDocument spec, List<String> errors) {
+    if (spec.configIsObject()) {
+      errors.add(
+          path
+              + ".spec.config for plan entry '"
+              + entryName
+              + "' must be a path to a BinaryDistributionProfile, not an inline object");
+    }
+    requirePresent(path + ".spec.config", spec.dotfilesConfig().orElse(null), entryName, errors);
+    if (spec.locked() && spec.lockFile().isEmpty()) {
+      errors.add(
+          path
+              + ".spec.lockFile is required for plan entry '"
+              + entryName
+              + "' because locked is true");
+    }
   }
 
   private void validateNerdFontConfigShape(
@@ -631,7 +671,8 @@ final class WorkstationProfileValidator {
       errors.add(path + ".spec.config must be an object for nerd-fonts");
     }
     spec.destination()
-        .ifPresent(value -> requirePresent(path + ".spec.destination", value, "nerd-fonts", errors));
+        .ifPresent(
+            value -> requirePresent(path + ".spec.destination", value, "nerd-fonts", errors));
     spec.release()
         .ifPresent(value -> requirePresent(path + ".spec.release", value, "nerd-fonts", errors));
     spec.nerdFontConfig().ifPresent(config -> validateNerdFontConfig(path, config, errors));
@@ -673,8 +714,7 @@ final class WorkstationProfileValidator {
     }
   }
 
-  private void requirePresent(
-      String path, String value, String entryName, List<String> errors) {
+  private void requirePresent(String path, String value, String entryName, List<String> errors) {
     if (isBlank(value)) {
       errors.add(path + " for plan entry '" + entryName + "' must not be blank");
     }
@@ -746,8 +786,7 @@ final class WorkstationProfileValidator {
     }
   }
 
-  private void requireExact(
-      String value, String expected, String path, List<String> errors) {
+  private void requireExact(String value, String expected, String path, List<String> errors) {
     if (isBlank(value)) {
       errors.add(path + " is required and must be '" + expected + "'");
     } else if (!expected.equals(value.strip())) {

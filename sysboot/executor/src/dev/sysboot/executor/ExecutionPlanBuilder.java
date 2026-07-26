@@ -2,6 +2,7 @@ package dev.sysboot.executor;
 
 import dev.sysboot.core.AptRepositoryModule;
 import dev.sysboot.core.AssertModule;
+import dev.sysboot.core.BinstallerModule;
 import dev.sysboot.core.BootstrapConfig;
 import dev.sysboot.core.BootstrapModule;
 import dev.sysboot.core.CompiledBinaryModule;
@@ -21,10 +22,10 @@ import dev.sysboot.core.PacmanRepositoryModule;
 import dev.sysboot.core.Phase;
 import dev.sysboot.core.RestartPolicy;
 import dev.sysboot.core.RpmRepositoryModule;
+import dev.sysboot.core.SdkmanModule;
 import dev.sysboot.core.ShellCommandModule;
 import dev.sysboot.core.ShellReloadModule;
 import dev.sysboot.core.ShellScriptModule;
-import dev.sysboot.core.SdkmanModule;
 import dev.sysboot.core.SourceSetup;
 import dev.sysboot.core.ToolchainModule;
 import dev.sysboot.core.ZypperModule;
@@ -121,7 +122,20 @@ public final class ExecutionPlanBuilder {
       return shellCommandModule.items().stream()
           .filter(command -> command.name().equals(item.key()))
           .findFirst()
-          .map(command -> new ShellCommandExecutor(new DefaultShellRunner()).commandPreview(command));
+          .map(
+              command ->
+                  new ShellCommandExecutor(new DefaultShellRunner()).commandPreview(command));
+    }
+    if (module instanceof BinstallerModule binstallerModule) {
+      return Optional.of(
+          new BinstallerExecutor(new DefaultShellRunner()).commandPreview(binstallerModule));
+    }
+    if (module instanceof DotbotModule dotbotModule) {
+      return Optional.of(new DotbotExecutor(new DefaultShellRunner()).commandPreview(dotbotModule));
+    }
+    if (module instanceof NerdFontModule nerdFontModule) {
+      return Optional.of(
+          new NerdFontExecutor(new DefaultShellRunner()).commandPreview(nerdFontModule));
     }
     if (module instanceof SdkmanModule sdkmanModule) {
       return sdkmanModule.packages().stream()
@@ -159,7 +173,9 @@ public final class ExecutionPlanBuilder {
   private Optional<List<String>> packageActionCommand(PackageModule module, ModuleItem item) {
     return actionIndex(item.key())
         .map(module.actions()::get)
-        .map(action -> packageManagerRegistry.forKind(module.packageManager()).actionCommand(action));
+        .map(
+            action ->
+                packageManagerRegistry.forKind(module.packageManager()).actionCommand(action));
   }
 
   private Optional<Integer> actionIndex(String key) {
@@ -209,7 +225,10 @@ public final class ExecutionPlanBuilder {
               .map(
                   item ->
                       new ModuleItem(
-                          sm.name(), item.name(), item.key(), ItemType.SHELL_SCRIPT,
+                          sm.name(),
+                          item.name(),
+                          item.key(),
+                          ItemType.SHELL_SCRIPT,
                           Optional.empty()))
               .toList();
       case CompiledBinaryModule bm ->
@@ -236,6 +255,8 @@ public final class ExecutionPlanBuilder {
           List.of(new ModuleItem(mm.name(), mm.name().value(), ItemType.MANUAL));
       case InterruptModule im ->
           List.of(new ModuleItem(im.name(), im.name().value(), ItemType.INTERRUPT));
+      case BinstallerModule bsm ->
+          List.of(new ModuleItem(bsm.name(), bsm.itemKey(), ItemType.BINSTALLER_PROFILE));
       case SdkmanModule ignored -> throw new IllegalStateException("SDKMAN executor missing");
       case PackageModule ignored -> throw new IllegalStateException("Package executor missing");
       case ZypperModule ignored -> throw new IllegalStateException("Zypper executor missing");
@@ -273,6 +294,7 @@ public final class ExecutionPlanBuilder {
       case ManualModule ignored -> "manual";
       case InterruptModule ignored -> "interrupt";
       case SdkmanModule ignored -> "sdkman-packages";
+      case BinstallerModule ignored -> "binstaller-profile";
     };
   }
 }
