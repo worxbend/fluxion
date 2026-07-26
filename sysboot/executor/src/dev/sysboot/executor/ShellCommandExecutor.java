@@ -5,10 +5,11 @@ import dev.sysboot.core.ShellCommandItem;
 import dev.sysboot.core.ShellCommandModule;
 import dev.sysboot.core.ShellRunner;
 import dev.sysboot.core.StepResult;
-import java.time.Duration;
 import java.nio.file.Files;
-import java.util.Map;
+import java.time.Duration;
+import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.stream.Collectors;
 
 public final class ShellCommandExecutor {
@@ -24,7 +25,7 @@ public final class ShellCommandExecutor {
   }
 
   public StepResult execute(ShellCommandModule module) {
-    boolean failed = false;
+    var failures = new ArrayList<String>();
     for (ShellCommandItem item : module.items()) {
       StepResult skipped = skipResult(item);
       if (skipped != null) {
@@ -34,12 +35,28 @@ public final class ShellCommandExecutor {
       if (!item.allowsExitCode(result.exitCode()) && !module.continueOnError()) {
         return failure(item.name(), item, result);
       }
-      failed = failed || !item.allowsExitCode(result.exitCode());
+      if (!item.allowsExitCode(result.exitCode())) {
+        failures.add(describeFailure(item, result));
+      }
     }
-    return failed
-        ? new StepResult.Failure(
-            module.name().value(), "One or more shell commands failed", 1, Duration.ZERO)
-        : new StepResult.Success(module.name().value(), Duration.ZERO);
+    return failures.isEmpty()
+        ? new StepResult.Success(module.name().value(), Duration.ZERO)
+        : new StepResult.Failure(
+            module.name().value(), String.join("; ", failures), 1, Duration.ZERO);
+  }
+
+  /**
+   * Names the command that failed and its exit code.
+   *
+   * <p>"One or more shell commands failed" told the user nothing about which of several commands
+   * broke. The command text is redacted, so a token in an inline command never reaches the report.
+   */
+  private String describeFailure(ShellCommandItem item, ProcessResult result) {
+    return "%s exited %d: %s"
+        .formatted(
+            item.name(),
+            result.exitCode(),
+            String.join(" ", redactor.redactCommand(item.commandPreview(), item.environment())));
   }
 
   public List<String> commandPreview(ShellCommandItem item) {
@@ -62,7 +79,14 @@ public final class ShellCommandExecutor {
 
   private boolean unlessMatches(ShellCommandItem item) {
     return item.unless()
-        .map(command -> shellRunner.run(java.util.List.of(item.shell(), "-lc", command), environment(item), CHECK_TIMEOUT).isSuccess())
+        .map(
+            command ->
+                shellRunner
+                    .run(
+                        java.util.List.of(item.shell(), "-lc", command),
+                        environment(item),
+                        CHECK_TIMEOUT)
+                    .isSuccess())
         .orElse(false);
   }
 

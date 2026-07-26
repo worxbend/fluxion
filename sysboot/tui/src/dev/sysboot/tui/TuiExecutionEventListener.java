@@ -57,12 +57,20 @@ public final class TuiExecutionEventListener implements ExecutionEventListener {
       case MODULE_COMPLETED ->
           completeModule(state, event.moduleName().value())
               .withLogLine("[DONE]  Module: " + event.moduleName().value());
-      case ITEM_STARTED ->
-          startItem(state, event).withLogLine("[RUN]   " + event.item());
+      case ITEM_STARTED -> startItem(state, event).withLogLine("[RUN]   " + event.item());
+      case ITEM_OUTPUT ->
+          event.outputLine().filter(line -> !line.isBlank()).map(state::withLogLine).orElse(state);
       case ITEM_COMPLETED -> applyItemCompleted(state, event);
+      case CANCELLED -> state.withLogLine(cancellationMessage(event));
       case ERROR ->
           state.withLogLine("[ERROR] " + event.item() + " in " + event.moduleName().value());
     };
+  }
+
+  private String cancellationMessage(ExecutionEvent event) {
+    return event.item().isBlank()
+        ? "[CANCELLED] stopped before " + event.moduleName().value()
+        : "[CANCELLED] stopped before " + event.item();
   }
 
   private ExecutionScreenState applyItemCompleted(

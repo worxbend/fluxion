@@ -329,9 +329,7 @@ class CliExitCodeTest {
     assertThat(result.exitCode()).isEqualTo(ExitCode.SUCCESS.value());
     assertThat(result.stdout()).contains("Source setup:");
     assertThat(result.stdout())
-        .containsSubsequence(
-            "$ /bin/bash -lc printf %s '[docker]",
-            "$ sudo dnf install -y git");
+        .containsSubsequence("$ /bin/bash -lc printf %s '[docker]", "$ sudo dnf install -y git");
     assertThat(result.stderr()).isEmpty();
   }
 
@@ -425,9 +423,7 @@ class CliExitCodeTest {
       CliResult apply = executeCapturingSystemOut("apply", "--no-tui", "-c", config.toString());
 
       assertThat(plan.exitCode()).isEqualTo(ExitCode.SUCCESS.value());
-      assertThat(plan.stdout())
-          .contains("token=<redacted>")
-          .doesNotContain("super-secret-token");
+      assertThat(plan.stdout()).contains("token=<redacted>").doesNotContain("super-secret-token");
       assertThat(apply.exitCode()).isEqualTo(ExitCode.SUCCESS.value());
       assertThat(apply.stdout())
           .contains("FAILED")
