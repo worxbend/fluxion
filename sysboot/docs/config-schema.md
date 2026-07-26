@@ -575,3 +575,33 @@ jobs:
           - com.spotify.Client
           - org.telegram.desktop
 ```
+
+---
+
+### `user-groups` — add a user to supplementary groups
+
+```yaml
+- type: user-groups
+  name: container-groups
+  groups: [docker, libvirt]
+  user: bob                 # optional; default is the user running fluxion
+  createMissing: false      # optional; groupadd -f before usermod
+  logoutCheckpoint: true    # optional; see below
+  continueOnError: false
+```
+
+`usermod -aG` exits 0 while the *running session* still lacks the group — `docker ps` keeps saying
+permission denied until the user logs out. Fluxion detects that by comparing `id -nG` (this
+process's own credentials, fixed at login) against `id -nG <user>` (re-read from the group database),
+and raises a restart checkpoint when they disagree. Set `logoutCheckpoint: false` for containers and
+image builds, where there is no session to log out of.
+
+Membership is append-only. There is no removal syntax, and `-docker` or `!docker` are rejected rather
+than ignored: silently dropping a user out of a group they depend on is a worse failure than having
+to run `gpasswd -d` by hand.
+
+`createMissing` is off by default. The groups people want here (`docker`, `libvirt`, `kvm`) are
+created by their own package, so a missing one usually means a typo or a package that was not
+installed — and quietly creating a real but useless group hides that.
+
+When Fluxion itself is run under `sudo`, `SUDO_USER` is used rather than `root`.

@@ -46,6 +46,7 @@ import dev.sysboot.core.ShellEnvironmentVariable;
 import dev.sysboot.core.ShellScriptItem;
 import dev.sysboot.core.ShellScriptModule;
 import dev.sysboot.core.SkippedPlanEntry;
+import dev.sysboot.core.UserGroupsModule;
 import java.net.URI;
 import java.nio.file.Path;
 import java.time.Duration;
@@ -152,6 +153,7 @@ final class WorkstationProfileConfigMapper {
       case "nerd-fonts" -> Optional.of(nerdFontModule(entry));
       case "dotfiles-apply" -> Optional.of(dotbotModule(entry));
       case "binstaller-profile" -> Optional.of(binstallerModule(entry, policy));
+      case "user-groups" -> Optional.of(userGroupsModule(entry, policy));
       case "interrupt" -> Optional.of(interruptModule(entry));
       default -> Optional.empty();
     };
@@ -622,6 +624,18 @@ final class WorkstationProfileConfigMapper {
         spec.installerVersion().orElse(KnownTools.BINSTALLER.version()),
         spec.binstallerBinary().orElse(KnownTools.BINSTALLER.executableName()),
         spec.probeCommand(),
+        continueOnError(entry, policy));
+  }
+
+  private UserGroupsModule userGroupsModule(PlanEntryDocument entry, BootstrapPolicy policy) {
+    PlanSpecDocument spec = requireField(entry.spec().orElse(null), planName(entry) + ".spec");
+    return new UserGroupsModule(
+        new ModuleName(planName(entry)),
+        spec.user(),
+        spec.groups(),
+        spec.createMissing(),
+        spec.logoutCheckpoint(),
+        spec.message(),
         continueOnError(entry, policy));
   }
 

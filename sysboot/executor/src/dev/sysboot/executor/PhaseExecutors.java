@@ -25,6 +25,7 @@ final class PhaseExecutors {
   private final NerdFontExecutor nerdFont;
   private final ShellReloadExecutor shellReload;
   private final BinstallerExecutor binstaller;
+  private final UserGroupsExecutor userGroups;
 
   private PhaseExecutors(
       ShellScriptExecutor shellScript,
@@ -35,7 +36,8 @@ final class PhaseExecutors {
       ToolchainExecutor toolchain,
       NerdFontExecutor nerdFont,
       ShellReloadExecutor shellReload,
-      BinstallerExecutor binstaller) {
+      BinstallerExecutor binstaller,
+      UserGroupsExecutor userGroups) {
     this.shellScript = Objects.requireNonNull(shellScript);
     this.shellCommand = Objects.requireNonNull(shellCommand);
     this.dotbot = Objects.requireNonNull(dotbot);
@@ -45,6 +47,7 @@ final class PhaseExecutors {
     this.nerdFont = Objects.requireNonNull(nerdFont);
     this.shellReload = Objects.requireNonNull(shellReload);
     this.binstaller = Objects.requireNonNull(binstaller);
+    this.userGroups = Objects.requireNonNull(userGroups);
   }
 
   static PhaseExecutors forRunner(ShellRunner runner) {
@@ -57,7 +60,8 @@ final class PhaseExecutors {
         new ToolchainExecutor(runner),
         new NerdFontExecutor(runner),
         new ShellReloadExecutor(runner),
-        new BinstallerExecutor(runner));
+        new BinstallerExecutor(runner),
+        new UserGroupsExecutor(runner));
   }
 
   /** Uses the collaborators supplied to the orchestrator, so injected stubs take effect. */
@@ -79,7 +83,8 @@ final class PhaseExecutors {
         toolchain,
         nerdFont,
         shellReload,
-        new BinstallerExecutor(runner));
+        new BinstallerExecutor(runner),
+        new UserGroupsExecutor(runner));
   }
 
   ShellScriptExecutor shellScript() {
@@ -116,6 +121,10 @@ final class PhaseExecutors {
 
   BinstallerExecutor binstaller() {
     return binstaller;
+  }
+
+  UserGroupsExecutor userGroups() {
+    return userGroups;
   }
 
   /** Per-runner cache keyed by identity, since runners are wrappers built per restart policy. */

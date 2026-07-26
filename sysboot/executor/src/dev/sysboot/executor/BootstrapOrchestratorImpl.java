@@ -47,6 +47,7 @@ import dev.sysboot.core.StateEntry;
 import dev.sysboot.core.StateRepository;
 import dev.sysboot.core.StepResult;
 import dev.sysboot.core.ToolchainModule;
+import dev.sysboot.core.UserGroupsModule;
 import dev.sysboot.core.ZypperModule;
 import java.time.Duration;
 import java.time.Instant;
@@ -416,6 +417,7 @@ public final class BootstrapOrchestratorImpl implements BootstrapOrchestrator {
               ItemType.BINSTALLER_PROFILE,
               () -> executors.binstaller().execute(bsm),
               listener);
+      case UserGroupsModule ugm -> executeUserGroups(ugm, listener, executors);
       case AssertModule am -> executeAssert(am, listener, phaseRunner);
       case ManualModule mm -> executeManual(mm, listener, phaseRunner);
       case InterruptModule ignored -> throw new IllegalStateException("Interrupt handled by phase");
@@ -606,6 +608,35 @@ public final class BootstrapOrchestratorImpl implements BootstrapOrchestrator {
     return result instanceof StepResult.Failure && !module.continueOnError();
   }
 
+  /**
+   * Adds group memberships, then raises a logout checkpoint if the current session did not pick
+   * them up.
+   *
+   * <p>`usermod -aG` exits 0 while the running session still lacks the group, so the step has to
+   * escalate the restart itself rather than the profile having to predict it.
+   */
+  private boolean executeUserGroups(
+      UserGroupsModule module, ExecutionEventListener listener, PhaseExecutors executors) {
+    boolean failed =
+        executeItem(
+            module.name(),
+            module.itemKey(module.groups().getFirst()),
+            ItemType.USER_GROUP,
+            () -> executors.userGroups().execute(module),
+            listener);
+    if (failed) {
+      return true;
+    }
+    List<String> pending = executors.userGroups().groupsPendingLogout(module);
+    if (!pending.isEmpty()) {
+      listener.onEvent(
+          ExecutionEvent.restartRequired(
+              new PhaseName(module.name().value()),
+              module.checkpointMessage().orElseGet(module::defaultCheckpointMessage)));
+    }
+    return false;
+  }
+
   private boolean executeItem(
       ModuleName moduleName,
       String itemKey,
@@ -742,6 +773,12 @@ public final class BootstrapOrchestratorImpl implements BootstrapOrchestrator {
               bsm.name(),
               bsm.itemKey(),
               primaryExecutors().binstaller().commandPreview(bsm),
+              listener);
+      case UserGroupsModule ugm ->
+          emitDryRun(
+              ugm.name(),
+              ugm.itemKey(ugm.groups().getFirst()),
+              primaryExecutors().userGroups().commandPreview(ugm),
               listener);
       case AssertModule am ->
           emitDryRun(

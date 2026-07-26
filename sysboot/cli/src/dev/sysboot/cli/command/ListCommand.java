@@ -27,6 +27,7 @@ import dev.sysboot.core.ShellCommandModule;
 import dev.sysboot.core.ShellReloadModule;
 import dev.sysboot.core.ShellScriptModule;
 import dev.sysboot.core.ToolchainModule;
+import dev.sysboot.core.UserGroupsModule;
 import dev.sysboot.core.ZypperModule;
 import java.util.LinkedHashMap;
 import java.util.Map;
@@ -111,6 +112,7 @@ public final class ListCommand implements Runnable {
       case InterruptModule ignored -> "⏸ interrupt";
       case SdkmanModule ignored -> "🧰 sdkman";
       case BinstallerModule ignored -> "📥 binstaller";
+      case UserGroupsModule ignored -> "👤 groups";
     };
   }
 
@@ -138,6 +140,7 @@ public final class ListCommand implements Runnable {
       case InterruptModule ignored -> "interrupt";
       case SdkmanModule ignored -> "sdkman-packages";
       case BinstallerModule ignored -> "binstaller-profile";
+      case UserGroupsModule ignored -> "user-groups";
     };
   }
 
@@ -165,6 +168,7 @@ public final class ListCommand implements Runnable {
       case InterruptModule im -> im.message();
       case SdkmanModule sm -> sm.packages().size() + " SDKMAN packages";
       case BinstallerModule bsm -> binstallerDescription(bsm);
+      case UserGroupsModule ugm -> String.join(", ", ugm.groups());
     };
   }
 

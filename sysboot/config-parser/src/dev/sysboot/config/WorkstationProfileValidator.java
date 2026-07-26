@@ -44,7 +44,8 @@ final class WorkstationProfileValidator {
           "file-writes",
           "nerd-fonts",
           "dotfiles-apply",
-          "binstaller-profile");
+          "binstaller-profile",
+          "user-groups");
   private static final Map<String, Set<String>> SUPPORTED_PACKAGE_ACTIONS =
       Map.of(
           "apt-packages", Set.of("update", "upgrade", "dist-upgrade"),
@@ -69,6 +70,7 @@ final class WorkstationProfileValidator {
           "nerd-fonts",
           "dotfiles-apply",
           "binstaller-profile",
+          "user-groups",
           "commands",
           "interrupt");
 
@@ -314,6 +316,7 @@ final class WorkstationProfileValidator {
       case "nerd-fonts" -> validateNerdFontSpec(path, entryName, spec, errors);
       case "dotfiles-apply" -> validateDotfilesSpec(path, entryName, spec, errors);
       case "binstaller-profile" -> validateBinstallerSpec(path, entryName, spec, errors);
+      case "user-groups" -> validateUserGroupsSpec(path, entryName, spec, errors);
       default -> {}
     }
   }
@@ -663,6 +666,28 @@ final class WorkstationProfileValidator {
               + entryName
               + "' because locked is true");
     }
+  }
+
+  private void validateUserGroupsSpec(
+      String path, String entryName, PlanSpecDocument spec, List<String> errors) {
+    if (spec.groups().isEmpty()) {
+      errors.add(path + ".spec.groups is required for plan entry '" + entryName + "'");
+    }
+    if (spec.groups().stream().distinct().count() != spec.groups().size()) {
+      errors.add(path + ".spec.groups for plan entry '" + entryName + "' repeats a group");
+    }
+    spec.groups().stream()
+        .filter(group -> group.startsWith("-") || group.startsWith("!"))
+        .forEach(
+            group ->
+                errors.add(
+                    path
+                        + ".spec.groups for plan entry '"
+                        + entryName
+                        + "' contains '"
+                        + group
+                        + "'. Group membership is append-only; Fluxion never removes a user from a"
+                        + " group. Use gpasswd -d by hand."));
   }
 
   private void validateNerdFontConfigShape(

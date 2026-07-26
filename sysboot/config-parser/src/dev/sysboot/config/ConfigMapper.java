@@ -25,6 +25,7 @@ import dev.sysboot.config.yaml.contract.ShellCommandModuleDocument;
 import dev.sysboot.config.yaml.contract.ShellReloadModuleDocument;
 import dev.sysboot.config.yaml.contract.ShellScriptModuleDocument;
 import dev.sysboot.config.yaml.contract.ToolchainModuleDocument;
+import dev.sysboot.config.yaml.contract.UserGroupsModuleDocument;
 import dev.sysboot.core.AptRepositoryModule;
 import dev.sysboot.core.AssertModule;
 import dev.sysboot.core.BinaryUrl;
@@ -60,6 +61,7 @@ import dev.sysboot.core.ShellReloadModule;
 import dev.sysboot.core.ShellScriptModule;
 import dev.sysboot.core.ToolchainKind;
 import dev.sysboot.core.ToolchainModule;
+import dev.sysboot.core.UserGroupsModule;
 import java.net.URI;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -173,6 +175,7 @@ final class ConfigMapper {
       case AssertModuleDocument am -> mapAssertModule(am);
       case ManualModuleDocument mm -> mapManualModule(mm);
       case BinstallerModuleDocument bs -> mapBinstallerModule(bs);
+      case UserGroupsModuleDocument ug -> mapUserGroupsModule(ug);
     };
   }
 
@@ -408,6 +411,17 @@ final class ConfigMapper {
         requireField(dto.installerVersion, "binstaller-profile.installerVersion"),
         requireField(dto.binstallerBinary, "binstaller-profile.binstallerBinary"),
         Optional.ofNullable(dto.probeCommand),
+        dto.continueOnError);
+  }
+
+  private UserGroupsModule mapUserGroupsModule(UserGroupsModuleDocument dto) {
+    return new UserGroupsModule(
+        new ModuleName(requireField(dto.name, "name")),
+        Optional.ofNullable(dto.user),
+        requireField(dto.groups, "user-groups.groups"),
+        dto.createMissing,
+        dto.logoutCheckpoint,
+        Optional.ofNullable(dto.checkpointMessage),
         dto.continueOnError);
   }
 

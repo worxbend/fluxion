@@ -2,11 +2,15 @@
 <!--
   Diagnostics go to stderr, never stdout.
 
-  stdout carries the execution report and, with `--format json`, machine-readable output. A DEBUG
-  line printed there corrupts both. Without this configuration Logback defaults to DEBUG on stdout,
-  which interleaved framework logging with the item lines it was meant to describe.
+  stdout carries the execution report and, in JSON output mode, machine-readable data. A DEBUG line
+  printed there corrupts both. Without this configuration Logback defaults to DEBUG on stdout, which
+  interleaved framework logging with the item lines it was meant to describe.
 
-  The level is driven by the `fluxion.log.level` property, which Main sets from the verbose flag.
+  The level is driven by the fluxion.log.level property, which Main sets from the verbose flag.
+
+  Keep double hyphens out of these comments: they are illegal in XML, and a parse failure here
+  leaves Logback with no appenders at all, which looks like working output until something needs to
+  be logged.
 -->
 <configuration>
   <appender name="STDERR" class="ch.qos.logback.core.ConsoleAppender">

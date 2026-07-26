@@ -25,6 +25,7 @@ import dev.sysboot.core.ShellCommandModule;
 import dev.sysboot.core.ShellReloadModule;
 import dev.sysboot.core.ShellScriptModule;
 import dev.sysboot.core.ToolchainModule;
+import dev.sysboot.core.UserGroupsModule;
 import dev.sysboot.core.ZypperModule;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
@@ -156,6 +157,14 @@ final class PhaseFingerprintCalculator {
         append(builder, "type", "sdkman-packages");
         sm.packages().forEach(pkg -> append(builder, "package", pkg.itemKey()));
         append(builder, "continueOnError", sm.continueOnError());
+      }
+      case UserGroupsModule ugm -> {
+        append(builder, "type", "user-groups");
+        ugm.user().ifPresent(user -> append(builder, "user", user));
+        ugm.groups().forEach(group -> append(builder, "group", group));
+        append(builder, "createMissing", ugm.createMissing());
+        append(builder, "logoutCheckpoint", ugm.logoutCheckpoint());
+        append(builder, "continueOnError", ugm.continueOnError());
       }
       case BinstallerModule bsm -> {
         append(builder, "type", "binstaller-profile");

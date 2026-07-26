@@ -23,7 +23,8 @@ import com.fasterxml.jackson.annotation.JsonTypeInfo;
   @JsonSubTypes.Type(value = ShellCommandModuleDocument.class, name = "shell-command"),
   @JsonSubTypes.Type(value = AssertModuleDocument.class, name = "assert"),
   @JsonSubTypes.Type(value = ManualModuleDocument.class, name = "manual"),
-  @JsonSubTypes.Type(value = BinstallerModuleDocument.class, name = "binstaller-profile")
+  @JsonSubTypes.Type(value = BinstallerModuleDocument.class, name = "binstaller-profile"),
+  @JsonSubTypes.Type(value = UserGroupsModuleDocument.class, name = "user-groups")
 })
 public abstract sealed class ModuleDocument
     permits PackagesModuleDocument,
@@ -43,7 +44,8 @@ public abstract sealed class ModuleDocument
         ShellCommandModuleDocument,
         AssertModuleDocument,
         ManualModuleDocument,
-        BinstallerModuleDocument {
+        BinstallerModuleDocument,
+        UserGroupsModuleDocument {
 
   @JsonProperty("name")
   public String name;

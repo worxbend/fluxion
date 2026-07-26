@@ -166,6 +166,18 @@ public final class PlanSpecDocument {
   @JsonProperty("binstallerBinary")
   private String binstallerBinary;
 
+  @JsonProperty("groups")
+  private List<String> groups;
+
+  @JsonProperty("user")
+  private String user;
+
+  @JsonProperty("createMissing")
+  private Boolean createMissing;
+
+  @JsonProperty("logoutCheckpoint")
+  private Boolean logoutCheckpoint;
+
   @JsonProperty("only")
   private List<String> only;
 
@@ -447,6 +459,22 @@ public final class PlanSpecDocument {
 
   public Optional<String> binstallerBinary() {
     return DocumentDefaults.optional(binstallerBinary);
+  }
+
+  public List<String> groups() {
+    return DocumentDefaults.list(groups);
+  }
+
+  public Optional<String> user() {
+    return DocumentDefaults.optional(user);
+  }
+
+  public boolean createMissing() {
+    return DocumentDefaults.optional(createMissing).orElse(false);
+  }
+
+  public boolean logoutCheckpoint() {
+    return DocumentDefaults.optional(logoutCheckpoint).orElse(true);
   }
 
   public List<String> only() {

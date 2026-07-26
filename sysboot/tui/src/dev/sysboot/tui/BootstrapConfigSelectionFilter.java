@@ -26,6 +26,7 @@ import dev.sysboot.core.ShellCommandModule;
 import dev.sysboot.core.ShellReloadModule;
 import dev.sysboot.core.ShellScriptModule;
 import dev.sysboot.core.ToolchainModule;
+import dev.sysboot.core.UserGroupsModule;
 import dev.sysboot.core.ZypperModule;
 import java.util.List;
 import java.util.Optional;
@@ -109,6 +110,7 @@ final class BootstrapConfigSelectionFilter {
       case InterruptModule interruptModule -> Optional.of(interruptModule);
       case SdkmanModule sdkmanModule -> filterSdkmanModule(sdkmanModule, entries);
       case BinstallerModule binstallerModule -> Optional.of(binstallerModule);
+      case UserGroupsModule userGroupsModule -> Optional.of(userGroupsModule);
     };
   }
 

@@ -26,6 +26,7 @@ import dev.sysboot.core.ShellCommandModule;
 import dev.sysboot.core.ShellReloadModule;
 import dev.sysboot.core.ShellScriptModule;
 import dev.sysboot.core.ToolchainModule;
+import dev.sysboot.core.UserGroupsModule;
 import dev.sysboot.core.ZypperModule;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -177,6 +178,12 @@ public final class ParallelProbeRunner {
             targets.add(new ModuleItem(im.name(), im.name().value(), ItemType.INTERRUPT));
         case BinstallerModule bsm ->
             targets.add(new ModuleItem(bsm.name(), bsm.itemKey(), ItemType.BINSTALLER_PROFILE));
+        case UserGroupsModule ugm ->
+            ugm.groups()
+                .forEach(
+                    group ->
+                        targets.add(
+                            new ModuleItem(ugm.name(), ugm.itemKey(group), ItemType.USER_GROUP)));
         case SdkmanModule sm ->
             sm.packages()
                 .forEach(

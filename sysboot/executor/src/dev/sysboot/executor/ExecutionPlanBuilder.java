@@ -28,6 +28,7 @@ import dev.sysboot.core.ShellReloadModule;
 import dev.sysboot.core.ShellScriptModule;
 import dev.sysboot.core.SourceSetup;
 import dev.sysboot.core.ToolchainModule;
+import dev.sysboot.core.UserGroupsModule;
 import dev.sysboot.core.ZypperModule;
 import java.util.List;
 import java.util.Optional;
@@ -257,6 +258,10 @@ public final class ExecutionPlanBuilder {
           List.of(new ModuleItem(im.name(), im.name().value(), ItemType.INTERRUPT));
       case BinstallerModule bsm ->
           List.of(new ModuleItem(bsm.name(), bsm.itemKey(), ItemType.BINSTALLER_PROFILE));
+      case UserGroupsModule ugm ->
+          ugm.groups().stream()
+              .map(group -> new ModuleItem(ugm.name(), ugm.itemKey(group), ItemType.USER_GROUP))
+              .toList();
       case SdkmanModule ignored -> throw new IllegalStateException("SDKMAN executor missing");
       case PackageModule ignored -> throw new IllegalStateException("Package executor missing");
       case ZypperModule ignored -> throw new IllegalStateException("Zypper executor missing");
@@ -295,6 +300,7 @@ public final class ExecutionPlanBuilder {
       case InterruptModule ignored -> "interrupt";
       case SdkmanModule ignored -> "sdkman-packages";
       case BinstallerModule ignored -> "binstaller-profile";
+      case UserGroupsModule ignored -> "user-groups";
     };
   }
 }

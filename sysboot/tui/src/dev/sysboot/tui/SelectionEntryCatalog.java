@@ -22,6 +22,7 @@ import dev.sysboot.core.ShellCommandModule;
 import dev.sysboot.core.ShellReloadModule;
 import dev.sysboot.core.ShellScriptModule;
 import dev.sysboot.core.ToolchainModule;
+import dev.sysboot.core.UserGroupsModule;
 import dev.sysboot.core.ZypperModule;
 import java.util.List;
 
@@ -64,6 +65,8 @@ final class SelectionEntryCatalog {
       case SdkmanModule sdkmanModule ->
           sdkmanModule.packages().stream().map(pkg -> pkg.itemKey()).toList();
       case BinstallerModule binstallerModule -> List.of(binstallerModule.itemKey());
+      case UserGroupsModule userGroupsModule ->
+          userGroupsModule.groups().stream().map(userGroupsModule::itemKey).toList();
     };
   }
 }
