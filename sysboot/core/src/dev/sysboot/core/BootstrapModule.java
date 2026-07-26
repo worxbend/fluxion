@@ -21,7 +21,8 @@ public sealed interface BootstrapModule
         AssertModule,
         ManualModule,
         InterruptModule,
-        SdkmanModule {
+        SdkmanModule,
+        BinstallerModule {
 
   ModuleName name();
 }
