@@ -48,6 +48,7 @@ import dev.sysboot.executor.ShellReloadExecutor;
 import dev.sysboot.executor.ShellScriptExecutor;
 import dev.sysboot.executor.ShellScriptProbe;
 import dev.sysboot.executor.SkipEvaluator;
+import dev.sysboot.executor.SudoSession;
 import dev.sysboot.executor.ToolchainExecutor;
 import dev.sysboot.executor.YayPackageInstaller;
 import dev.sysboot.executor.ZypperPackageInstaller;
@@ -121,7 +122,10 @@ public final class ApplicationContext {
 
   public static ApplicationContext forTui(
       String profile, boolean skipAlreadyInstalled, boolean reProbe) {
-    var sudoProvider = new TuiSudoPasswordProvider();
+    // The TUI drives the prompt; the session sits between the prompt and the shell runners so a
+    // run asks for the sudo password once instead of once per privileged command.
+    var sudoPrompt = new TuiSudoPasswordProvider();
+    var sudoProvider = new SudoSession(sudoPrompt);
     var eventListener = new TuiExecutionEventListener();
     var ptyRunner = new PtyShellRunner(sudoProvider);
     var baseRunner = new DefaultShellRunner();
@@ -136,7 +140,7 @@ public final class ApplicationContext {
     var orchestrator =
         buildOrchestrator(
             registry, ptyRunner, baseRunner, skipEvaluator, Optional.of(stateRepo), profile);
-    var tuiApp = new SysbootTuiApp(orchestrator, eventListener, sudoProvider, List.of());
+    var tuiApp = new SysbootTuiApp(orchestrator, eventListener, sudoPrompt, List.of());
 
     return new ApplicationContext(
         orchestrator,
