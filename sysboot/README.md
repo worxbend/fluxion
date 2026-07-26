@@ -229,6 +229,7 @@ More docs:
 
 - `docs/commands.md`
 - `docs/architecture.md`
+- `docs/tool-integration.md` — how Fluxion delegates to binstaller, dotbot, and nerd-fonts-installer
 - `docs/enhancements.md`
 - `docs/workstation-profile.md`
 

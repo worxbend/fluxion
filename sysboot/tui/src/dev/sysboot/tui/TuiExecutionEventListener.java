@@ -12,6 +12,14 @@ public final class TuiExecutionEventListener implements ExecutionEventListener {
   private static final int MAX_DRAIN_PER_TICK = 50;
 
   private final LinkedBlockingQueue<ExecutionEvent> eventQueue = new LinkedBlockingQueue<>();
+  private final dev.sysboot.core.SecretRedactor redactor = new dev.sysboot.core.SecretRedactor();
+  private volatile boolean showCommandOutput;
+
+  /** Enables the live command-output log pane, off by default. */
+  public TuiExecutionEventListener showCommandOutput(boolean enabled) {
+    this.showCommandOutput = enabled;
+    return this;
+  }
 
   @Override
   public void onEvent(ExecutionEvent event) {
@@ -58,13 +66,32 @@ public final class TuiExecutionEventListener implements ExecutionEventListener {
           completeModule(state, event.moduleName().value())
               .withLogLine("[DONE]  Module: " + event.moduleName().value());
       case ITEM_STARTED -> startItem(state, event).withLogLine("[RUN]   " + event.item());
-      case ITEM_OUTPUT ->
-          event.outputLine().filter(line -> !line.isBlank()).map(state::withLogLine).orElse(state);
+      case ITEM_OUTPUT -> applyItemOutput(state, event);
       case ITEM_COMPLETED -> applyItemCompleted(state, event);
       case CANCELLED -> state.withLogLine(cancellationMessage(event));
       case ERROR ->
           state.withLogLine("[ERROR] " + event.item() + " in " + event.moduleName().value());
     };
+  }
+
+  /**
+   * Streamed command output is off by default.
+   *
+   * <p>The TUI repaints the whole screen per drained event, so a chatty command turned the log pane
+   * into a flicker storm and starved the rest of the render loop. Output is also redacted here: the
+   * plain CLI path masked these same lines, so without this a secret echoed by a command reached
+   * the screen in TUI mode only.
+   */
+  private ExecutionScreenState applyItemOutput(ExecutionScreenState state, ExecutionEvent event) {
+    if (!showCommandOutput) {
+      return state;
+    }
+    return event
+        .outputLine()
+        .filter(line -> !line.isBlank())
+        .map(redactor::redact)
+        .map(state::withLogLine)
+        .orElse(state);
   }
 
   private String cancellationMessage(ExecutionEvent event) {

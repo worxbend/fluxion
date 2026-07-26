@@ -283,7 +283,15 @@ public final class BootstrapOrchestratorImpl implements BootstrapOrchestrator {
         if (module instanceof InterruptModule interrupt) {
           executeInterrupt(interrupt, nextModuleName(modules, index), listener);
         } else {
-          moduleFailed = executeModule(module, listener, phaseRunner);
+          // Bound at module level so every dispatch path streams, not only the ones that route
+          // through executeItem. Packages, Flatpak apps, shell scripts and binary installs each
+          // have their own path and would otherwise produce no live output at all -- which is
+          // exactly the set of long-running steps the feature exists for. executeItem rebinds a
+          // narrower sink for the paths that know their item key.
+          moduleFailed =
+              ExecutionOutput.withSink(
+                  outputSink(module.name(), module.name().value(), listener),
+                  () -> executeModule(module, listener, phaseRunner));
         }
       } finally {
         listener.onEvent(ExecutionEvent.moduleCompleted(module.name()));
@@ -627,8 +635,12 @@ public final class BootstrapOrchestratorImpl implements BootstrapOrchestrator {
       String itemKey,
       ExecutionEventListener listener,
       java.util.function.Supplier<StepResult> action) {
-    return ExecutionOutput.withSink(
-        line -> listener.onEvent(ExecutionEvent.itemOutput(moduleName, itemKey, line)), action);
+    return ExecutionOutput.withSink(outputSink(moduleName, itemKey, listener), action);
+  }
+
+  private java.util.function.Consumer<String> outputSink(
+      ModuleName moduleName, String itemKey, ExecutionEventListener listener) {
+    return line -> listener.onEvent(ExecutionEvent.itemOutput(moduleName, itemKey, line));
   }
 
   private void dryRunModule(BootstrapModule module, ExecutionEventListener listener) {

@@ -1,24 +1,23 @@
 package dev.sysboot.cli.output;
 
+import dev.sysboot.core.SecretRedactor;
 import java.util.List;
-import java.util.regex.Pattern;
 
+/**
+ * CLI-facing view of {@link SecretRedactor}.
+ *
+ * <p>The patterns moved to {@code core} so the TUI renderer can apply the same masking; this type
+ * remains so existing CLI call sites and their tests are unchanged.
+ */
 public final class CommandTextRedactor {
 
-  private static final String MASK = "<redacted>";
-  private static final Pattern URL_CREDENTIALS =
-      Pattern.compile("([a-zA-Z][a-zA-Z0-9+.-]*://)[^\\s/@:]+(:[^\\s/@]*)?@");
-  private static final Pattern TOKEN_ASSIGNMENT =
-      Pattern.compile("(?i)(token|secret|password|passwd|credential)(=|:)[^\\s]+");
-  private static final Pattern BEARER = Pattern.compile("(?i)bearer\\s+[a-z0-9._~+/=-]+");
+  private final SecretRedactor delegate = new SecretRedactor();
 
   public String redact(String text) {
-    String redacted = URL_CREDENTIALS.matcher(text).replaceAll("$1" + MASK + "@");
-    redacted = TOKEN_ASSIGNMENT.matcher(redacted).replaceAll("$1$2" + MASK);
-    return BEARER.matcher(redacted).replaceAll("Bearer " + MASK);
+    return delegate.redact(text);
   }
 
   public List<String> redactCommand(List<String> command) {
-    return command.stream().map(this::redact).toList();
+    return delegate.redactCommand(command);
   }
 }

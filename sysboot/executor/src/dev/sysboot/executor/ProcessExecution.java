@@ -17,6 +17,8 @@ import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.function.Consumer;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * Single implementation of "run a child process safely".
@@ -28,7 +30,12 @@ import java.util.function.Consumer;
  */
 final class ProcessExecution {
 
+  private static final Logger log = LoggerFactory.getLogger(ProcessExecution.class);
+
   static final int TIMEOUT_EXIT_CODE = 124;
+
+  /** A single line longer than this is flushed to the sink rather than buffered indefinitely. */
+  private static final int MAX_LINE_LENGTH = 64 * 1024;
 
   private static final Duration TERMINATION_GRACE = Duration.ofSeconds(5);
   private static final Duration DRAIN_GRACE = Duration.ofSeconds(2);
@@ -71,7 +78,7 @@ final class ProcessExecution {
     writeStdin(process, request.stdin());
     try {
       boolean exited = awaitExit(process, request.timeout());
-      joinPump(pump);
+      joinPump(pump, process);
       Duration elapsed = Duration.between(start, Instant.now());
       if (!exited) {
         return new ProcessResult(
@@ -83,7 +90,7 @@ final class ProcessExecution {
       return new ProcessResult(process.exitValue(), capture.toString(), "", elapsed);
     } catch (InterruptedException e) {
       terminate(process);
-      joinPump(pump);
+      joinPump(pump, process);
       Thread.currentThread().interrupt();
       throw new ShellExecutionException("Process interrupted: " + firstArgument(request), e);
     }
@@ -130,21 +137,23 @@ final class ProcessExecution {
       char[] buffer, int length, StringBuilder line, Consumer<String> sink) {
     for (int i = 0; i < length; i++) {
       char value = buffer[i];
-      if (value == '\n') {
-        accept(sink, stripCarriageReturn(line));
+      if (value == '\n' || value == '\r') {
+        // A bare '\r' terminates a line too. Progress bars redraw with carriage returns and emit no
+        // newline for minutes; treating '\r' as ordinary text meant the line buffer grew unbounded
+        // and defeated the capture limit entirely.
+        if (!line.isEmpty() || value == '\n') {
+          accept(sink, line.toString());
+        }
         line.setLength(0);
       } else {
         line.append(value);
+        if (line.length() >= MAX_LINE_LENGTH) {
+          // Output with no line terminator at all must not grow without bound either.
+          accept(sink, line.toString());
+          line.setLength(0);
+        }
       }
     }
-  }
-
-  private static String stripCarriageReturn(StringBuilder line) {
-    int end = line.length();
-    while (end > 0 && line.charAt(end - 1) == '\r') {
-      end--;
-    }
-    return line.substring(0, end);
   }
 
   private static void accept(Consumer<String> sink, String line) {
@@ -184,13 +193,15 @@ final class ProcessExecution {
   }
 
   private static void terminate(Process process) {
-    List<ProcessHandle> descendants = process.descendants().toList();
-    descendants.forEach(ProcessHandle::destroy);
+    process.descendants().forEach(ProcessHandle::destroy);
     process.destroy();
     if (waitForDeath(process)) {
       return;
     }
-    descendants.forEach(ProcessHandle::destroyForcibly);
+    // Re-read the descendants rather than reusing the pre-SIGTERM snapshot. A shell defers SIGTERM
+    // until its foreground child finishes, and installer scripts keep spawning helpers, so the
+    // survivors after the grace period are frequently not the processes that existed before it.
+    process.descendants().forEach(ProcessHandle::destroyForcibly);
     process.destroyForcibly();
     waitForDeath(process);
   }
@@ -204,11 +215,38 @@ final class ProcessExecution {
     }
   }
 
-  private static void joinPump(Thread pump) {
+  /**
+   * Waits for the output pump, then guarantees it has stopped touching the capture.
+   *
+   * <p>The pump can outlive the child: a grandchild that inherited stdout keeps the pipe open, so
+   * the read never returns EOF. Closing the stream unblocks it. Without that the pump could run
+   * forever, and the caller would read the capture while it was still being written -- with no
+   * happens-before edge, so the returned output could be torn.
+   */
+  private static void joinPump(Thread pump, Process process) {
+    if (joinFor(pump, DRAIN_GRACE)) {
+      return;
+    }
+    closeQuietly(process);
+    if (!joinFor(pump, DRAIN_GRACE)) {
+      log.debug("Output pump did not stop; captured output may be incomplete");
+    }
+  }
+
+  private static boolean joinFor(Thread pump, Duration limit) {
     try {
-      pump.join(DRAIN_GRACE);
+      pump.join(limit);
     } catch (InterruptedException e) {
       Thread.currentThread().interrupt();
+    }
+    return !pump.isAlive();
+  }
+
+  private static void closeQuietly(Process process) {
+    try {
+      process.getInputStream().close();
+    } catch (IOException ignored) {
+      // Already closed, or the pump is mid-read; either way there is nothing to recover.
     }
   }
 

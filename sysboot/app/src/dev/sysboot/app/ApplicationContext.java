@@ -60,7 +60,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 
-public final class ApplicationContext {
+public final class ApplicationContext implements AutoCloseable {
 
   private final BootstrapOrchestrator orchestrator;
   private final ConfigLoader configLoader;
@@ -68,6 +68,7 @@ public final class ApplicationContext {
   private final ParallelProbeRunner parallelProbeRunner;
   private final ExecutionPlanBuilder executionPlanBuilder;
   private final HostFactsProvider hostFactsProvider;
+  private final Optional<SudoSession> sudoSession;
 
   private ApplicationContext(
       BootstrapOrchestrator orchestrator,
@@ -75,13 +76,27 @@ public final class ApplicationContext {
       Optional<SysbootTuiApp> tuiApp,
       ParallelProbeRunner parallelProbeRunner,
       ExecutionPlanBuilder executionPlanBuilder,
-      HostFactsProvider hostFactsProvider) {
+      HostFactsProvider hostFactsProvider,
+      Optional<SudoSession> sudoSession) {
     this.orchestrator = orchestrator;
     this.configLoader = configLoader;
     this.tuiApp = tuiApp;
     this.parallelProbeRunner = parallelProbeRunner;
     this.executionPlanBuilder = executionPlanBuilder;
     this.hostFactsProvider = hostFactsProvider;
+    this.sudoSession = sudoSession;
+  }
+
+  /**
+   * Releases resources held for the run.
+   *
+   * <p>Currently that means zeroing the cached sudo password and stopping its keepalive thread.
+   * Without an explicit call the password stayed on the heap for the life of the process and the
+   * keepalive kept sudo's timestamp valid long after Fluxion had finished.
+   */
+  @Override
+  public void close() {
+    sudoSession.ifPresent(SudoSession::close);
   }
 
   public BootstrapOrchestrator orchestrator() {
@@ -148,7 +163,8 @@ public final class ApplicationContext {
         Optional.of(tuiApp),
         new ParallelProbeRunner(probeRegistry),
         new ExecutionPlanBuilder(registry),
-        hostFactsProvider);
+        hostFactsProvider,
+        Optional.of(sudoProvider));
   }
 
   public static ApplicationContext forCli(
@@ -173,7 +189,8 @@ public final class ApplicationContext {
         Optional.empty(),
         new ParallelProbeRunner(probeRegistry),
         new ExecutionPlanBuilder(registry),
-        hostFactsProvider);
+        hostFactsProvider,
+        Optional.empty());
   }
 
   private static BootstrapOrchestratorImpl buildOrchestrator(

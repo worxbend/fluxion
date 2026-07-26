@@ -92,7 +92,14 @@ public final class ApplyCommand implements Runnable {
     if (resetState) {
       stateRepository.reset(profile);
     }
-    var context = ApplicationContext.create(!useTui, profile, effectiveSkip, reProbe);
+    try (var context = ApplicationContext.create(!useTui, profile, effectiveSkip, reProbe)) {
+      execute(context, stateRepository, useTui);
+    }
+  }
+
+  /** Closing the context zeroes the cached sudo password and stops its keepalive. */
+  private void execute(
+      ApplicationContext context, JsonStateRepository stateRepository, boolean useTui) {
     BootstrapConfig config = context.configLoader().load(options.resolvedConfigFile());
     BootstrapConfig filtered = applyFilters(config);
 
@@ -133,13 +140,24 @@ public final class ApplyCommand implements Runnable {
         throw new CliFailureException(ExitCode.PAUSED, paused.getMessage(), paused);
       }
     } else {
-      try {
-        context
-            .tuiApp()
-            .orElseThrow(() -> new IllegalStateException("TUI mode is not available"))
-            .run(filtered, dryRun);
-      } catch (java.io.IOException e) {
-        throw new CliFailureException(ExitCode.IO_ERROR, "TUI error: " + e.getMessage(), e);
+      var tui =
+          context
+              .tuiApp()
+              .orElseThrow(() -> new IllegalStateException("TUI mode is not available"));
+      tui.showCommandOutput(options.verbose());
+      var tuiFailure = new java.util.concurrent.atomic.AtomicReference<RuntimeException>();
+      InterruptibleRun.run(
+          cancellation -> {
+            try {
+              tui.run(filtered, dryRun, cancellation);
+            } catch (java.io.IOException e) {
+              tuiFailure.set(
+                  new CliFailureException(ExitCode.IO_ERROR, "TUI error: " + e.getMessage(), e));
+            }
+          },
+          () -> {});
+      if (tuiFailure.get() != null) {
+        throw tuiFailure.get();
       }
     }
   }

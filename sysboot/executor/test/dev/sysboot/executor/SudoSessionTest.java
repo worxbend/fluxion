@@ -71,15 +71,77 @@ class SudoSessionTest {
   void neverPromptsWhenSudoIsPasswordlessOnThisHost() {
     var prompts = new AtomicInteger();
     var validator = new FakeValidator(true);
-    validator.passwordless = true;
+    validator.availability = SudoSession.Availability.NO_PROMPT_NEEDED;
 
     try (var session = new SudoSession(counting(prompts, "secret"), validator, longInterval())) {
       assertThat(session.requestPassword("p")).isEmpty();
-      assertThat(session.isPasswordless()).isTrue();
+      assertThat(session.isPromptFree()).isTrue();
       assertThat(session.isAuthenticated()).isTrue();
     }
 
     assertThat(prompts).hasValue(0);
+  }
+
+  @Test
+  void aWarmSudoTimestampStillStartsTheKeepaliveSoItCannotLapseMidRun() throws Exception {
+    // `sudo -n -v` succeeds on a merely warm timestamp, not only under NOPASSWD, and the two are
+    // indistinguishable. Without a keepalive the timestamp expires part-way through a long run and
+    // every later privileged step fails with no way to recover.
+    var validator = new FakeValidator(true);
+    validator.availability = SudoSession.Availability.NO_PROMPT_NEEDED;
+
+    try (var session = new SudoSession(fixed("secret"), validator, Duration.ofMillis(20))) {
+      session.requestPassword("p");
+      Thread.sleep(200);
+      assertThat(validator.refreshes.get()).isPositive();
+    }
+  }
+
+  @Test
+  void aUserWithNoSudoRightsIsNotPromptedAtAll() {
+    var prompts = new AtomicInteger();
+    var validator = new FakeValidator(true);
+    validator.availability = SudoSession.Availability.NOT_PERMITTED;
+
+    try (var session = new SudoSession(counting(prompts, "secret"), validator, longInterval())) {
+      assertThat(session.requestPassword("p")).isEmpty();
+    }
+
+    assertThat(prompts).as("prompting a user who may not run sudo is pointless").hasValue(0);
+  }
+
+  @Test
+  void aValidationTimeoutKeepsThePasswordInsteadOfCallingItWrong() {
+    var prompts = new AtomicInteger();
+    var validator = new FakeValidator(true);
+    validator.verdictOverride = SudoSession.AuthResult.INDETERMINATE;
+
+    try (var session = new SudoSession(counting(prompts, "secret"), validator, longInterval())) {
+      assertThat(session.requestPassword("p")).isPresent();
+    }
+
+    assertThat(prompts)
+        .as("a timeout must not be reported to the user as a wrong password")
+        .hasValue(1);
+  }
+
+  @Test
+  void losingPromptFreeSudoFallsBackToPromptingRatherThanFailingSilently() throws Exception {
+    var prompts = new AtomicInteger();
+    var validator = new FakeValidator(true);
+    validator.availability = SudoSession.Availability.NO_PROMPT_NEEDED;
+    validator.refreshSucceeds = false;
+
+    try (var session =
+        new SudoSession(counting(prompts, "secret"), validator, Duration.ofMillis(20))) {
+      assertThat(session.requestPassword("p")).isEmpty();
+      Thread.sleep(200);
+
+      validator.availability = SudoSession.Availability.PASSWORD_REQUIRED;
+      assertThat(session.requestPassword("p")).isPresent();
+    }
+
+    assertThat(prompts).hasValue(1);
   }
 
   @Test
@@ -136,29 +198,38 @@ class SudoSessionTest {
 
   private static final class FakeValidator implements SudoSession.Validator {
 
-    private final List<Boolean> verdicts;
+    private final List<SudoSession.AuthResult> verdicts;
     private final AtomicInteger calls = new AtomicInteger();
     private final AtomicInteger refreshes = new AtomicInteger();
-    private boolean passwordless;
+    private SudoSession.Availability availability = SudoSession.Availability.PASSWORD_REQUIRED;
+    private boolean refreshSucceeds = true;
+    private SudoSession.AuthResult verdictOverride;
 
     FakeValidator(Boolean... verdicts) {
-      this.verdicts = List.of(verdicts);
+      this.verdicts =
+          List.of(verdicts).stream()
+              .map(ok -> ok ? SudoSession.AuthResult.ACCEPTED : SudoSession.AuthResult.REJECTED)
+              .toList();
     }
 
     @Override
-    public boolean passwordlessSudoAvailable() {
-      return passwordless;
+    public SudoSession.Availability availability() {
+      return availability;
     }
 
     @Override
-    public boolean accepts(char[] password) {
+    public SudoSession.AuthResult check(char[] password) {
+      if (verdictOverride != null) {
+        return verdictOverride;
+      }
       int index = Math.min(calls.getAndIncrement(), verdicts.size() - 1);
       return verdicts.get(index);
     }
 
     @Override
-    public void refresh() {
+    public boolean refresh() {
       refreshes.incrementAndGet();
+      return refreshSucceeds;
     }
   }
 }

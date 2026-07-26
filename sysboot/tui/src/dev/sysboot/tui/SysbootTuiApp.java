@@ -57,6 +57,24 @@ public final class SysbootTuiApp {
   }
 
   public void run(BootstrapConfig config, boolean dryRun) throws IOException {
+    run(config, dryRun, dev.sysboot.core.CancellationSignal.never());
+  }
+
+  /** Enables the live command-output log pane. Off by default; see TuiExecutionEventListener. */
+  public void showCommandOutput(boolean enabled) {
+    eventListener.showCommandOutput(enabled);
+  }
+
+  /**
+   * Runs the TUI, honouring a cancellation signal.
+   *
+   * <p>Ctrl-C previously hard-killed the JVM in TUI mode, which is the default whenever a console
+   * is attached — so the graceful-stop behaviour only applied to {@code --no-tui} runs, i.e. the
+   * ones least likely to be interrupted by hand.
+   */
+  public void run(
+      BootstrapConfig config, boolean dryRun, dev.sysboot.core.CancellationSignal cancellation)
+      throws IOException {
     if (config == null) {
       out.print(DashboardScreen.render(new AppState.Dashboard(profilePaths, 0), detectOs()));
       return;
@@ -68,7 +86,7 @@ public final class SysbootTuiApp {
     var screen = ExecutionScreenState.initial(selected);
     stateRef.set(new AppState.Executing(screen, selected));
     AtomicReference<Throwable> failure = new AtomicReference<>();
-    Thread runner = runOrchestrator(selected, dryRun, failure);
+    Thread runner = runOrchestrator(selected, dryRun, failure, cancellation);
     var updated = renderUntilComplete(selected, screen, runner);
     throwIfFailed(failure);
     stateRef.set(new AppState.Completed(updated));
@@ -76,7 +94,10 @@ public final class SysbootTuiApp {
   }
 
   private Thread runOrchestrator(
-      BootstrapConfig config, boolean dryRun, AtomicReference<Throwable> failure) {
+      BootstrapConfig config,
+      boolean dryRun,
+      AtomicReference<Throwable> failure,
+      dev.sysboot.core.CancellationSignal cancellation) {
     return Thread.ofVirtual()
         .name("fluxion-tui-orchestrator")
         .start(
@@ -85,7 +106,7 @@ public final class SysbootTuiApp {
                 if (dryRun) {
                   orchestrator.dryRun(config, eventListener);
                 } else {
-                  orchestrator.execute(config, eventListener);
+                  orchestrator.execute(config, eventListener, cancellation);
                 }
               } catch (ExecutionPausedException ignored) {
                 // The pause event has already been emitted; render it as a controlled stop.
