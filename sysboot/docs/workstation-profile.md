@@ -315,13 +315,22 @@ Each item requires an absolute `destination` and exactly one of string `content`
 - name: nerd-fonts
   kind: nerd-fonts
   spec:
-    installerVersion: v1.0.5
-    nerdfontBinary: nerdfont-install
+    installerVersion: v1.0.7
+    nerdfontBinary: nerd-fonts-installer
     config:
       release: latest
       destination: ~/.local/share/fonts/NerdFonts
       refreshFontCache: true
       families: [JetBrainsMono, Hack]
+```
+
+A textual `config` names an existing installer config to use as-is, instead of generating one:
+
+```yaml
+- name: nerd-fonts
+  kind: nerd-fonts
+  spec:
+    config: ~/.config/nerd-fonts-installer/config.yaml
 ```
 
 `config` must be an object for `nerd-fonts`. `families` must contain at least one font family.
@@ -333,11 +342,34 @@ Each item requires an absolute `destination` and exactly one of string `content`
   kind: dotfiles-apply
   spec:
     config: ~/.dotfiles/install.conf.yaml
-    installerVersion: v0.2.1
+    installerVersion: v0.4.2
     dotbotBinary: dotbot
 ```
 
 `config` or `configPath` must be a path string. Object-shaped `config` is rejected for this kind.
+
+`fluxion plan` runs `dotbot plan -c <config> --output json`, and `fluxion dry-run` runs
+`dotbot -c <config> --dry-run`, so the preview is Dotbot's own per-link plan rather than an opaque
+command string. Note that force-linked entries replace matching local config paths when applied.
+
+### `binstaller-profile`
+
+```yaml
+- name: developer-binaries
+  kind: binstaller-profile
+  spec:
+    config: ~/.config/binstaller/config.yaml
+    only: [yazi, neovim]
+    skip: [zig]
+    locked: true
+    lockFile: ~/binstaller.lock.json
+    installerVersion: v0.2.0
+```
+
+Delegates to [`binstaller`](https://github.com/worxbend/binstaller): `plan`/`dry-run` map to
+`binstaller plan`, `apply` to `binstaller apply`, and drift reporting to `binstaller versions`.
+`config` must be a path — an inline `BinaryDistributionProfile` object is rejected, because
+binstaller owns that schema. Setting `locked: true` requires `lockFile`.
 
 ## Interrupt and resume
 

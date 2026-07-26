@@ -280,6 +280,6 @@ No Spring. No Gradle. No service locator soup. Constructors and Mill.
 - Native image uses GraalVM Community 25.
 - Dry-run, plan, status, diff, doctor, and validate are non-mutating.
 - Passwords, sudo input, sensitive environment values, tokens, and password-like text should never hit logs, events, failure text, or TUI state.
-- If TamboUI snapshots are not available, use `--no-tui`.
+- Use `--no-tui` for scripts, CI, and any non-interactive terminal.
 
 That is the tool. One file says what the machine should become. `fluxion` does the boring part.

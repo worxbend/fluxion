@@ -364,13 +364,52 @@ extracts the configured binary entry, and runs it with `--config`.
 
 ---
 
+### `binstaller-profile` — install portable binaries with binstaller
+
+Delegates binary tool distribution to
+[`binstaller`](https://github.com/worxbend/binstaller). Fluxion does not re-declare your tool list:
+it points at the `BinaryDistributionProfile` you already maintain and maps its own verbs onto
+binstaller's.
+
+| Fluxion | binstaller |
+| --- | --- |
+| `plan`, `dry-run` | `plan` |
+| `apply` | `apply` |
+| `status`, `diff` | `versions` |
+
+`dry-run` never invokes `apply`, so a preview cannot touch the machine.
+
+```yaml
+- type: binstaller-profile
+  name: developer-binaries
+  config: "~/.config/binstaller/config.yaml"
+  only: [yazi, neovim]        # optional; empty means every tool in the profile
+  skip: [zig]                 # optional
+  locked: true                # optional; requires lockFile
+  lockFile: "~/binstaller.lock.json"
+  installerVersion: "v0.2.0"  # binstaller release Fluxion installs if it is not on PATH
+  continueOnError: false
+```
+
+Tool resolution order is: an installation already on `PATH`, then Fluxion's cache under
+`~/.cache/fluxion/tools`, then a fresh download whose SHA-256 is verified against the release's
+`.sha256` sidecar. Fluxion never shadows a `binstaller` you manage yourself.
+
+`config` must be a path. An inline profile object is rejected — binstaller owns that schema.
+
+---
+
 ### `nerd-fonts` — install Nerd Font families
+
+Delegates to [`nerd-fonts-installer`](https://github.com/worxbend/nerd-fonts-installer). Fluxion
+resolves the tool from `PATH`, then from its cache under `~/.cache/fluxion/tools`, then downloads
+and checksum-verifies the release asset for the host platform.
 
 ```yaml
 - type: nerd-fonts
   name: nerd-fonts-install
-  installerVersion: "v1.0.5"
-  nerdfontBinary: "nerdfont-install"
+  installerVersion: "v1.0.7"
+  nerdfontBinary: "nerd-fonts-installer"
   config:
     release: "latest"
     destination: "~/.local/share/fonts/NerdFonts"
@@ -380,6 +419,19 @@ extracts the configured binary entry, and runs it with `--config`.
       - Hack
   probeCommand: "fc-list | grep -qi JetBrains"
 ```
+
+Instead of declaring `config` inline, point at an installer config you already maintain. This keeps
+one source of truth for your font set:
+
+```yaml
+- type: nerd-fonts
+  name: nerd-fonts-install
+  configPath: "~/.config/nerd-fonts-installer/config.yaml"
+```
+
+The project renamed its binary and release assets at `v1.0.7`. Pinning `v1.0.6` or older still
+works — Fluxion tries the current asset name first and the pre-rename name second — but set
+`nerdfontBinary: nerdfont-install` as well, since that is what those archives contain.
 
 ---
 

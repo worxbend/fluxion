@@ -42,13 +42,16 @@ The CLI entry point is `dev.sysboot.cli.Main`.
 
 - Java 25
 - Mill 1.1.6 YAML build in `sysboot/build.mill.yaml` plus module `package.mill.yaml` files
-- Picocli 4.7.6
-- Jackson YAML 2.17.2
-- TamboUI `0.3.0-SNAPSHOT`
-- pty4j
-- SLF4J and Logback
+- Picocli 4.7.6 (`cli`)
+- Jackson YAML 2.17.2 (`config-parser`)
+- commons-compress, SLF4J, Logback (`executor`)
 - JUnit 5, AssertJ, Mockito
 - GraalVM native-image task through `./mill cli.nativeImage`
+
+The `tui` module has **no third-party dependencies**: the terminal UI is hand-rolled ANSI output
+with a line-based prompt. Earlier notes here claimed TamboUI `0.3.0-SNAPSHOT` and pty4j; neither is
+in the build. `PtyShellRunner` is likewise not a PTY — it is a `ProcessBuilder` that can answer a
+sudo prompt on stdin. Replacing both is planned in `PLAN-i.md` (§10, §8.1).
 
 ## Source Map
 
