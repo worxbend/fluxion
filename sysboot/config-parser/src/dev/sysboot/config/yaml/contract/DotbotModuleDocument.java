@@ -5,7 +5,7 @@ import com.fasterxml.jackson.annotation.JsonProperty;
 public final class DotbotModuleDocument extends ModuleDocument {
 
   @JsonProperty("installerVersion")
-  public String installerVersion = "v0.2.1";
+  public String installerVersion = dev.sysboot.core.KnownTools.DOTBOT_GO.version();
 
   @JsonProperty("config")
   public String config;
