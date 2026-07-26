@@ -55,9 +55,14 @@ public final class FileWriteExecutor {
 
   public List<dev.sysboot.core.ModuleItem> items(FileWriteModule module) {
     return module.items().stream()
-        .map(item -> new dev.sysboot.core.ModuleItem(
-            module.name(), item.itemKey(), item.name(), dev.sysboot.core.ItemType.FILE_WRITE,
-            Optional.empty()))
+        .map(
+            item ->
+                new dev.sysboot.core.ModuleItem(
+                    module.name(),
+                    item.itemKey(),
+                    item.name(),
+                    dev.sysboot.core.ItemType.FILE_WRITE,
+                    Optional.empty()))
         .toList();
   }
 
@@ -123,7 +128,8 @@ public final class FileWriteExecutor {
 
   private List<String> chownCommand(FileWriteItem item, boolean sudo) {
     String ownerGroup = item.owner().orElse("") + item.group().map(group -> ":" + group).orElse("");
-    return sudo ? sudo("chown", ownerGroup, item.destination().toString())
+    return sudo
+        ? sudo("chown", ownerGroup, item.destination().toString())
         : List.of("chown", ownerGroup, item.destination().toString());
   }
 

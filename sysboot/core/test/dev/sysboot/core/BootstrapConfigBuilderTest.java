@@ -77,8 +77,7 @@ class BootstrapConfigBuilderTest {
 
   @Test
   void build_whenPolicyProvided_preservesPolicyDefaults() {
-    var policy =
-        new BootstrapPolicy(Optional.of(true), Optional.of(false), Optional.of(false));
+    var policy = new BootstrapPolicy(Optional.of(true), Optional.of(false), Optional.of(false));
 
     var config =
         BootstrapConfig.builder()

@@ -73,7 +73,9 @@ class LinuxHostFactsProviderTest {
 
     var provider =
         new LinuxHostFactsProvider(
-            tempDir.resolve("os-release"), Map.of("PATH", bin.toString()), Map.of("os.arch", "x86_64"));
+            tempDir.resolve("os-release"),
+            Map.of("PATH", bin.toString()),
+            Map.of("os.arch", "x86_64"));
 
     assertThat(provider.commandExists("fluxion-test-tool")).isTrue();
     assertThat(provider.commandExists("missing-tool")).isFalse();
@@ -83,7 +85,9 @@ class LinuxHostFactsProviderTest {
   void commandExists_whenCommandContainsPathSeparator_returnsFalse() {
     var provider =
         new LinuxHostFactsProvider(
-            tempDir.resolve("os-release"), Map.of("PATH", tempDir.toString()), Map.of("os.arch", "x86_64"));
+            tempDir.resolve("os-release"),
+            Map.of("PATH", tempDir.toString()),
+            Map.of("os.arch", "x86_64"));
 
     assertThat(provider.commandExists("./tool")).isFalse();
     assertThat(provider.commandExists("")).isFalse();

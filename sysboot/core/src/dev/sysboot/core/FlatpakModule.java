@@ -3,7 +3,8 @@ package dev.sysboot.core;
 import java.util.List;
 import java.util.Objects;
 
-public record FlatpakModule(ModuleName name, String remote, List<String> appIds, boolean continueOnError)
+public record FlatpakModule(
+    ModuleName name, String remote, List<String> appIds, boolean continueOnError)
     implements BootstrapModule {
 
   public FlatpakModule(ModuleName name, String remote, List<String> appIds) {

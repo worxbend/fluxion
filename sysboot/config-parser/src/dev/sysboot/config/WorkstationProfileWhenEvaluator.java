@@ -178,16 +178,18 @@ final class WorkstationProfileWhenEvaluator {
 
   private List<String> arrayValues(JsonNode node) {
     var values = new ArrayList<String>();
-    node.forEach(value -> {
-      if (value.isTextual() && !value.asText().isBlank()) {
-        values.add(value.asText().strip());
-      }
-    });
+    node.forEach(
+        value -> {
+          if (value.isTextual() && !value.asText().isBlank()) {
+            values.add(value.asText().strip());
+          }
+        });
     return List.copyOf(values);
   }
 
   private boolean matchesAny(List<String> expected, Optional<String> actual) {
-    return actual.map(value -> expected.stream().anyMatch(match -> matches(match, value)))
+    return actual
+        .map(value -> expected.stream().anyMatch(match -> matches(match, value)))
         .orElse(false);
   }
 

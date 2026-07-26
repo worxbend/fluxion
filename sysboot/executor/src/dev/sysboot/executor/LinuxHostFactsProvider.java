@@ -127,8 +127,7 @@ public final class LinuxHostFactsProvider implements HostFactsProvider {
   }
 
   private java.util.stream.Stream<Path> pathDirectories() {
-    return optional(environment.get("PATH"))
-        .stream()
+    return optional(environment.get("PATH")).stream()
         .flatMap(path -> PATH_SEPARATOR.splitAsStream(path).filter(segment -> !segment.isBlank()))
         .map(Path::of);
   }

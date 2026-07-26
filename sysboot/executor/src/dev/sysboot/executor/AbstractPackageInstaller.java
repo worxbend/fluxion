@@ -1,7 +1,7 @@
 package dev.sysboot.executor;
 
-import dev.sysboot.core.PackageManagerExecutor;
 import dev.sysboot.core.PackageManagerAction;
+import dev.sysboot.core.PackageManagerExecutor;
 import dev.sysboot.core.PackageName;
 import dev.sysboot.core.ProcessResult;
 import dev.sysboot.core.ShellRunner;
@@ -67,6 +67,7 @@ abstract sealed class AbstractPackageInstaller implements PackageManagerExecutor
     if (successExitCodes.contains(result.exitCode())) {
       return new StepResult.Success(item, result.elapsed());
     }
-    return new StepResult.Failure(item, result.stdout() + result.stderr(), result.exitCode(), result.elapsed());
+    return new StepResult.Failure(
+        item, result.stdout() + result.stderr(), result.exitCode(), result.elapsed());
   }
 }

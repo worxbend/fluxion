@@ -185,10 +185,7 @@ final class TuiSelectionPrompt {
   private void renderSkippedSteps(List<SkippedPlanEntry> skippedEntries) {
     for (SkippedPlanEntry skipped : skippedEntries) {
       out.printf(
-          "    [-] %s  (%s skipped: %s)%n",
-          skipped.name(),
-          skipped.kind(),
-          skipped.reason());
+          "    [-] %s  (%s skipped: %s)%n", skipped.name(), skipped.kind(), skipped.reason());
     }
   }
 

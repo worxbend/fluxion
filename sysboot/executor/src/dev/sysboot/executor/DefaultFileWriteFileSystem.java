@@ -33,7 +33,8 @@ final class DefaultFileWriteFileSystem implements FileWriteFileSystem {
 
   @Override
   public void setMode(Path path, String mode) throws IOException {
-    Set<PosixFilePermission> permissions = PosixFilePermissions.fromString(toPermissionString(mode));
+    Set<PosixFilePermission> permissions =
+        PosixFilePermissions.fromString(toPermissionString(mode));
     Files.setPosixFilePermissions(path, permissions);
   }
 

@@ -1,7 +1,7 @@
 package dev.sysboot.executor;
 
-import dev.sysboot.core.PackageManagerKind;
 import dev.sysboot.core.PackageManagerAction;
+import dev.sysboot.core.PackageManagerKind;
 import dev.sysboot.core.PackageName;
 import dev.sysboot.core.ShellRunner;
 import dev.sysboot.core.SudoPasswordProvider;
@@ -31,7 +31,8 @@ public final class ZypperPackageInstaller extends AbstractPackageInstaller {
       case "update" -> command("update", concat("-y", action.args()));
       case "dup" -> command("dup", concat("-y", action.args()));
       case "dup-from" -> command("dup", dupFromArgs(action.args()));
-      default -> throw new UnsupportedOperationException("Unsupported zypper action: " + action.action());
+      default ->
+          throw new UnsupportedOperationException("Unsupported zypper action: " + action.action());
     };
   }
 

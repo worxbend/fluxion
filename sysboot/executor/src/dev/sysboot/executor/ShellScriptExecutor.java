@@ -50,7 +50,9 @@ public final class ShellScriptExecutor {
   }
 
   public List<String> commandPreview(ShellScriptItem item) {
-    return redactor.redactCommand(buildCommand("<interpreter>", Path.of(item.key()), item.args(), item.sudo()), item.environment());
+    return redactor.redactCommand(
+        buildCommand("<interpreter>", Path.of(item.key()), item.args(), item.sudo()),
+        item.environment());
   }
 
   private StepResult executeItem(ShellScriptItem item) {
@@ -76,7 +78,9 @@ public final class ShellScriptExecutor {
   }
 
   private Path scriptPath(ShellScriptItem item) {
-    return item.script().map(script -> script.value()).orElseGet(() -> download(item.url().orElseThrow()));
+    return item.script()
+        .map(script -> script.value())
+        .orElseGet(() -> download(item.url().orElseThrow()));
   }
 
   private Path download(URI url) {
@@ -113,7 +117,8 @@ public final class ShellScriptExecutor {
     }
   }
 
-  private List<String> buildCommand(String interpreter, Path script, List<String> args, boolean sudo) {
+  private List<String> buildCommand(
+      String interpreter, Path script, List<String> args, boolean sudo) {
     List<String> command = new ArrayList<>();
     if (sudo) {
       command.add("sudo");
@@ -133,7 +138,11 @@ public final class ShellScriptExecutor {
 
   private boolean unlessMatches(ShellScriptItem item) {
     return item.unless()
-        .map(command -> shellRunner.run(List.of("/bin/bash", "-lc", command), buildEnv(item), CHECK_TIMEOUT).isSuccess())
+        .map(
+            command ->
+                shellRunner
+                    .run(List.of("/bin/bash", "-lc", command), buildEnv(item), CHECK_TIMEOUT)
+                    .isSuccess())
         .orElse(false);
   }
 }

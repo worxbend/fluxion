@@ -132,5 +132,4 @@ public record CompiledBinaryModule(
         Optional.empty(),
         Optional.empty());
   }
-
 }

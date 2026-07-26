@@ -23,10 +23,10 @@ class PackageActionCommandTest {
     var installer = new AptPackageInstaller(shellRunner, sudoPasswordProvider);
 
     List<String> command =
-        installer.actionCommand(new PackageManagerAction("dist-upgrade", List.of("--with-new-pkgs")));
+        installer.actionCommand(
+            new PackageManagerAction("dist-upgrade", List.of("--with-new-pkgs")));
 
-    assertThat(command)
-        .containsExactly("sudo", "apt-get", "dist-upgrade", "-y", "--with-new-pkgs");
+    assertThat(command).containsExactly("sudo", "apt-get", "dist-upgrade", "-y", "--with-new-pkgs");
   }
 
   @Test

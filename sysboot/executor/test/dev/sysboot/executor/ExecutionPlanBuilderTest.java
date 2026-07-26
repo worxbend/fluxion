@@ -11,8 +11,8 @@ import dev.sysboot.core.ItemType;
 import dev.sysboot.core.ManualModule;
 import dev.sysboot.core.ModuleName;
 import dev.sysboot.core.OsTarget;
-import dev.sysboot.core.PackageManagerExecutor;
 import dev.sysboot.core.PackageManagerAction;
+import dev.sysboot.core.PackageManagerExecutor;
 import dev.sysboot.core.PackageManagerKind;
 import dev.sysboot.core.PackageModule;
 import dev.sysboot.core.PackageName;
@@ -21,9 +21,9 @@ import dev.sysboot.core.Phase;
 import dev.sysboot.core.PhaseName;
 import dev.sysboot.core.ProfileName;
 import dev.sysboot.core.RestartPolicy;
-import dev.sysboot.core.SkippedPlanEntry;
 import dev.sysboot.core.RpmRepositoryModule;
 import dev.sysboot.core.RpmRepositorySourceSetup;
+import dev.sysboot.core.SkippedPlanEntry;
 import dev.sysboot.core.StepResult;
 import java.io.IOException;
 import java.net.URI;
@@ -64,8 +64,8 @@ class ExecutionPlanBuilderTest {
   }
 
   @Test
-  void build_whenWorkstationProfilePackagePlansLoaded_includesDryRunPlanItems(
-      @TempDir Path tmpDir) throws IOException {
+  void build_whenWorkstationProfilePackagePlansLoaded_includesDryRunPlanItems(@TempDir Path tmpDir)
+      throws IOException {
     Path configFile = tmpDir.resolve("config.yaml");
     Files.writeString(configFile, workstationProfileWithAllPackageKinds());
     BootstrapConfig config = new YamlConfigLoader().load(configFile);
@@ -74,7 +74,8 @@ class ExecutionPlanBuilderTest {
     ExecutionPlan plan = builder.build(config);
 
     assertThat(plan.profileName()).isEqualTo("package-plan-test");
-    assertThat(plan.phases().getFirst().modules()).extracting(ExecutionPlan.Module::name)
+    assertThat(plan.phases().getFirst().modules())
+        .extracting(ExecutionPlan.Module::name)
         .containsExactly(
             "apt-base",
             "dnf-base",
@@ -105,7 +106,8 @@ class ExecutionPlanBuilderTest {
     ExecutionPlan plan = builder.build(config);
 
     ExecutionPlan.Module module = plan.phases().getFirst().modules().getFirst();
-    assertThat(module.items()).extracting(item -> item.item().key())
+    assertThat(module.items())
+        .extracting(item -> item.item().key())
         .containsExactly("action[0]", "git");
     assertThat(module.items().get(0).commandPreview().orElseThrow())
         .containsExactly("sudo", "dnf", "check-update");
@@ -147,8 +149,8 @@ class ExecutionPlanBuilderTest {
   }
 
   @Test
-  void build_whenWorkstationProfilePlanEntriesSkipped_includesSkipReasons(
-      @TempDir Path tmpDir) throws IOException {
+  void build_whenWorkstationProfilePlanEntriesSkipped_includesSkipReasons(@TempDir Path tmpDir)
+      throws IOException {
     Path configFile = tmpDir.resolve("config.yaml");
     Files.writeString(configFile, workstationProfileWithSkippedPlan());
     BootstrapConfig config = new YamlConfigLoader().load(configFile);
@@ -156,7 +158,8 @@ class ExecutionPlanBuilderTest {
 
     ExecutionPlan plan = builder.build(config);
 
-    assertThat(plan.phases().getFirst().modules()).extracting(ExecutionPlan.Module::name)
+    assertThat(plan.phases().getFirst().modules())
+        .extracting(ExecutionPlan.Module::name)
         .containsExactly("selected");
     assertThat(plan.skippedEntries())
         .extracting(SkippedPlanEntry::name, SkippedPlanEntry::kind)
@@ -399,7 +402,8 @@ class ExecutionPlanBuilderTest {
         plan.phases().getFirst().modules().get(moduleIndex).items().getFirst();
     assertThat(item.item().key()).isEqualTo(key);
     assertThat(item.item().packageManager()).contains(PackageManagerKind.PARU);
-    assertThat(item.commandPreview().orElseThrow()).containsExactly("paru", "-S", "--noconfirm", key);
+    assertThat(item.commandPreview().orElseThrow())
+        .containsExactly("paru", "-S", "--noconfirm", key);
   }
 
   private static void assertCargoPlanItem(ExecutionPlan plan, int moduleIndex, String key) {
@@ -440,10 +444,12 @@ class ExecutionPlanBuilderTest {
     return List.of(
         packageExecutor(PackageManagerKind.APT),
         new ParuPackageInstaller(
-            (command, environment, timeout) -> new dev.sysboot.core.ProcessResult(0, "", "", Duration.ZERO),
+            (command, environment, timeout) ->
+                new dev.sysboot.core.ProcessResult(0, "", "", Duration.ZERO),
             prompt -> Optional.empty()),
         new CargoPackageInstaller(
-            (command, environment, timeout) -> new dev.sysboot.core.ProcessResult(0, "", "", Duration.ZERO),
+            (command, environment, timeout) ->
+                new dev.sysboot.core.ProcessResult(0, "", "", Duration.ZERO),
             prompt -> Optional.empty()),
         dnf(),
         packageExecutor(PackageManagerKind.PACMAN),
@@ -487,100 +493,100 @@ class ExecutionPlanBuilderTest {
 
   private static String workstationProfileWithAllPackageKinds() {
     return """
-        apiVersion: initkit.io/v1alpha1
-        kind: WorkstationProfile
-        metadata:
-          name: package-plan-test
-        spec:
-          target:
-            os:
-              distribution: fedora
-              release: "44"
-          plan:
-            - name: apt-base
-              kind: apt-packages
-              spec:
-                packages: [curl, git]
-            - name: dnf-base
-              kind: dnf-packages
-              spec:
-                packages: [ripgrep]
-            - name: aur-apps
-              kind: aur-packages
-              spec:
-                packageManager: paru
-                packages: [visual-studio-code-bin]
-            - name: cargo-tools
-              kind: cargo-packages
-              spec:
-                packages: [cargo-binstall]
-            - name: sdkman-tools
-              kind: sdkman-packages
-              spec:
-                packages:
-                  - candidate: java
-                    version: 25.0.1-tem
-                  - gradle
-            - name: pacman-base
-              kind: pacman-packages
-              spec:
-                packages: [fd]
-            - name: zypper-base
-              kind: zypper-packages
-              spec:
-                packages: [htop]
-            - name: desktop-apps
-              kind: flatpak-packages
-              spec:
-                remote: fedora
-                apps: [org.mozilla.firefox]
-                appIds: [com.slack.Slack]
-        """;
+    apiVersion: initkit.io/v1alpha1
+    kind: WorkstationProfile
+    metadata:
+      name: package-plan-test
+    spec:
+      target:
+        os:
+          distribution: fedora
+          release: "44"
+      plan:
+        - name: apt-base
+          kind: apt-packages
+          spec:
+            packages: [curl, git]
+        - name: dnf-base
+          kind: dnf-packages
+          spec:
+            packages: [ripgrep]
+        - name: aur-apps
+          kind: aur-packages
+          spec:
+            packageManager: paru
+            packages: [visual-studio-code-bin]
+        - name: cargo-tools
+          kind: cargo-packages
+          spec:
+            packages: [cargo-binstall]
+        - name: sdkman-tools
+          kind: sdkman-packages
+          spec:
+            packages:
+              - candidate: java
+                version: 25.0.1-tem
+              - gradle
+        - name: pacman-base
+          kind: pacman-packages
+          spec:
+            packages: [fd]
+        - name: zypper-base
+          kind: zypper-packages
+          spec:
+            packages: [htop]
+        - name: desktop-apps
+          kind: flatpak-packages
+          spec:
+            remote: fedora
+            apps: [org.mozilla.firefox]
+            appIds: [com.slack.Slack]
+    """;
   }
 
   private static String workstationProfileWithSkippedPlan() {
     return """
-        apiVersion: initkit.io/v1alpha1
-        kind: WorkstationProfile
-        metadata:
-          name: skipped-plan-test
-        spec:
-          target:
-            os:
-              distribution: fedora
-              release: "44"
-          plan:
-            - name: selected
-              kind: dnf-packages
-              spec:
-                packages: [git]
-            - name: skipped
-              kind: dnf-packages
-              when:
-                distribution: no-such-os
-              spec:
-                packages: [curl]
-        """;
+    apiVersion: initkit.io/v1alpha1
+    kind: WorkstationProfile
+    metadata:
+      name: skipped-plan-test
+    spec:
+      target:
+        os:
+          distribution: fedora
+          release: "44"
+      plan:
+        - name: selected
+          kind: dnf-packages
+          spec:
+            packages: [git]
+        - name: skipped
+          kind: dnf-packages
+          when:
+            distribution: no-such-os
+          spec:
+            packages: [curl]
+    """;
   }
 
   private static String workstationProfileWithPackageActions() {
     return """
-        apiVersion: initkit.io/v1alpha1
-        kind: WorkstationProfile
-        metadata:
-          name: package-action-test
-        spec:
-          target:
-            os:
-              distribution: fedora
-              release: "44"
-          plan:
-            - name: dnf-base
-              kind: dnf-packages
-              spec:
-                actions: [check-update]
-                packages: [git]
-        """;
+    apiVersion: initkit.io/v1alpha1
+    kind: WorkstationProfile
+    metadata:
+      name: package-action-test
+    spec:
+      target:
+        os:
+          distribution: fedora
+          release: "44"
+      plan:
+        - name: dnf-base
+          kind: dnf-packages
+          spec:
+            actions: [check-update]
+            packages: [git]
+    """;
   }
 
   private static PackageManagerExecutor dnf() {

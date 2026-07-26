@@ -27,9 +27,9 @@ import dev.sysboot.core.PacmanRepositoryModule;
 import dev.sysboot.core.RestartPolicy;
 import dev.sysboot.core.RpmRepositoryModule;
 import dev.sysboot.core.RpmRepositorySourceSetup;
+import dev.sysboot.core.SdkmanModule;
 import dev.sysboot.core.ShellCommandModule;
 import dev.sysboot.core.ShellScriptModule;
-import dev.sysboot.core.SdkmanModule;
 import dev.sysboot.core.ZypperRepositorySourceSetup;
 import java.io.IOException;
 import java.nio.file.Files;
@@ -351,8 +351,8 @@ class YamlConfigLoaderTest {
   }
 
   @Test
-  void load_whenWorkstationProfileAurPackageUsesYay_mapsYayPackageModule(
-      @TempDir Path tmpDir) throws IOException {
+  void load_whenWorkstationProfileAurPackageUsesYay_mapsYayPackageModule(@TempDir Path tmpDir)
+      throws IOException {
     Path config =
         writeConfig(
             tmpDir,
@@ -408,10 +408,12 @@ class YamlConfigLoaderTest {
     BootstrapConfig result = loader.load(config);
 
     var module = (PackageModule) result.phases().getFirst().modules().getFirst();
-    assertThat(module.actions()).extracting(action -> action.action())
+    assertThat(module.actions())
+        .extracting(action -> action.action())
         .containsExactly("check-update", "swap");
     assertThat(module.actions().get(1).args()).containsExactly("ffmpeg-free", "ffmpeg");
-    assertThat(module.packages()).extracting(packageName -> packageName.value())
+    assertThat(module.packages())
+        .extracting(packageName -> packageName.value())
         .containsExactly("ripgrep");
   }
 
@@ -578,7 +580,8 @@ class YamlConfigLoaderTest {
                         when:
                           distribution: arch
             """
-                .formatted(destination, tmpDir.resolve("copy.conf").toAbsolutePath(), source, skipped));
+                .formatted(
+                    destination, tmpDir.resolve("copy.conf").toAbsolutePath(), source, skipped));
 
     BootstrapConfig result = loader.load(config);
 
@@ -623,7 +626,8 @@ class YamlConfigLoaderTest {
     assertThatThrownBy(() -> loader.load(config))
         .isInstanceOf(ConfigLoadException.class)
         .hasMessageContaining("spec.plan[0].spec.files[0].destination must be absolute")
-        .hasMessageContaining("spec.plan[0].spec.files[0] must define exactly one of content or source")
+        .hasMessageContaining(
+            "spec.plan[0].spec.files[0] must define exactly one of content or source")
         .hasMessageContaining("spec.plan[0].spec.files[0].mode must be a 3 or 4 digit octal mode");
   }
 
@@ -961,7 +965,8 @@ class YamlConfigLoaderTest {
 
     BootstrapConfig result = hostLoader.load(config);
 
-    assertThat(result.modules()).extracting(module -> module.name().value())
+    assertThat(result.modules())
+        .extracting(module -> module.name().value())
         .containsExactly("apt-gated");
     assertThat(hostFacts.commandChecks()).containsExactly("apt", "dnf");
   }
@@ -974,7 +979,8 @@ class YamlConfigLoaderTest {
 
     BootstrapConfig result = new YamlConfigLoader(hostFacts).load(config);
 
-    assertThat(result.modules()).extracting(module -> module.name().value())
+    assertThat(result.modules())
+        .extracting(module -> module.name().value())
         .containsExactly(
             "apt-base",
             "dnf-base",
@@ -988,8 +994,7 @@ class YamlConfigLoaderTest {
 
   @Test
   void load_whenWorkstationProfileTargetsSupportedDistributions_mapsToOsTargets(
-      @TempDir Path tmpDir)
-      throws IOException {
+      @TempDir Path tmpDir) throws IOException {
     assertThat(loadWorkstationTarget(tmpDir, "fedora", "release: \"41\""))
         .isInstanceOf(OsTarget.FedoraTarget.class);
     assertThat(loadWorkstationTarget(tmpDir, "arch", "release: rolling"))
@@ -1022,8 +1027,8 @@ class YamlConfigLoaderTest {
   }
 
   @Test
-  void load_whenWorkstationProfileHeaderInvalid_reportsApiVersionAndKind(
-      @TempDir Path tmpDir) throws IOException {
+  void load_whenWorkstationProfileHeaderInvalid_reportsApiVersionAndKind(@TempDir Path tmpDir)
+      throws IOException {
     Path config =
         writeConfig(
             tmpDir,
@@ -1049,8 +1054,8 @@ class YamlConfigLoaderTest {
   }
 
   @Test
-  void load_whenWorkstationProfilePlanNamesInvalid_reportsOffendingEntries(
-      @TempDir Path tmpDir) throws IOException {
+  void load_whenWorkstationProfilePlanNamesInvalid_reportsOffendingEntries(@TempDir Path tmpDir)
+      throws IOException {
     Path config =
         writeConfig(
             tmpDir,
@@ -1083,8 +1088,8 @@ class YamlConfigLoaderTest {
   }
 
   @Test
-  void load_whenWorkstationProfilePlanKindUnsupported_reportsFieldPath(
-      @TempDir Path tmpDir) throws IOException {
+  void load_whenWorkstationProfilePlanKindUnsupported_reportsFieldPath(@TempDir Path tmpDir)
+      throws IOException {
     Path config =
         writeConfig(
             tmpDir,
@@ -1199,8 +1204,8 @@ class YamlConfigLoaderTest {
   }
 
   @Test
-  void load_whenWorkstationProfileStatePathEqualsManifest_reportsFieldPath(
-      @TempDir Path tmpDir) throws IOException {
+  void load_whenWorkstationProfileStatePathEqualsManifest_reportsFieldPath(@TempDir Path tmpDir)
+      throws IOException {
     Path config =
         writeConfig(
             tmpDir,
@@ -1226,8 +1231,8 @@ class YamlConfigLoaderTest {
   }
 
   @Test
-  void load_whenWorkstationProfilePolicyPresent_mapsPolicyAndPackageDefaults(
-      @TempDir Path tmpDir) throws IOException {
+  void load_whenWorkstationProfilePolicyPresent_mapsPolicyAndPackageDefaults(@TempDir Path tmpDir)
+      throws IOException {
     Path config =
         writeConfig(
             tmpDir,
@@ -1275,8 +1280,8 @@ class YamlConfigLoaderTest {
   }
 
   @Test
-  void load_whenWorkstationProfileVarsPresent_interpolatesMappedPackageFields(
-      @TempDir Path tmpDir) throws IOException {
+  void load_whenWorkstationProfileVarsPresent_interpolatesMappedPackageFields(@TempDir Path tmpDir)
+      throws IOException {
     Path config =
         writeConfig(
             tmpDir,
@@ -1723,8 +1728,8 @@ class YamlConfigLoaderTest {
   private void assertSelectedModules(Path tmpDir, HostFacts hostFacts, String... names)
       throws IOException {
     Path config = writeConfig(tmpDir, workstationProfileWithWhenConditions());
-    BootstrapConfig result = new YamlConfigLoader(new FakeHostFactsProvider(hostFacts, Set.of()))
-        .load(config);
+    BootstrapConfig result =
+        new YamlConfigLoader(new FakeHostFactsProvider(hostFacts, Set.of())).load(config);
     assertThat(result.modules()).extracting(module -> module.name().value()).containsExactly(names);
   }
 
@@ -1738,11 +1743,7 @@ class YamlConfigLoaderTest {
   }
 
   private static void assertPackageModule(
-      BootstrapConfig result,
-      int index,
-      String name,
-      PackageManagerKind kind,
-      String... packages) {
+      BootstrapConfig result, int index, String name, PackageManagerKind kind, String... packages) {
     assertThat(result.phases().getFirst().modules().get(index)).isInstanceOf(PackageModule.class);
     var module = (PackageModule) result.phases().getFirst().modules().get(index);
     assertThat(module.name().value()).isEqualTo(name);
@@ -1774,8 +1775,11 @@ class YamlConfigLoaderTest {
     var source = (AptRepositorySourceSetup) result.sourceSetups().get(index);
     assertThat(source.name().value()).isEqualTo("docker-apt");
     assertThat(source.sourceListPath().toString()).isEqualTo("/etc/apt/sources.list.d/docker.list");
-    assertThat(source.signingKeyUrl()).hasValueSatisfying(url -> assertThat(url.toString())
-        .isEqualTo("https://download.docker.com/linux/debian/gpg"));
+    assertThat(source.signingKeyUrl())
+        .hasValueSatisfying(
+            url ->
+                assertThat(url.toString())
+                    .isEqualTo("https://download.docker.com/linux/debian/gpg"));
     assertThat(source.keyringPath()).hasValue(Path.of("/etc/apt/keyrings/docker.gpg"));
   }
 
@@ -1811,125 +1815,125 @@ class YamlConfigLoaderTest {
 
   private static String workstationProfileWithAllPackageKinds() {
     return """
-        apiVersion: initkit.io/v1alpha1
-        kind: WorkstationProfile
-        metadata:
-          name: package-plan-test
-        spec:
-          target:
-            os:
-              distribution: fedora
-              release: "44"
-          plan:
-            - name: apt-base
-              kind: apt-packages
-              spec:
-                packages: [curl, git]
-            - name: dnf-base
-              kind: dnf-packages
-              spec:
-                packages: [ripgrep]
-            - name: aur-apps
-              kind: aur-packages
-              spec:
-                packageManager: paru
-                packages: [visual-studio-code-bin]
-            - name: cargo-tools
-              kind: cargo-packages
-              spec:
-                packages: [cargo-binstall]
-            - name: sdkman-tools
-              kind: sdkman-packages
-              spec:
-                packages:
-                  - candidate: java
-                    version: 25.0.1-tem
-                  - gradle
-            - name: pacman-base
-              kind: pacman-packages
-              spec:
-                packages: [fd]
-            - name: zypper-base
-              kind: zypper-packages
-              spec:
-                packages: [htop]
-            - name: desktop-apps
-              kind: flatpak-packages
-              spec:
-                remote: fedora
-                apps: [org.mozilla.firefox]
-                appIds: [com.slack.Slack]
-            """;
+    apiVersion: initkit.io/v1alpha1
+    kind: WorkstationProfile
+    metadata:
+      name: package-plan-test
+    spec:
+      target:
+        os:
+          distribution: fedora
+          release: "44"
+      plan:
+        - name: apt-base
+          kind: apt-packages
+          spec:
+            packages: [curl, git]
+        - name: dnf-base
+          kind: dnf-packages
+          spec:
+            packages: [ripgrep]
+        - name: aur-apps
+          kind: aur-packages
+          spec:
+            packageManager: paru
+            packages: [visual-studio-code-bin]
+        - name: cargo-tools
+          kind: cargo-packages
+          spec:
+            packages: [cargo-binstall]
+        - name: sdkman-tools
+          kind: sdkman-packages
+          spec:
+            packages:
+              - candidate: java
+                version: 25.0.1-tem
+              - gradle
+        - name: pacman-base
+          kind: pacman-packages
+          spec:
+            packages: [fd]
+        - name: zypper-base
+          kind: zypper-packages
+          spec:
+            packages: [htop]
+        - name: desktop-apps
+          kind: flatpak-packages
+          spec:
+            remote: fedora
+            apps: [org.mozilla.firefox]
+            appIds: [com.slack.Slack]
+    """;
   }
 
   private static String workstationProfileWithWhenConditions() {
     return """
-        apiVersion: initkit.io/v1alpha1
-        kind: WorkstationProfile
-        metadata:
-          name: when-test
-        spec:
-          target:
-            os:
-              distribution: fedora
-              release: "44"
-          plan:
-            - name: apt-base
-              kind: apt-packages
-              when:
-                distribution:
-                  oneOf: [debian, ubuntu]
-                architecture: amd64
-              spec:
-                packages: [curl]
-            - name: dnf-base
-              kind: dnf-packages
-              when:
-                distribution: fedora
-              spec:
-                packages: [ripgrep]
-            - name: pacman-base
-              kind: pacman-packages
-              when:
-                distributions: [arch]
-              spec:
-                packages: [fd]
-            - name: zypper-base
-              kind: zypper-packages
-              when:
-                oneOf:
-                  - distribution: opensuse
-                  - distribution: suse
-              spec:
-                packages: [htop]
-        """;
+    apiVersion: initkit.io/v1alpha1
+    kind: WorkstationProfile
+    metadata:
+      name: when-test
+    spec:
+      target:
+        os:
+          distribution: fedora
+          release: "44"
+      plan:
+        - name: apt-base
+          kind: apt-packages
+          when:
+            distribution:
+              oneOf: [debian, ubuntu]
+            architecture: amd64
+          spec:
+            packages: [curl]
+        - name: dnf-base
+          kind: dnf-packages
+          when:
+            distribution: fedora
+          spec:
+            packages: [ripgrep]
+        - name: pacman-base
+          kind: pacman-packages
+          when:
+            distributions: [arch]
+          spec:
+            packages: [fd]
+        - name: zypper-base
+          kind: zypper-packages
+          when:
+            oneOf:
+              - distribution: opensuse
+              - distribution: suse
+          spec:
+            packages: [htop]
+    """;
   }
 
   private static String workstationProfileWithCommandConditions() {
     return """
-        apiVersion: initkit.io/v1alpha1
-        kind: WorkstationProfile
-        metadata:
-          name: command-test
-        spec:
-          target:
-            os:
-              distribution: debian
-              release: "12"
-          plan:
-            - name: apt-gated
-              kind: apt-packages
-              when:
-                commandExists: apt
-              spec:
-                packages: [curl]
-            - name: dnf-gated
-              kind: dnf-packages
-              when:
-                commandExists: dnf
-              spec:
-                packages: [ripgrep]
-        """;
+    apiVersion: initkit.io/v1alpha1
+    kind: WorkstationProfile
+    metadata:
+      name: command-test
+    spec:
+      target:
+        os:
+          distribution: debian
+          release: "12"
+      plan:
+        - name: apt-gated
+          kind: apt-packages
+          when:
+            commandExists: apt
+          spec:
+            packages: [curl]
+        - name: dnf-gated
+          kind: dnf-packages
+          when:
+            commandExists: dnf
+          spec:
+            packages: [ripgrep]
+    """;
   }
 
   private static final class FakeHostFactsProvider implements HostFactsProvider {

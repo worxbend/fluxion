@@ -101,8 +101,7 @@ final class SdkmanModuleExecutor implements ModuleExecutor {
     return result;
   }
 
-  private void emitDryRun(
-      SdkmanModule module, SdkmanPackage pkg, ExecutionEventListener listener) {
+  private void emitDryRun(SdkmanModule module, SdkmanPackage pkg, ExecutionEventListener listener) {
     listener.onEvent(ExecutionEvent.itemStarted(module.name(), pkg.itemKey()));
     listener.onEvent(
         ExecutionEvent.itemCompleted(
@@ -113,8 +112,7 @@ final class SdkmanModuleExecutor implements ModuleExecutor {
 
   private List<String> command(SdkmanPackage pkg) {
     String install = "sdk install " + pkg.candidate() + versionArg(pkg);
-    return List.of(
-        "/bin/bash", "-lc", "source \"$HOME/.sdkman/bin/sdkman-init.sh\" && " + install);
+    return List.of("/bin/bash", "-lc", "source \"$HOME/.sdkman/bin/sdkman-init.sh\" && " + install);
   }
 
   private String versionArg(SdkmanPackage pkg) {

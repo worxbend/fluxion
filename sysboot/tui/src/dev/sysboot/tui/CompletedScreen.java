@@ -37,8 +37,7 @@ public final class CompletedScreen {
         "│  Selected: %-4d  Completed: %-4d  Failed: %-4d │\n"
             .formatted(selected, success, failed));
     sb.append(
-        "│  Interrupted: %-4d  Skipped: %-4d                  │\n"
-            .formatted(interrupted, skipped));
+        "│  Interrupted: %-4d  Skipped: %-4d                  │\n".formatted(interrupted, skipped));
     sb.append("└────────────────────────────────────────────────┘\n");
 
     if (!failures.isEmpty()) {

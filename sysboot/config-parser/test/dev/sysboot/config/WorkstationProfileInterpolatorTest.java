@@ -16,8 +16,7 @@ class WorkstationProfileInterpolatorTest {
       new ObjectMapper(new YAMLFactory()).findAndRegisterModules();
 
   @Test
-  void interpolate_whenVarsAndHostFactsPresent_resolvesManifestStringFields()
-      throws IOException {
+  void interpolate_whenVarsAndHostFactsPresent_resolvesManifestStringFields() throws IOException {
     JsonNode root = readTree(interpolationManifest());
     var interpolator =
         new WorkstationProfileInterpolator(
@@ -47,8 +46,7 @@ class WorkstationProfileInterpolatorTest {
   }
 
   @Test
-  void interpolate_whenPlanVariableUnresolved_reportsFieldPathAndPlanName()
-      throws IOException {
+  void interpolate_whenPlanVariableUnresolved_reportsFieldPathAndPlanName() throws IOException {
     JsonNode root =
         readTree(
             """
@@ -74,8 +72,7 @@ class WorkstationProfileInterpolatorTest {
   }
 
   @Test
-  void interpolate_whenShellSyntaxPresent_leavesNonBracedSyntaxLiteral()
-      throws IOException {
+  void interpolate_whenShellSyntaxPresent_leavesNonBracedSyntaxLiteral() throws IOException {
     JsonNode root =
         readTree(
             """
@@ -134,49 +131,49 @@ class WorkstationProfileInterpolatorTest {
 
   private String interpolationManifest() {
     return """
-        apiVersion: initkit.io/v1alpha1
-        kind: WorkstationProfile
-        metadata:
-          name: interpolation-test
-        spec:
-          vars:
-            configDir: ${HOME}/.config
-            binDir: ${HOME}/.local/bin
-            repoBase: https://example.test/${USER}/${host.os.arch}
-          policy:
-            statePath: ${HOME}/.local/state/fluxion.json
-          sources:
-            apt:
-              - name: docker
-                kind: apt-repository
-                spec:
-                  source: deb ${repoBase} stable
-                  sourceList: ${configDir}/apt/docker.list
-                  signingKeyUrl: ${repoBase}/gpg
-                  keyring: ${configDir}/apt/docker.gpg
-            pacman:
-              - name: chaotic
-                kind: pacman-repository
-                spec:
-                  server: ${repoBase}/$repo/$arch
-                  config: ${configDir}/pacman.conf
-          plan:
-            - name: setup
-              kind: commands
-              spec:
-                commands:
-                  - install ${binDir}/tool ${HOME}/bin/tool
-                args:
-                  - --user=${USER}
-                  - --arch=${host.os.arch}
-                destination: ${configDir}/dest
-                config: ${configDir}/tool.conf
-                configPath: ${configDir}/tool.yml
-            - name: binary
-              kind: binary-downloads
-              spec:
-                url: ${repoBase}/rg.tar.gz
-                installPath: ${binDir}/rg
-        """;
+    apiVersion: initkit.io/v1alpha1
+    kind: WorkstationProfile
+    metadata:
+      name: interpolation-test
+    spec:
+      vars:
+        configDir: ${HOME}/.config
+        binDir: ${HOME}/.local/bin
+        repoBase: https://example.test/${USER}/${host.os.arch}
+      policy:
+        statePath: ${HOME}/.local/state/fluxion.json
+      sources:
+        apt:
+          - name: docker
+            kind: apt-repository
+            spec:
+              source: deb ${repoBase} stable
+              sourceList: ${configDir}/apt/docker.list
+              signingKeyUrl: ${repoBase}/gpg
+              keyring: ${configDir}/apt/docker.gpg
+        pacman:
+          - name: chaotic
+            kind: pacman-repository
+            spec:
+              server: ${repoBase}/$repo/$arch
+              config: ${configDir}/pacman.conf
+      plan:
+        - name: setup
+          kind: commands
+          spec:
+            commands:
+              - install ${binDir}/tool ${HOME}/bin/tool
+            args:
+              - --user=${USER}
+              - --arch=${host.os.arch}
+            destination: ${configDir}/dest
+            config: ${configDir}/tool.conf
+            configPath: ${configDir}/tool.yml
+        - name: binary
+          kind: binary-downloads
+          spec:
+            url: ${repoBase}/rg.tar.gz
+            installPath: ${binDir}/rg
+    """;
   }
 }

@@ -42,7 +42,8 @@ final class SourceSetupExecutor {
       case RpmRepositorySourceSetup rpm -> rpmRepositoryInstaller.add(rpmModule(rpm));
       case ZypperRepositorySourceSetup zypper -> zypperRepositoryInstaller.add(zypper);
       case FlatpakRemoteSourceSetup flatpak -> flatpakRemoteInstaller.add(flatpakModule(flatpak));
-      case PacmanRepositorySourceSetup pacman -> pacmanRepositoryInstaller.add(pacmanModule(pacman));
+      case PacmanRepositorySourceSetup pacman ->
+          pacmanRepositoryInstaller.add(pacmanModule(pacman));
     };
   }
 

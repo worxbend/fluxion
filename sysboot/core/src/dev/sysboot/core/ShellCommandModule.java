@@ -31,7 +31,9 @@ public record ShellCommandModule(
 
   public List<String> commands() {
     return items.stream()
-        .map(item -> item.shellCommand().orElseGet(() -> String.join(" ", item.argv().orElseThrow())))
+        .map(
+            item ->
+                item.shellCommand().orElseGet(() -> String.join(" ", item.argv().orElseThrow())))
         .toList();
   }
 }

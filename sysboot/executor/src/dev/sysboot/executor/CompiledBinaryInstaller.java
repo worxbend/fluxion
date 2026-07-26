@@ -96,7 +96,8 @@ public final class CompiledBinaryInstaller {
         List.of("download", module.url().toString(), "->", module.installPath().toString()));
     appendArchivePreview(module, command);
     module.installMode().ifPresent(mode -> command.addAll(List.of("mode", mode)));
-    module.symlinkPath()
+    module
+        .symlinkPath()
         .ifPresent(
             link ->
                 command.addAll(
@@ -104,8 +105,8 @@ public final class CompiledBinaryInstaller {
     return List.copyOf(command);
   }
 
-  private Optional<Checksum> verifyResolvedChecksum(CompiledBinaryModule module, Path downloadedFile)
-      throws IOException {
+  private Optional<Checksum> verifyResolvedChecksum(
+      CompiledBinaryModule module, Path downloadedFile) throws IOException {
     Optional<Checksum> checksum = checksumResolver.resolve(module);
     if (checksum.isPresent()) {
       verifyChecksum(downloadedFile, checksum.orElseThrow());

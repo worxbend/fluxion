@@ -85,9 +85,7 @@ class SdkmanModuleExecutorTest {
     assertThat(result).isInstanceOf(StepResult.DryRun.class);
     assertThat(((StepResult.DryRun) result).wouldExecute())
         .containsExactly(
-            "/bin/bash",
-            "-lc",
-            "source \"$HOME/.sdkman/bin/sdkman-init.sh\" && " + shellFragment);
+            "/bin/bash", "-lc", "source \"$HOME/.sdkman/bin/sdkman-init.sh\" && " + shellFragment);
   }
 
   private static List<String> completedItems(List<ExecutionEvent> events) {

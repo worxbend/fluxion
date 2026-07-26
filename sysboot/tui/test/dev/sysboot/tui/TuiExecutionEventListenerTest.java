@@ -111,8 +111,7 @@ class TuiExecutionEventListenerTest {
             new StepResult.Paused(
                 "pause-login", "Log out before continuing.", Optional.of("after-pause"), 75)));
 
-    ExecutionScreenState state =
-        listener.drainInto(ExecutionScreenState.initial("profile", 1));
+    ExecutionScreenState state = listener.drainInto(ExecutionScreenState.initial("profile", 1));
 
     assertThat(state.items())
         .extracting(ItemStatus::name, ItemStatus::result)

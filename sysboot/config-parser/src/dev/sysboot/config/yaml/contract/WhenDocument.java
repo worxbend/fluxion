@@ -134,11 +134,12 @@ public final class WhenDocument {
       return List.of();
     }
     var values = new ArrayList<String>();
-    node.forEach(value -> {
-      if (value.isTextual()) {
-        values.add(value.asText());
-      }
-    });
+    node.forEach(
+        value -> {
+          if (value.isTextual()) {
+            values.add(value.asText());
+          }
+        });
     return List.copyOf(values);
   }
 }

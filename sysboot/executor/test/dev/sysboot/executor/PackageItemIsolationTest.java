@@ -66,7 +66,8 @@ class PackageItemIsolationTest {
         packageManager(PackageManagerKind.YAY, runner -> new YayPackageInstaller(runner, sudo)),
         packageManager(
             PackageManagerKind.ZYPPER, runner -> new ZypperPackageInstaller(runner, sudo)),
-        packageManager(PackageManagerKind.CARGO, runner -> new CargoPackageInstaller(runner, sudo)));
+        packageManager(
+            PackageManagerKind.CARGO, runner -> new CargoPackageInstaller(runner, sudo)));
   }
 
   private static Arguments packageManager(
@@ -85,10 +86,7 @@ class PackageItemIsolationTest {
   }
 
   private static void record(
-      ArrayList<StateEntry> recorded,
-      ModuleName moduleName,
-      String itemKey,
-      StepResult result) {
+      ArrayList<StateEntry> recorded, ModuleName moduleName, String itemKey, StepResult result) {
     if (!(result instanceof StepResult.Success)) {
       return;
     }

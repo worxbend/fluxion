@@ -84,7 +84,8 @@ class FileWriteExecutorTest {
 
   @Test
   void dryRunCommand_previewsDestinationModeOwnershipAndSudo() {
-    var executor = new FileWriteExecutor(new CapturingRunner(), new FakeFileSystem(Path.of("/tmp/x")));
+    var executor =
+        new FileWriteExecutor(new CapturingRunner(), new FakeFileSystem(Path.of("/tmp/x")));
     var item =
         new FileWriteItem(
             "config",

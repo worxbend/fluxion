@@ -91,7 +91,8 @@ class CompiledBinaryInstallerTest {
   }
 
   private CompiledBinaryInstaller installer(Map<URI, byte[]> downloads) {
-    return new CompiledBinaryInstaller(new NoopRunner(), new FakeDownloadClient(downloads), new DefaultBinaryFileSystem());
+    return new CompiledBinaryInstaller(
+        new NoopRunner(), new FakeDownloadClient(downloads), new DefaultBinaryFileSystem());
   }
 
   private CompiledBinaryModule module(

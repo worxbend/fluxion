@@ -1,7 +1,7 @@
 package dev.sysboot.executor;
 
-import dev.sysboot.core.PackageManagerKind;
 import dev.sysboot.core.PackageManagerAction;
+import dev.sysboot.core.PackageManagerKind;
 import dev.sysboot.core.PackageName;
 import dev.sysboot.core.ShellRunner;
 import dev.sysboot.core.SudoPasswordProvider;
@@ -28,7 +28,8 @@ public final class PacmanPackageInstaller extends AbstractPackageInstaller {
   protected List<String> buildActionCommand(PackageManagerAction action) {
     return switch (action.action()) {
       case "sync-upgrade", "syu", "upgrade" -> syncUpgradeCommand(action);
-      default -> throw new UnsupportedOperationException("Unsupported pacman action: " + action.action());
+      default ->
+          throw new UnsupportedOperationException("Unsupported pacman action: " + action.action());
     };
   }
 

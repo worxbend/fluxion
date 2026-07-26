@@ -80,7 +80,10 @@ public record ShellCommandItem(
   }
 
   private static void validate(
-      String name, Optional<String> shellCommand, Optional<List<String>> argv, String shell,
+      String name,
+      Optional<String> shellCommand,
+      Optional<List<String>> argv,
+      String shell,
       Duration timeout) {
     if (name.isBlank()) {
       throw new IllegalArgumentException("command item name must not be blank");
@@ -92,8 +95,10 @@ public record ShellCommandItem(
       throw new IllegalArgumentException("timeout must be positive");
     }
     boolean hasShellCommand = shellCommand.filter(value -> !value.isBlank()).isPresent();
-    boolean hasArgv = argv.filter(values -> values.stream().allMatch(value -> !value.isBlank()))
-        .filter(values -> !values.isEmpty()).isPresent();
+    boolean hasArgv =
+        argv.filter(values -> values.stream().allMatch(value -> !value.isBlank()))
+            .filter(values -> !values.isEmpty())
+            .isPresent();
     if (hasShellCommand == hasArgv) {
       throw new IllegalArgumentException("exactly one of shell command or argv is required");
     }

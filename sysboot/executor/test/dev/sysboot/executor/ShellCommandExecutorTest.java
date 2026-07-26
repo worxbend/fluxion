@@ -31,25 +31,27 @@ class ShellCommandExecutorTest {
     StepResult result = new ShellCommandExecutor(runner).execute(module(item));
 
     assertThat(result).isInstanceOf(StepResult.Success.class);
-    assertThat(runner.commands).containsExactly(List.of("git", "config", "init.defaultBranch", "main"));
+    assertThat(runner.commands)
+        .containsExactly(List.of("git", "config", "init.defaultBranch", "main"));
   }
 
   @Test
   void execute_whenAllowedExitCodeMatches_treatsCommandAsSuccess() {
     var runner = new FakeShellRunner(List.of(new ProcessResult(75, "", "", Duration.ZERO)));
-    var item = new ShellCommandItem(
-        "interrupt-code",
-        Optional.empty(),
-        Optional.of(List.of("tool", "maybe")),
-        "/bin/bash",
-        Optional.empty(),
-        List.of(),
-        false,
-        List.of(0, 75),
-        Optional.empty(),
-        Optional.empty(),
-        Optional.empty(),
-        Duration.ofSeconds(5));
+    var item =
+        new ShellCommandItem(
+            "interrupt-code",
+            Optional.empty(),
+            Optional.of(List.of("tool", "maybe")),
+            "/bin/bash",
+            Optional.empty(),
+            List.of(),
+            false,
+            List.of(0, 75),
+            Optional.empty(),
+            Optional.empty(),
+            Optional.empty(),
+            Duration.ofSeconds(5));
 
     StepResult result = new ShellCommandExecutor(runner).execute(module(item));
 
@@ -61,19 +63,20 @@ class ShellCommandExecutorTest {
     Path marker = dir.resolve("created");
     Files.createFile(marker);
     var runner = new FakeShellRunner(List.of());
-    var item = new ShellCommandItem(
-        "already-created",
-        Optional.of("touch " + marker),
-        Optional.empty(),
-        "/bin/bash",
-        Optional.empty(),
-        List.of(),
-        false,
-        List.of(0),
-        Optional.of(marker),
-        Optional.empty(),
-        Optional.empty(),
-        Duration.ofSeconds(5));
+    var item =
+        new ShellCommandItem(
+            "already-created",
+            Optional.of("touch " + marker),
+            Optional.empty(),
+            "/bin/bash",
+            Optional.empty(),
+            List.of(),
+            false,
+            List.of(0),
+            Optional.of(marker),
+            Optional.empty(),
+            Optional.empty(),
+            Duration.ofSeconds(5));
 
     StepResult result = new ShellCommandExecutor(runner).execute(module(item));
 
@@ -84,19 +87,20 @@ class ShellCommandExecutorTest {
   @Test
   void execute_whenUnlessCommandSucceeds_skipsMainCommand() {
     var runner = new FakeShellRunner(List.of(new ProcessResult(0, "", "", Duration.ZERO)));
-    var item = new ShellCommandItem(
-        "guarded",
-        Optional.of("touch /tmp/marker"),
-        Optional.empty(),
-        "/bin/bash",
-        Optional.empty(),
-        List.of(),
-        false,
-        List.of(0),
-        Optional.empty(),
-        Optional.of("test -f /tmp/marker"),
-        Optional.empty(),
-        Duration.ofSeconds(5));
+    var item =
+        new ShellCommandItem(
+            "guarded",
+            Optional.of("touch /tmp/marker"),
+            Optional.empty(),
+            "/bin/bash",
+            Optional.empty(),
+            List.of(),
+            false,
+            List.of(0),
+            Optional.empty(),
+            Optional.of("test -f /tmp/marker"),
+            Optional.empty(),
+            Duration.ofSeconds(5));
 
     StepResult result = new ShellCommandExecutor(runner).execute(module(item));
 
@@ -157,7 +161,11 @@ class ShellCommandExecutorTest {
 
   private ShellCommandModule module(ShellCommandItem item) {
     return new ShellCommandModule(
-        new ModuleName("commands"), List.of(item), "/bin/bash", Optional.empty(), false,
+        new ModuleName("commands"),
+        List.of(item),
+        "/bin/bash",
+        Optional.empty(),
+        false,
         Optional.empty());
   }
 
@@ -172,7 +180,9 @@ class ShellCommandExecutorTest {
     @Override
     public ProcessResult run(List<String> command, Map<String, String> env, Duration timeout) {
       commands.add(command);
-      return results.isEmpty() ? new ProcessResult(0, "", "", Duration.ZERO) : results.removeFirst();
+      return results.isEmpty()
+          ? new ProcessResult(0, "", "", Duration.ZERO)
+          : results.removeFirst();
     }
   }
 }

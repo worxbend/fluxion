@@ -1,7 +1,7 @@
 package dev.sysboot.executor;
 
-import dev.sysboot.core.PackageManagerKind;
 import dev.sysboot.core.PackageManagerAction;
+import dev.sysboot.core.PackageManagerKind;
 import dev.sysboot.core.PackageName;
 import dev.sysboot.core.ShellRunner;
 import dev.sysboot.core.SudoPasswordProvider;
@@ -29,7 +29,8 @@ public final class AptPackageInstaller extends AbstractPackageInstaller {
       case "update" -> command("update", action.args());
       case "upgrade" -> command("upgrade", concat("-y", action.args()));
       case "dist-upgrade" -> command("dist-upgrade", concat("-y", action.args()));
-      default -> throw new UnsupportedOperationException("Unsupported apt action: " + action.action());
+      default ->
+          throw new UnsupportedOperationException("Unsupported apt action: " + action.action());
     };
   }
 

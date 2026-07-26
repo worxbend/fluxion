@@ -3,8 +3,7 @@ package dev.sysboot.core;
 import java.util.List;
 import java.util.Objects;
 
-public record SdkmanModule(
-    ModuleName name, List<SdkmanPackage> packages, boolean continueOnError)
+public record SdkmanModule(ModuleName name, List<SdkmanPackage> packages, boolean continueOnError)
     implements BootstrapModule {
 
   public SdkmanModule {

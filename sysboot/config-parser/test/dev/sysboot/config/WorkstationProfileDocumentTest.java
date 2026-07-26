@@ -18,11 +18,7 @@ class WorkstationProfileDocumentTest {
   @Test
   void readValue_whenMinimalWorkstationProfile_deserializesMetadataAndEmptySpec()
       throws IOException, URISyntaxException {
-    Path fixture =
-        Path.of(
-            getClass()
-                .getResource("/minimal-workstation-profile.yaml")
-                .toURI());
+    Path fixture = Path.of(getClass().getResource("/minimal-workstation-profile.yaml").toURI());
 
     var document = objectMapper.readValue(fixture.toFile(), WorkstationProfileDocument.class);
 

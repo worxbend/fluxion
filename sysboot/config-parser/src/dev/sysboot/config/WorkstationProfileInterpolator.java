@@ -45,8 +45,7 @@ final class WorkstationProfileInterpolator {
     return copy;
   }
 
-  private Map<String, String> resolveSpecVars(
-      Map<String, String> rawVars, List<String> errors) {
+  private Map<String, String> resolveSpecVars(Map<String, String> rawVars, List<String> errors) {
     var resolved = new LinkedHashMap<String, String>();
     for (String key : rawVars.keySet()) {
       resolveSpecVar(key, rawVars, resolved, new ArrayDeque<>(), errors);
@@ -68,8 +67,13 @@ final class WorkstationProfileInterpolator {
       return rawVars.get(key);
     }
     stack.addLast(key);
-    String value = resolveText(rawVars.get(key), specVarPath(key), Optional.empty(), errors,
-        name -> lookupSpecVar(name, rawVars, resolved, stack, errors));
+    String value =
+        resolveText(
+            rawVars.get(key),
+            specVarPath(key),
+            Optional.empty(),
+            errors,
+            name -> lookupSpecVar(name, rawVars, resolved, stack, errors));
     stack.removeLast();
     resolved.put(key, value);
     return value;
@@ -200,15 +204,20 @@ final class WorkstationProfileInterpolator {
   }
 
   private String resolvePlanName(String value, Map<String, String> variables) {
-    return resolveText(value, "spec.plan[].name", Optional.empty(), new ArrayList<>(),
-        variables::get);
+    return resolveText(
+        value, "spec.plan[].name", Optional.empty(), new ArrayList<>(), variables::get);
   }
 
   private String unresolvedMessage(
       String path, Optional<PlanContext> plan, String token, String name) {
     String variable = name.isEmpty() ? token : "${" + name + "}";
-    return plan
-        .map(context -> path + " in plan entry '" + context.name() + "' references unresolved variable " + variable)
+    return plan.map(
+            context ->
+                path
+                    + " in plan entry '"
+                    + context.name()
+                    + "' references unresolved variable "
+                    + variable)
         .orElse(path + " references unresolved variable " + variable);
   }
 

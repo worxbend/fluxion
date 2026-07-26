@@ -30,7 +30,8 @@ class WorkstationProfileWhenEvaluatorTest {
 
     var selection = evaluator.select(document.spec().orElseThrow().plan());
 
-    assertThat(selection.selected()).extracting(entry -> entry.name().orElseThrow())
+    assertThat(selection.selected())
+        .extracting(entry -> entry.name().orElseThrow())
         .containsExactly("fedora-dnf");
     assertThat(selection.skipped())
         .extracting(WorkstationProfileWhenEvaluator.SkippedPlanEntry::reason)
@@ -41,37 +42,37 @@ class WorkstationProfileWhenEvaluatorTest {
 
   private String profile() {
     return """
-        apiVersion: initkit.io/v1alpha1
-        kind: WorkstationProfile
-        metadata:
-          name: reason-test
-        spec:
-          target:
-            os:
-              distribution: fedora
-              release: "44"
-          plan:
-            - name: debian-apt
-              kind: apt-packages
-              when:
-                distribution:
-                  oneOf: [debian, ubuntu]
-              spec:
-                packages: [curl]
-            - name: missing-apt
-              kind: apt-packages
-              when:
-                commandExists: apt
-              spec:
-                packages: [git]
-            - name: fedora-dnf
-              kind: dnf-packages
-              when:
-                distribution: fedora
-                commandExists: dnf
-              spec:
-                packages: [ripgrep]
-        """;
+    apiVersion: initkit.io/v1alpha1
+    kind: WorkstationProfile
+    metadata:
+      name: reason-test
+    spec:
+      target:
+        os:
+          distribution: fedora
+          release: "44"
+      plan:
+        - name: debian-apt
+          kind: apt-packages
+          when:
+            distribution:
+              oneOf: [debian, ubuntu]
+          spec:
+            packages: [curl]
+        - name: missing-apt
+          kind: apt-packages
+          when:
+            commandExists: apt
+          spec:
+            packages: [git]
+        - name: fedora-dnf
+          kind: dnf-packages
+          when:
+            distribution: fedora
+            commandExists: dnf
+          spec:
+            packages: [ripgrep]
+    """;
   }
 
   private static final class FakeHostFactsProvider implements HostFactsProvider {

@@ -1,7 +1,7 @@
 package dev.sysboot.executor;
 
-import dev.sysboot.core.PackageManagerKind;
 import dev.sysboot.core.PackageManagerAction;
+import dev.sysboot.core.PackageManagerKind;
 import dev.sysboot.core.PackageName;
 import dev.sysboot.core.ShellRunner;
 import dev.sysboot.core.SudoPasswordProvider;
@@ -31,7 +31,8 @@ public final class DnfPackageInstaller extends AbstractPackageInstaller {
       case "upgrade" -> command("upgrade", concat("-y", action.args()));
       case "swap" -> command("swap", concat("-y", action.args()));
       case "groupupdate", "group-update" -> command("groupupdate", concat("-y", action.args()));
-      default -> throw new UnsupportedOperationException("Unsupported dnf action: " + action.action());
+      default ->
+          throw new UnsupportedOperationException("Unsupported dnf action: " + action.action());
     };
   }
 
