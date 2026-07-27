@@ -528,19 +528,16 @@ class BootstrapOrchestratorImplTest {
             .toList();
     assertThat(previews)
         .contains(
+            // compiled-binary now delegates to binstaller, which handles zip and tar.xz that
+            // Fluxion's own extractor never did. The preview keeps the URL and destination so a
+            // plan still says what is being installed.
             List.of(
-                "download",
+                "binstaller",
+                "apply",
+                "--only",
+                "ripgrep-download",
+                "#",
                 "https://example.com/ripgrep.tar.gz",
-                "->",
-                "/usr/local/bin/rg",
-                "extract",
-                "ripgrep/bin/rg",
-                "strip-components",
-                "1",
-                "mode",
-                "0755",
-                "symlink",
-                "/usr/local/bin/ripgrep",
                 "->",
                 "/usr/local/bin/rg"),
             List.of("<interpreter>", "./scripts/bootstrap.sh", "--dry"),

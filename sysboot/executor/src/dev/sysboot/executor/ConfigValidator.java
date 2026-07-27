@@ -196,6 +196,13 @@ public final class ConfigValidator {
           "Compiled binary '%s' uses an unsupported artifact format; supported formats are %s"
               .formatted(module.name().value(), CompiledBinaryArtifactFormat.supportedFormats()));
     }
+    if (CompiledBinaryArtifactFormat.requiresDelegation(module.url().value())) {
+      addWarning(
+          issues,
+          path + ".url",
+          "Compiled binary '%s' installs via binstaller, which must be obtainable on the target host: Fluxion cannot extract this archive format itself"
+              .formatted(module.name().value()));
+    }
     if (module.checksum().isPresent() && module.checksumUrl().isPresent()) {
       addError(
           issues,

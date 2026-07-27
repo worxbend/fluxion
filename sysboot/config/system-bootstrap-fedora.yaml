@@ -344,16 +344,32 @@ jobs:
       type: none
     continueOnModuleError: true
     steps:
+      - type: compiled-binary
+        name: yazi
+        binaryName: yazi
+        url: "https://github.com/sxyazi/yazi/releases/download/v26.5.6/yazi-x86_64-unknown-linux-gnu.zip"
+        archivePath: "yazi-x86_64-unknown-linux-gnu/yazi"
+        installPath: "~/.apps/yazi/bin/yazi"
+        installMode: "0755"
+        continueOnError: true
+
+      - type: compiled-binary
+        name: zig
+        binaryName: zig
+        url: "https://ziglang.org/download/0.15.2/zig-x86_64-linux-0.15.2.tar.xz"
+        archivePath: "zig-x86_64-linux-0.15.2/zig"
+        installPath: "~/.apps/zig/bin/zig"
+        installMode: "0755"
+        continueOnError: true
+
       - type: shell-command
-        name: binary-dist-shell-tools
+        name: binary-dist-installer-scripts
         commands:
-          - "apps=\"$HOME/.apps\"; version=v26.5.6; rm -rf \"$apps/yazi\"; mkdir -p \"$apps/yazi/bin\"; curl -L -o \"$apps/yazi/yazi.zip\" \"https://github.com/sxyazi/yazi/releases/download/${version}/yazi-x86_64-unknown-linux-gnu.zip\"; unzip -q \"$apps/yazi/yazi.zip\" -d \"$apps/yazi\"; mv -f \"$apps/yazi/yazi-x86_64-unknown-linux-gnu\"/* \"$apps/yazi/bin/\"; chmod +x \"$apps/yazi/bin/yazi\" \"$apps/yazi/bin/ya\"; rm -f \"$apps/yazi/yazi.zip\""
-          - "apps=\"$HOME/.apps\"; version=0.15.2; rm -rf \"$apps/zig\"; mkdir -p \"$apps/zig/bin\"; curl -L -o \"$apps/zig/zig.tar.xz\" \"https://ziglang.org/download/${version}/zig-x86_64-linux-${version}.tar.xz\"; tar -xf \"$apps/zig/zig.tar.xz\" -C \"$apps/zig/bin\"; ln -sf \"$apps/zig\"/bin/zig-x86_64-*/zig \"$apps/zig/bin/zig\"; chmod +x \"$apps/zig/bin/zig\"; rm -f \"$apps/zig/zig.tar.xz\""
           - "apps=\"$HOME/.apps\"; rm -rf \"$apps/helm\"; mkdir -p \"$apps/helm/bin\"; curl -fsSL -o \"$apps/helm/get_helm.sh\" https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3; chmod 700 \"$apps/helm/get_helm.sh\"; USE_SUDO=false HELM_INSTALL_DIR=\"$apps/helm/bin\" \"$apps/helm/get_helm.sh\"; rm -f \"$apps/helm/get_helm.sh\""
           - "apps=\"$HOME/.apps\"; rm -rf \"$apps/kubectl\"; mkdir -p \"$apps/kubectl/bin\"; curl -L -o \"$apps/kubectl/bin/kubectl\" \"https://dl.k8s.io/release/$(curl -L -s https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl\"; chmod +x \"$apps/kubectl/bin/kubectl\""
           - "apps=\"$HOME/.apps\"; rm -rf \"$apps/kustomize\"; mkdir -p \"$apps/kustomize/bin\"; curl -L -o \"$apps/kustomize/install_kustomize.sh\" https://raw.githubusercontent.com/kubernetes-sigs/kustomize/master/hack/install_kustomize.sh; chmod +x \"$apps/kustomize/install_kustomize.sh\"; \"$apps/kustomize/install_kustomize.sh\" \"$apps/kustomize/bin\"; rm -f \"$apps/kustomize/install_kustomize.sh\""
         continueOnError: true
-        probeCommand: "test -x ~/.apps/yazi/bin/yazi && test -x ~/.apps/zig/bin/zig"
+        probeCommand: "test -x ~/.apps/kubectl/bin/kubectl"
 
       - type: compiled-binary
         name: minikube

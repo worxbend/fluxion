@@ -36,37 +36,81 @@ public final class CompiledBinaryInstaller {
   private final BinaryFileSystem fileSystem;
   private final ChecksumResolver checksumResolver;
   private final DetachedSignatureVerifier signatureVerifier;
+  private final DelegatingBinaryInstaller delegatingInstaller;
 
+  /** Production wiring: delegate to binstaller when it can express the step. */
   public CompiledBinaryInstaller(ShellRunner shellRunner) {
-    this(shellRunner, new HttpBinaryDownloadClient(), new DefaultBinaryFileSystem());
+    this(
+        shellRunner,
+        new HttpBinaryDownloadClient(),
+        new DefaultBinaryFileSystem(),
+        new ChecksumResolver(new HttpBinaryDownloadClient()),
+        new DelegatingBinaryInstaller(shellRunner, new BrokeredToolResolver(new ToolBroker())));
   }
 
+  /**
+   * Test wiring for the built-in path.
+   *
+   * <p>Delegation is deliberately absent here. Building it internally made these tests depend on
+   * whether the developer's machine happened to have binstaller on PATH: where it did, delegation
+   * intercepted, the stubbed runner returned zero, and assertions about checksum verification
+   * passed while verifying nothing.
+   */
   CompiledBinaryInstaller(ShellRunner shellRunner, ChecksumResolver checksumResolver) {
     this(
         shellRunner,
         new HttpBinaryDownloadClient(),
         new DefaultBinaryFileSystem(),
-        checksumResolver);
+        checksumResolver,
+        DelegatingBinaryInstaller.disabled());
   }
 
   CompiledBinaryInstaller(
       ShellRunner shellRunner, BinaryDownloadClient downloadClient, BinaryFileSystem fileSystem) {
-    this(shellRunner, downloadClient, fileSystem, new ChecksumResolver(downloadClient));
+    this(
+        shellRunner,
+        downloadClient,
+        fileSystem,
+        new ChecksumResolver(downloadClient),
+        DelegatingBinaryInstaller.disabled());
+  }
+
+  /** Test wiring for the delegating path. */
+  CompiledBinaryInstaller(ShellRunner shellRunner, DelegatingBinaryInstaller delegatingInstaller) {
+    this(
+        shellRunner,
+        new HttpBinaryDownloadClient(),
+        new DefaultBinaryFileSystem(),
+        new ChecksumResolver(new HttpBinaryDownloadClient()),
+        delegatingInstaller);
   }
 
   private CompiledBinaryInstaller(
       ShellRunner shellRunner,
       BinaryDownloadClient downloadClient,
       BinaryFileSystem fileSystem,
-      ChecksumResolver checksumResolver) {
+      ChecksumResolver checksumResolver,
+      DelegatingBinaryInstaller delegatingInstaller) {
     this.shellRunner = shellRunner;
     this.downloadClient = downloadClient;
     this.fileSystem = fileSystem;
     this.checksumResolver = checksumResolver;
     this.signatureVerifier = new DetachedSignatureVerifier(shellRunner);
+    this.delegatingInstaller = delegatingInstaller;
   }
 
   public StepResult install(CompiledBinaryModule module) {
+    // binstaller is the binary installer; try it first. It handles zip and tar.xz, which this
+    // class never has. The built-in path below remains for what binstaller cannot express and for
+    // hosts where it is unavailable.
+    Optional<StepResult> delegated = delegatingInstaller.install(module);
+    if (delegated.isPresent()) {
+      return delegated.orElseThrow();
+    }
+    return installLocally(module);
+  }
+
+  private StepResult installLocally(CompiledBinaryModule module) {
     Instant start = Instant.now();
     Path tempFile = null;
     Path extractedFile = null;
@@ -91,6 +135,10 @@ public final class CompiledBinaryInstaller {
   }
 
   public List<String> dryRunCommand(CompiledBinaryModule module) {
+    Optional<List<String>> delegated = delegatingInstaller.commandPreview(module);
+    if (delegated.isPresent()) {
+      return delegated.orElseThrow();
+    }
     var command = new ArrayList<String>();
     command.addAll(
         List.of("download", module.url().toString(), "->", module.installPath().toString()));

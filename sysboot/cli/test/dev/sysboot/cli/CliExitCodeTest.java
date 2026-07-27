@@ -983,7 +983,7 @@ class CliExitCodeTest {
     CliResult result = execute("doctor", "--skip-network", "-c", config.toString());
 
     assertThat(result.exitCode()).isEqualTo(ExitCode.EXTERNAL_DEPENDENCY_ERROR.value());
-    assertThat(result.stdout()).contains("[fail] binary artifact").contains("rg.zip");
+    assertThat(result.stdout()).contains("[fail] binary artifact").contains("rg.7z");
     assertThat(result.stderr()).contains("Doctor found");
   }
 
@@ -1309,7 +1309,7 @@ class CliExitCodeTest {
               - type: compiled-binary
                 name: ripgrep
                 binaryName: rg
-                url: https://example.test/rg.zip
+                url: https://example.test/rg.7z
                 installPath: /usr/local/bin/rg
         """);
     return config;
