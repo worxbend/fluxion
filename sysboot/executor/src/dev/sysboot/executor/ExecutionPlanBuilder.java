@@ -11,6 +11,9 @@ import dev.sysboot.core.DotbotModule;
 import dev.sysboot.core.FileWriteModule;
 import dev.sysboot.core.FlatpakModule;
 import dev.sysboot.core.FlatpakRemoteModule;
+import dev.sysboot.core.GitConfigModule;
+import dev.sysboot.core.GitRepoModule;
+import dev.sysboot.core.GpgKeyModule;
 import dev.sysboot.core.InterruptModule;
 import dev.sysboot.core.ItemType;
 import dev.sysboot.core.ManualModule;
@@ -27,6 +30,10 @@ import dev.sysboot.core.ShellCommandModule;
 import dev.sysboot.core.ShellReloadModule;
 import dev.sysboot.core.ShellScriptModule;
 import dev.sysboot.core.SourceSetup;
+import dev.sysboot.core.SystemSettingModule;
+import dev.sysboot.core.SystemUpdateModule;
+import dev.sysboot.core.SystemdUnitModule;
+import dev.sysboot.core.ToolPackagesModule;
 import dev.sysboot.core.ToolchainModule;
 import dev.sysboot.core.UserGroupsModule;
 import dev.sysboot.core.ZypperModule;
@@ -262,6 +269,30 @@ public final class ExecutionPlanBuilder {
           ugm.groups().stream()
               .map(group -> new ModuleItem(ugm.name(), ugm.itemKey(group), ItemType.USER_GROUP))
               .toList();
+      case GitConfigModule gcm ->
+          gcm.sortedKeys().stream()
+              .map(key -> new ModuleItem(gcm.name(), gcm.itemKey(key), ItemType.GIT_CONFIG))
+              .toList();
+      case GitRepoModule grm ->
+          grm.repos().stream()
+              .map(repo -> new ModuleItem(grm.name(), repo.destination(), ItemType.GIT_REPO))
+              .toList();
+      case SystemdUnitModule sum ->
+          sum.units().stream()
+              .map(unit -> new ModuleItem(sum.name(), unit.qualifiedName(), ItemType.SYSTEMD_UNIT))
+              .toList();
+      case SystemSettingModule ssm ->
+          List.of(new ModuleItem(ssm.name(), ssm.name().value(), ItemType.SYSTEM_SETTING));
+      case SystemUpdateModule sup ->
+          List.of(new ModuleItem(sup.name(), sup.itemKey(), ItemType.SYSTEM_UPDATE));
+      case GpgKeyModule gkm ->
+          gkm.keys().stream()
+              .map(key -> new ModuleItem(gkm.name(), key.itemKey(), ItemType.GPG_KEY))
+              .toList();
+      case ToolPackagesModule tpm ->
+          tpm.packages().stream()
+              .map(pkg -> new ModuleItem(tpm.name(), pkg.name(), ItemType.TOOL_PACKAGE))
+              .toList();
       case SdkmanModule ignored -> throw new IllegalStateException("SDKMAN executor missing");
       case PackageModule ignored -> throw new IllegalStateException("Package executor missing");
       case ZypperModule ignored -> throw new IllegalStateException("Zypper executor missing");
@@ -301,6 +332,13 @@ public final class ExecutionPlanBuilder {
       case SdkmanModule ignored -> "sdkman-packages";
       case BinstallerModule ignored -> "binstaller-profile";
       case UserGroupsModule ignored -> "user-groups";
+      case GitConfigModule ignored -> "git-config";
+      case GitRepoModule ignored -> "git-repo";
+      case SystemdUnitModule ignored -> "systemd-unit";
+      case SystemSettingModule ignored -> "system-setting";
+      case SystemUpdateModule ignored -> "system-update";
+      case GpgKeyModule ignored -> "gpg-key";
+      case ToolPackagesModule tpm -> tpm.backend().id() + "-packages";
     };
   }
 }

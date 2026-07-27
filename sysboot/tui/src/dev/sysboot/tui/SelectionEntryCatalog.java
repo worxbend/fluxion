@@ -10,6 +10,9 @@ import dev.sysboot.core.DotbotModule;
 import dev.sysboot.core.FileWriteModule;
 import dev.sysboot.core.FlatpakModule;
 import dev.sysboot.core.FlatpakRemoteModule;
+import dev.sysboot.core.GitConfigModule;
+import dev.sysboot.core.GitRepoModule;
+import dev.sysboot.core.GpgKeyModule;
 import dev.sysboot.core.InterruptModule;
 import dev.sysboot.core.ManualModule;
 import dev.sysboot.core.NerdFontModule;
@@ -21,6 +24,10 @@ import dev.sysboot.core.SdkmanModule;
 import dev.sysboot.core.ShellCommandModule;
 import dev.sysboot.core.ShellReloadModule;
 import dev.sysboot.core.ShellScriptModule;
+import dev.sysboot.core.SystemSettingModule;
+import dev.sysboot.core.SystemUpdateModule;
+import dev.sysboot.core.SystemdUnitModule;
+import dev.sysboot.core.ToolPackagesModule;
 import dev.sysboot.core.ToolchainModule;
 import dev.sysboot.core.UserGroupsModule;
 import dev.sysboot.core.ZypperModule;
@@ -67,6 +74,19 @@ final class SelectionEntryCatalog {
       case BinstallerModule binstallerModule -> List.of(binstallerModule.itemKey());
       case UserGroupsModule userGroupsModule ->
           userGroupsModule.groups().stream().map(userGroupsModule::itemKey).toList();
+      case GitConfigModule gitConfigModule -> gitConfigModule.sortedKeys();
+      case GitRepoModule gitRepoModule ->
+          gitRepoModule.repos().stream().map(GitRepoModule.GitRepo::destination).toList();
+      case SystemdUnitModule systemdUnitModule ->
+          systemdUnitModule.units().stream()
+              .map(SystemdUnitModule.SystemdUnit::qualifiedName)
+              .toList();
+      case SystemSettingModule systemSettingModule -> List.of(systemSettingModule.name().value());
+      case SystemUpdateModule systemUpdateModule -> List.of(systemUpdateModule.itemKey());
+      case GpgKeyModule gpgKeyModule ->
+          gpgKeyModule.keys().stream().map(GpgKeyModule.GpgKey::itemKey).toList();
+      case ToolPackagesModule toolPackagesModule ->
+          toolPackagesModule.packages().stream().map(ToolPackagesModule.ToolPackage::name).toList();
     };
   }
 }

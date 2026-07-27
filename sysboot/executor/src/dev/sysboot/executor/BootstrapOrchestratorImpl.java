@@ -17,6 +17,9 @@ import dev.sysboot.core.ExecutionPausedException;
 import dev.sysboot.core.FileWriteModule;
 import dev.sysboot.core.FlatpakModule;
 import dev.sysboot.core.FlatpakRemoteModule;
+import dev.sysboot.core.GitConfigModule;
+import dev.sysboot.core.GitRepoModule;
+import dev.sysboot.core.GpgKeyModule;
 import dev.sysboot.core.InterruptModule;
 import dev.sysboot.core.InterruptResumeMode;
 import dev.sysboot.core.ItemType;
@@ -46,6 +49,10 @@ import dev.sysboot.core.SourceSetup;
 import dev.sysboot.core.StateEntry;
 import dev.sysboot.core.StateRepository;
 import dev.sysboot.core.StepResult;
+import dev.sysboot.core.SystemSettingModule;
+import dev.sysboot.core.SystemUpdateModule;
+import dev.sysboot.core.SystemdUnitModule;
+import dev.sysboot.core.ToolPackagesModule;
 import dev.sysboot.core.ToolchainModule;
 import dev.sysboot.core.UserGroupsModule;
 import dev.sysboot.core.ZypperModule;
@@ -421,6 +428,55 @@ public final class BootstrapOrchestratorImpl implements BootstrapOrchestrator {
               () -> executors.binstaller().execute(bsm),
               listener);
       case UserGroupsModule ugm -> executeUserGroups(ugm, listener, executors);
+      case GitConfigModule gcm ->
+          executeItem(
+              gcm.name(),
+              gcm.name().value(),
+              ItemType.GIT_CONFIG,
+              () -> executors.gitConfig().execute(gcm),
+              listener);
+      case GitRepoModule grm ->
+          executeItem(
+              grm.name(),
+              grm.name().value(),
+              ItemType.GIT_REPO,
+              () -> executors.gitRepo().execute(grm),
+              listener);
+      case SystemdUnitModule sum ->
+          executeItem(
+              sum.name(),
+              sum.name().value(),
+              ItemType.SYSTEMD_UNIT,
+              () -> executors.systemdUnit().execute(sum),
+              listener);
+      case SystemSettingModule ssm ->
+          executeItem(
+              ssm.name(),
+              ssm.name().value(),
+              ItemType.SYSTEM_SETTING,
+              () -> executors.systemSetting().execute(ssm),
+              listener);
+      case SystemUpdateModule sup ->
+          executeItem(
+              sup.name(),
+              sup.itemKey(),
+              ItemType.SYSTEM_UPDATE,
+              () -> executors.systemUpdate().execute(sup),
+              listener);
+      case GpgKeyModule gkm ->
+          executeItem(
+              gkm.name(),
+              gkm.name().value(),
+              ItemType.GPG_KEY,
+              () -> executors.gpgKey().execute(gkm),
+              listener);
+      case ToolPackagesModule tpm ->
+          executeItem(
+              tpm.name(),
+              tpm.name().value(),
+              ItemType.TOOL_PACKAGE,
+              () -> executors.toolPackages().execute(tpm),
+              listener);
       case AssertModule am -> executeAssert(am, listener, phaseRunner);
       case ManualModule mm -> executeManual(mm, listener, phaseRunner);
       case InterruptModule ignored -> throw new IllegalStateException("Interrupt handled by phase");
@@ -788,6 +844,48 @@ public final class BootstrapOrchestratorImpl implements BootstrapOrchestrator {
               ugm.name(),
               ugm.itemKey(ugm.groups().getFirst()),
               primaryExecutors().userGroups().commandPreview(ugm),
+              listener);
+      case GitConfigModule gcm ->
+          emitDryRun(
+              gcm.name(),
+              gcm.name().value(),
+              primaryExecutors().gitConfig().commandPreview(gcm),
+              listener);
+      case GitRepoModule grm ->
+          emitDryRun(
+              grm.name(),
+              grm.name().value(),
+              primaryExecutors().gitRepo().commandPreview(grm),
+              listener);
+      case SystemdUnitModule sum ->
+          emitDryRun(
+              sum.name(),
+              sum.name().value(),
+              primaryExecutors().systemdUnit().commandPreview(sum),
+              listener);
+      case SystemSettingModule ssm ->
+          emitDryRun(
+              ssm.name(),
+              ssm.name().value(),
+              primaryExecutors().systemSetting().commandPreview(ssm),
+              listener);
+      case SystemUpdateModule sup ->
+          emitDryRun(
+              sup.name(),
+              sup.itemKey(),
+              primaryExecutors().systemUpdate().commandPreview(sup),
+              listener);
+      case GpgKeyModule gkm ->
+          emitDryRun(
+              gkm.name(),
+              gkm.name().value(),
+              primaryExecutors().gpgKey().commandPreview(gkm),
+              listener);
+      case ToolPackagesModule tpm ->
+          emitDryRun(
+              tpm.name(),
+              tpm.name().value(),
+              primaryExecutors().toolPackages().commandPreview(tpm),
               listener);
       case AssertModule am ->
           emitDryRun(

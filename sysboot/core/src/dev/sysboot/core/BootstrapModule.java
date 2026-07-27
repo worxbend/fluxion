@@ -23,7 +23,14 @@ public sealed interface BootstrapModule
         InterruptModule,
         SdkmanModule,
         BinstallerModule,
-        UserGroupsModule {
+        UserGroupsModule,
+        GitConfigModule,
+        GitRepoModule,
+        SystemdUnitModule,
+        SystemSettingModule,
+        SystemUpdateModule,
+        GpgKeyModule,
+        ToolPackagesModule {
 
   ModuleName name();
 }

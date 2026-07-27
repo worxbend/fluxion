@@ -10,6 +10,9 @@ import dev.sysboot.config.yaml.contract.DefaultShellModuleDocument;
 import dev.sysboot.config.yaml.contract.DotbotModuleDocument;
 import dev.sysboot.config.yaml.contract.FlatpakModuleDocument;
 import dev.sysboot.config.yaml.contract.FlatpakRemoteModuleDocument;
+import dev.sysboot.config.yaml.contract.GitConfigModuleDocument;
+import dev.sysboot.config.yaml.contract.GitRepoModuleDocument;
+import dev.sysboot.config.yaml.contract.GpgKeyModuleDocument;
 import dev.sysboot.config.yaml.contract.ManualModuleDocument;
 import dev.sysboot.config.yaml.contract.ModuleDocument;
 import dev.sysboot.config.yaml.contract.NerdFontConfigDocument;
@@ -24,6 +27,10 @@ import dev.sysboot.config.yaml.contract.RpmRepositoryModuleDocument;
 import dev.sysboot.config.yaml.contract.ShellCommandModuleDocument;
 import dev.sysboot.config.yaml.contract.ShellReloadModuleDocument;
 import dev.sysboot.config.yaml.contract.ShellScriptModuleDocument;
+import dev.sysboot.config.yaml.contract.SystemSettingModuleDocument;
+import dev.sysboot.config.yaml.contract.SystemUpdateModuleDocument;
+import dev.sysboot.config.yaml.contract.SystemdUnitModuleDocument;
+import dev.sysboot.config.yaml.contract.ToolPackagesModuleDocument;
 import dev.sysboot.config.yaml.contract.ToolchainModuleDocument;
 import dev.sysboot.config.yaml.contract.UserGroupsModuleDocument;
 import dev.sysboot.core.AptRepositoryModule;
@@ -38,6 +45,11 @@ import dev.sysboot.core.DefaultShellModule;
 import dev.sysboot.core.DotbotModule;
 import dev.sysboot.core.FlatpakModule;
 import dev.sysboot.core.FlatpakRemoteModule;
+import dev.sysboot.core.GitConfigModule;
+import dev.sysboot.core.GitConfigScope;
+import dev.sysboot.core.GitRepoModule;
+import dev.sysboot.core.GitRepoUpdate;
+import dev.sysboot.core.GpgKeyModule;
 import dev.sysboot.core.ManualModule;
 import dev.sysboot.core.ModuleName;
 import dev.sysboot.core.NerdFontConfig;
@@ -59,6 +71,13 @@ import dev.sysboot.core.ShellCommandModule;
 import dev.sysboot.core.ShellKind;
 import dev.sysboot.core.ShellReloadModule;
 import dev.sysboot.core.ShellScriptModule;
+import dev.sysboot.core.SystemSettingModule;
+import dev.sysboot.core.SystemUpdateModule;
+import dev.sysboot.core.SystemdScope;
+import dev.sysboot.core.SystemdState;
+import dev.sysboot.core.SystemdUnitModule;
+import dev.sysboot.core.ToolPackageBackend;
+import dev.sysboot.core.ToolPackagesModule;
 import dev.sysboot.core.ToolchainKind;
 import dev.sysboot.core.ToolchainModule;
 import dev.sysboot.core.UserGroupsModule;
@@ -176,6 +195,13 @@ final class ConfigMapper {
       case ManualModuleDocument mm -> mapManualModule(mm);
       case BinstallerModuleDocument bs -> mapBinstallerModule(bs);
       case UserGroupsModuleDocument ug -> mapUserGroupsModule(ug);
+      case GitConfigModuleDocument gc -> mapGitConfigModule(gc);
+      case GitRepoModuleDocument gr -> mapGitRepoModule(gr);
+      case SystemdUnitModuleDocument su -> mapSystemdUnitModule(su);
+      case SystemSettingModuleDocument ss -> mapSystemSettingModule(ss);
+      case SystemUpdateModuleDocument sup -> mapSystemUpdateModule(sup);
+      case GpgKeyModuleDocument gk -> mapGpgKeyModule(gk);
+      case ToolPackagesModuleDocument tp -> mapToolPackagesModule(tp);
     };
   }
 
@@ -423,6 +449,119 @@ final class ConfigMapper {
         dto.logoutCheckpoint,
         Optional.ofNullable(dto.checkpointMessage),
         dto.continueOnError);
+  }
+
+  private GitConfigModule mapGitConfigModule(GitConfigModuleDocument dto) {
+    return new GitConfigModule(
+        new ModuleName(requireField(dto.name, "name")),
+        enumValue(GitConfigScope.class, dto.scope, "git-config.scope"),
+        requireField(dto.entries, "git-config.entries"),
+        dto.continueOnError);
+  }
+
+  private GitRepoModule mapGitRepoModule(GitRepoModuleDocument dto) {
+    var repos =
+        requireField(dto.repos, "git-repo.repos").stream()
+            .map(
+                repo ->
+                    new GitRepoModule.GitRepo(
+                        requireField(repo.url, "git-repo.url"),
+                        requireField(repo.dest, "git-repo.dest"),
+                        Optional.ofNullable(repo.ref),
+                        Optional.ofNullable(repo.depth),
+                        repo.submodules,
+                        enumValue(GitRepoUpdate.class, repo.update, "git-repo.update")))
+            .toList();
+    return new GitRepoModule(
+        new ModuleName(requireField(dto.name, "name")), repos, dto.continueOnError);
+  }
+
+  private SystemdUnitModule mapSystemdUnitModule(SystemdUnitModuleDocument dto) {
+    var units =
+        requireField(dto.units, "systemd-unit.units").stream()
+            .map(
+                unit ->
+                    new SystemdUnitModule.SystemdUnit(
+                        requireField(unit.name, "systemd-unit.units[].name"),
+                        unit.enabled,
+                        enumValue(SystemdState.class, unit.state, "systemd-unit.state"),
+                        unit.mask))
+            .toList();
+    return new SystemdUnitModule(
+        new ModuleName(requireField(dto.name, "name")),
+        enumValue(SystemdScope.class, dto.scope, "systemd-unit.scope"),
+        units,
+        dto.continueOnError);
+  }
+
+  private SystemSettingModule mapSystemSettingModule(SystemSettingModuleDocument dto) {
+    return new SystemSettingModule(
+        new ModuleName(requireField(dto.name, "name")),
+        Optional.ofNullable(dto.localRtc),
+        Optional.ofNullable(dto.ntp),
+        Optional.ofNullable(dto.timezone),
+        Optional.ofNullable(dto.hostname),
+        dto.locale != null ? dto.locale : java.util.Map.of(),
+        dto.continueOnError);
+  }
+
+  private SystemUpdateModule mapSystemUpdateModule(SystemUpdateModuleDocument dto) {
+    return new SystemUpdateModule(
+        new ModuleName(requireField(dto.name, "name")),
+        PackageManagerKind.valueOf(
+            requireField(dto.packageManager, "system-update.packageManager").toUpperCase()),
+        dto.distUpgrade,
+        dto.refreshOnly,
+        Optional.ofNullable(dto.timeout).map(java.time.Duration::parse),
+        dto.continueOnError);
+  }
+
+  private GpgKeyModule mapGpgKeyModule(GpgKeyModuleDocument dto) {
+    var keys =
+        requireField(dto.keys, "gpg-key.keys").stream()
+            .map(
+                key ->
+                    new GpgKeyModule.GpgKey(
+                        requireField(key.url, "gpg-key.keys[].url"),
+                        Optional.ofNullable(key.keyring).map(Path::of),
+                        Optional.ofNullable(key.fingerprint)))
+            .toList();
+    return new GpgKeyModule(
+        new ModuleName(requireField(dto.name, "name")), keys, dto.continueOnError);
+  }
+
+  private ToolPackagesModule mapToolPackagesModule(ToolPackagesModuleDocument dto) {
+    var backend =
+        ToolPackageBackend.fromId(requireField(dto.backend, "tool-packages.backend"))
+            .orElseThrow(
+                () ->
+                    new IllegalArgumentException(
+                        "Unsupported tool-packages backend: " + dto.backend));
+    var packages =
+        requireField(dto.packages, "tool-packages.packages").stream()
+            .map(ConfigMapper::toolPackage)
+            .toList();
+    return new ToolPackagesModule(
+        new ModuleName(requireField(dto.name, "name")), backend, packages, dto.continueOnError);
+  }
+
+  /** Splits a {@code name@version} entry, leaving a bare name unpinned. */
+  private static ToolPackagesModule.ToolPackage toolPackage(String raw) {
+    int at = raw.lastIndexOf('@');
+    if (at <= 0) {
+      return new ToolPackagesModule.ToolPackage(raw);
+    }
+    return new ToolPackagesModule.ToolPackage(
+        raw.substring(0, at), Optional.of(raw.substring(at + 1)));
+  }
+
+  private <E extends Enum<E>> E enumValue(Class<E> type, String raw, String field) {
+    String normalized = requireField(raw, field).strip().toUpperCase().replace('-', '_');
+    try {
+      return Enum.valueOf(type, normalized);
+    } catch (IllegalArgumentException e) {
+      throw new IllegalArgumentException("Unsupported value for " + field + ": " + raw, e);
+    }
   }
 
   private Optional<Checksum> mapChecksum(ChecksumDocument dto) {

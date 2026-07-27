@@ -169,6 +169,45 @@ public final class PlanSpecDocument {
   @JsonProperty("groups")
   private List<String> groups;
 
+  @JsonProperty("scope")
+  private String scope;
+
+  @JsonProperty("entries")
+  private java.util.Map<String, String> entries;
+
+  @JsonProperty("repos")
+  private List<GitRepoModuleDocument.RepoDocument> repos;
+
+  @JsonProperty("units")
+  private List<SystemdUnitModuleDocument.UnitDocument> units;
+
+  @JsonProperty("keys")
+  private List<GpgKeyModuleDocument.KeyDocument> keys;
+
+  @JsonProperty("backend")
+  private String backend;
+
+  @JsonProperty("localRtc")
+  private Boolean localRtc;
+
+  @JsonProperty("ntp")
+  private Boolean ntp;
+
+  @JsonProperty("timezone")
+  private String timezone;
+
+  @JsonProperty("hostname")
+  private String hostname;
+
+  @JsonProperty("locale")
+  private java.util.Map<String, String> locale;
+
+  @JsonProperty("distUpgrade")
+  private Boolean distUpgrade;
+
+  @JsonProperty("refreshOnly")
+  private Boolean refreshOnly;
+
   @JsonProperty("user")
   private String user;
 
@@ -463,6 +502,58 @@ public final class PlanSpecDocument {
 
   public List<String> groups() {
     return DocumentDefaults.list(groups);
+  }
+
+  public Optional<String> scope() {
+    return DocumentDefaults.optional(scope);
+  }
+
+  public java.util.Map<String, String> entries() {
+    return entries == null ? java.util.Map.of() : java.util.Map.copyOf(entries);
+  }
+
+  public List<GitRepoModuleDocument.RepoDocument> repos() {
+    return DocumentDefaults.list(repos);
+  }
+
+  public List<SystemdUnitModuleDocument.UnitDocument> units() {
+    return DocumentDefaults.list(units);
+  }
+
+  public List<GpgKeyModuleDocument.KeyDocument> keys() {
+    return DocumentDefaults.list(keys);
+  }
+
+  public Optional<String> backend() {
+    return DocumentDefaults.optional(backend);
+  }
+
+  public Optional<Boolean> localRtc() {
+    return DocumentDefaults.optional(localRtc);
+  }
+
+  public Optional<Boolean> ntp() {
+    return DocumentDefaults.optional(ntp);
+  }
+
+  public Optional<String> timezone() {
+    return DocumentDefaults.optional(timezone);
+  }
+
+  public Optional<String> hostname() {
+    return DocumentDefaults.optional(hostname);
+  }
+
+  public java.util.Map<String, String> locale() {
+    return locale == null ? java.util.Map.of() : java.util.Map.copyOf(locale);
+  }
+
+  public boolean distUpgrade() {
+    return DocumentDefaults.optional(distUpgrade).orElse(false);
+  }
+
+  public boolean refreshOnly() {
+    return DocumentDefaults.optional(refreshOnly).orElse(false);
   }
 
   public Optional<String> user() {

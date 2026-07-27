@@ -605,3 +605,148 @@ created by their own package, so a missing one usually means a typo or a package
 installed — and quietly creating a real but useless group hides that.
 
 When Fluxion itself is run under `sudo`, `SUDO_USER` is used rather than `root`.
+
+---
+
+### `git-config` — set git configuration
+
+```yaml
+- type: git-config
+  name: git-identity
+  scope: global            # global | system | local
+  entries:
+    user.email: you@example.com
+    user.name: your-name
+    pull.rebase: "true"
+```
+
+Each key is set individually and probed with `git config --get`, so a key that already holds the
+desired value is left alone and `fluxion diff` can report drift per key. `system` scope writes
+`/etc/gitconfig` and uses sudo.
+
+---
+
+### `git-repo` — clone repositories that are not packaged
+
+```yaml
+- type: git-repo
+  name: zsh-plugins
+  repos:
+    - url: https://github.com/tmux-plugins/tpm
+      dest: ~/.tmux/plugins/tpm
+    - url: https://github.com/zsh-users/zsh-autosuggestions
+      dest: "${ZSH_CUSTOM:-~/.oh-my-zsh/custom}/plugins/zsh-autosuggestions"
+      depth: 1
+      ref: master
+      submodules: false
+      update: pull         # none (default) | pull | reset-hard
+```
+
+Destinations support shell-style `${VAR:-default}` and `~`, so paths can be copied straight from an
+existing shell script. `update: pull` uses `--ff-only` — a bootstrapper should never create a merge
+commit in a repository you may have edited. `reset-hard` discards local changes, so it is never the
+default.
+
+---
+
+### `systemd-unit` — enable, start, stop, or mask units
+
+```yaml
+- type: systemd-unit
+  name: services
+  scope: system            # system (default) | user
+  units:
+    - { name: docker, enabled: true, state: started }
+    - { name: sshd, enabled: false, state: stopped, mask: true }
+```
+
+A bare name is treated as a `.service`. `scope: user` acts on your own manager and uses no sudo.
+
+`systemctl is-enabled` is read by its output word rather than its exit code, because several
+non-zero codes mean different things. `static`, `indirect`, `generated` and `alias` units are never
+passed to `enable` — that is an error for a unit with no `[Install]` section, and it is already
+reachable as a dependency.
+
+When `systemctl` is absent (containers, image builds) the step is skipped rather than failed, so the
+same profile stays usable in CI.
+
+---
+
+### `system-setting` — timedatectl / hostnamectl / localectl
+
+```yaml
+- type: system-setting
+  name: clock
+  localRtc: false
+  ntp: true
+  timezone: Europe/Warsaw
+  hostname: workstation
+  locale:
+    LANG: en_US.UTF-8
+```
+
+Every setting is probed with the matching `show --property` first, so only settings that actually
+differ are applied and a rerun is a no-op.
+
+---
+
+### `system-update` — full system update
+
+```yaml
+- type: system-update
+  name: full-update
+  packageManager: zypper   # dnf | zypper | pacman | apt
+  distUpgrade: true        # zypper dup / apt full-upgrade
+  refreshOnly: false       # metadata only
+  timeout: PT2H            # ISO-8601; default 2 hours
+```
+
+`distUpgrade` is required on rolling releases such as openSUSE Tumbleweed, where a plain `update` is
+the wrong verb.
+
+`dnf check-update` exits **100** when updates are available. That is a successful outcome, not a
+failure, and is treated as one — otherwise a refresh step would fail on exactly the machines that
+had something to install.
+
+---
+
+### `gpg-key` — import repository signing keys
+
+```yaml
+- type: gpg-key
+  name: vscode-key
+  keys:
+    - url: https://packages.microsoft.com/keys/microsoft.asc     # rpm --import
+    - url: https://download.docker.com/linux/debian/gpg          # apt keyring
+      keyring: /etc/apt/keyrings/docker.gpg
+      fingerprint: 9DC858229FC7DD38854AE2D88D81803C0EBFCD88
+```
+
+Omit `keyring` to import into the RPM database; supply it to write a dearmoured key for an
+apt `signed-by` source.
+
+Importing a key decides what the machine will trust to install software as root, so URLs must be
+`https` or `file`, and a declared `fingerprint` is verified against the key that actually arrived.
+On mismatch the key is **removed** and the step fails — leaving a key the profile did not vouch for
+would be worse than failing.
+
+---
+
+### `tool-packages` — ecosystem package installers
+
+```yaml
+- type: tool-packages
+  name: rust-tools
+  backend: cargo-binstall  # cargo-binstall | cargo | snap | pipx | uv-tool | npm-global | go-install
+  packages:
+    - eza
+    - ripgrep
+    - "bottom@0.10.2"      # name@version pins
+  continueOnError: true    # default: true
+```
+
+Prefer `cargo-binstall` over `cargo`: it fetches prebuilt binaries instead of compiling from source.
+
+Each package installs in its own process, so one yanked crate does not block the other nineteen —
+the same isolation `packages` already provides. The backend must be on `PATH`; the step fails with
+an actionable message rather than a confusing command-not-found if it is missing.

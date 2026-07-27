@@ -15,6 +15,9 @@ import dev.sysboot.core.DotbotModule;
 import dev.sysboot.core.FileWriteModule;
 import dev.sysboot.core.FlatpakModule;
 import dev.sysboot.core.FlatpakRemoteModule;
+import dev.sysboot.core.GitConfigModule;
+import dev.sysboot.core.GitRepoModule;
+import dev.sysboot.core.GpgKeyModule;
 import dev.sysboot.core.InterruptModule;
 import dev.sysboot.core.ManualModule;
 import dev.sysboot.core.NerdFontModule;
@@ -26,6 +29,10 @@ import dev.sysboot.core.SdkmanModule;
 import dev.sysboot.core.ShellCommandModule;
 import dev.sysboot.core.ShellReloadModule;
 import dev.sysboot.core.ShellScriptModule;
+import dev.sysboot.core.SystemSettingModule;
+import dev.sysboot.core.SystemUpdateModule;
+import dev.sysboot.core.SystemdUnitModule;
+import dev.sysboot.core.ToolPackagesModule;
 import dev.sysboot.core.ToolchainModule;
 import dev.sysboot.core.UserGroupsModule;
 import dev.sysboot.core.ZypperModule;
@@ -113,6 +120,13 @@ public final class ListCommand implements Runnable {
       case SdkmanModule ignored -> "🧰 sdkman";
       case BinstallerModule ignored -> "📥 binstaller";
       case UserGroupsModule ignored -> "👤 groups";
+      case GitConfigModule ignored -> "🔧 git-config";
+      case GitRepoModule ignored -> "🌿 git-repo";
+      case SystemdUnitModule ignored -> "⚙️ systemd";
+      case SystemSettingModule ignored -> "🖥️ setting";
+      case SystemUpdateModule ignored -> "⬆️ update";
+      case GpgKeyModule ignored -> "🔑 gpg-key";
+      case ToolPackagesModule ignored -> "🧰 tool-pkgs";
     };
   }
 
@@ -141,6 +155,13 @@ public final class ListCommand implements Runnable {
       case SdkmanModule ignored -> "sdkman-packages";
       case BinstallerModule ignored -> "binstaller-profile";
       case UserGroupsModule ignored -> "user-groups";
+      case GitConfigModule ignored -> "git-config";
+      case GitRepoModule ignored -> "git-repo";
+      case SystemdUnitModule ignored -> "systemd-unit";
+      case SystemSettingModule ignored -> "system-setting";
+      case SystemUpdateModule ignored -> "system-update";
+      case GpgKeyModule ignored -> "gpg-key";
+      case ToolPackagesModule tpm -> tpm.backend().id() + "-packages";
     };
   }
 
@@ -169,6 +190,14 @@ public final class ListCommand implements Runnable {
       case SdkmanModule sm -> sm.packages().size() + " SDKMAN packages";
       case BinstallerModule bsm -> binstallerDescription(bsm);
       case UserGroupsModule ugm -> String.join(", ", ugm.groups());
+      case GitConfigModule gcm -> gcm.entries().size() + " git config entries";
+      case GitRepoModule grm -> grm.repos().size() + " repositories";
+      case SystemdUnitModule sum -> sum.units().size() + " units (" + sum.scope() + ")";
+      case SystemSettingModule ignored -> "host settings";
+      case SystemUpdateModule sup -> "full update (" + sup.packageManager() + ")";
+      case GpgKeyModule gkm -> gkm.keys().size() + " signing keys";
+      case ToolPackagesModule tpm ->
+          tpm.packages().size() + " packages (" + tpm.backend().id() + ")";
     };
   }
 

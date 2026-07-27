@@ -11,6 +11,9 @@ import dev.sysboot.core.DotbotModule;
 import dev.sysboot.core.FileWriteModule;
 import dev.sysboot.core.FlatpakModule;
 import dev.sysboot.core.FlatpakRemoteModule;
+import dev.sysboot.core.GitConfigModule;
+import dev.sysboot.core.GitRepoModule;
+import dev.sysboot.core.GpgKeyModule;
 import dev.sysboot.core.InterruptModule;
 import dev.sysboot.core.ManualModule;
 import dev.sysboot.core.NerdFontModule;
@@ -24,6 +27,10 @@ import dev.sysboot.core.SdkmanModule;
 import dev.sysboot.core.ShellCommandModule;
 import dev.sysboot.core.ShellReloadModule;
 import dev.sysboot.core.ShellScriptModule;
+import dev.sysboot.core.SystemSettingModule;
+import dev.sysboot.core.SystemUpdateModule;
+import dev.sysboot.core.SystemdUnitModule;
+import dev.sysboot.core.ToolPackagesModule;
 import dev.sysboot.core.ToolchainModule;
 import dev.sysboot.core.UserGroupsModule;
 import dev.sysboot.core.ZypperModule;
@@ -157,6 +164,70 @@ final class PhaseFingerprintCalculator {
         append(builder, "type", "sdkman-packages");
         sm.packages().forEach(pkg -> append(builder, "package", pkg.itemKey()));
         append(builder, "continueOnError", sm.continueOnError());
+      }
+      case GitConfigModule gcm -> {
+        append(builder, "type", "git-config");
+        append(builder, "scope", gcm.scope().name());
+        gcm.sortedKeys().forEach(key -> append(builder, key, gcm.entries().get(key)));
+      }
+      case GitRepoModule grm -> {
+        append(builder, "type", "git-repo");
+        grm.repos()
+            .forEach(
+                repo -> {
+                  append(builder, "url", repo.url());
+                  append(builder, "destination", repo.destination());
+                  repo.ref().ifPresent(ref -> append(builder, "ref", ref));
+                  append(builder, "update", repo.update().name());
+                });
+      }
+      case SystemdUnitModule sum -> {
+        append(builder, "type", "systemd-unit");
+        append(builder, "scope", sum.scope().name());
+        sum.units()
+            .forEach(
+                unit -> {
+                  append(builder, "unit", unit.qualifiedName());
+                  append(builder, "enabled", unit.enabled());
+                  append(builder, "state", unit.state().name());
+                  append(builder, "masked", unit.masked());
+                });
+      }
+      case SystemSettingModule ssm -> {
+        append(builder, "type", "system-setting");
+        ssm.localRtc().ifPresent(v -> append(builder, "localRtc", v));
+        ssm.ntp().ifPresent(v -> append(builder, "ntp", v));
+        ssm.timezone().ifPresent(v -> append(builder, "timezone", v));
+        ssm.hostname().ifPresent(v -> append(builder, "hostname", v));
+        ssm.locale().forEach((k, v) -> append(builder, k, v));
+      }
+      case SystemUpdateModule sup -> {
+        append(builder, "type", "system-update");
+        append(builder, "packageManager", sup.packageManager().name());
+        append(builder, "distUpgrade", sup.distUpgrade());
+        append(builder, "refreshOnly", sup.refreshOnly());
+      }
+      case GpgKeyModule gkm -> {
+        append(builder, "type", "gpg-key");
+        gkm.keys()
+            .forEach(
+                key -> {
+                  append(builder, "url", key.url());
+                  key.keyring().ifPresent(ring -> append(builder, "keyring", ring.toString()));
+                  key.fingerprint().ifPresent(fp -> append(builder, "fingerprint", fp));
+                });
+      }
+      case ToolPackagesModule tpm -> {
+        append(builder, "type", "tool-packages");
+        append(builder, "backend", tpm.backend().id());
+        tpm.packages()
+            .forEach(
+                pkg ->
+                    append(
+                        builder,
+                        "package",
+                        pkg.name() + pkg.version().map(v -> "@" + v).orElse("")));
+        append(builder, "continueOnError", tpm.continueOnError());
       }
       case UserGroupsModule ugm -> {
         append(builder, "type", "user-groups");

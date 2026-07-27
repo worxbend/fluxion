@@ -21,6 +21,11 @@ import dev.sysboot.core.DotbotModule;
 import dev.sysboot.core.FileWriteItem;
 import dev.sysboot.core.FileWriteModule;
 import dev.sysboot.core.FlatpakModule;
+import dev.sysboot.core.GitConfigModule;
+import dev.sysboot.core.GitConfigScope;
+import dev.sysboot.core.GitRepoModule;
+import dev.sysboot.core.GitRepoUpdate;
+import dev.sysboot.core.GpgKeyModule;
 import dev.sysboot.core.HostFactsProvider;
 import dev.sysboot.core.InterruptModule;
 import dev.sysboot.core.InterruptResumeMode;
@@ -46,6 +51,13 @@ import dev.sysboot.core.ShellEnvironmentVariable;
 import dev.sysboot.core.ShellScriptItem;
 import dev.sysboot.core.ShellScriptModule;
 import dev.sysboot.core.SkippedPlanEntry;
+import dev.sysboot.core.SystemSettingModule;
+import dev.sysboot.core.SystemUpdateModule;
+import dev.sysboot.core.SystemdScope;
+import dev.sysboot.core.SystemdState;
+import dev.sysboot.core.SystemdUnitModule;
+import dev.sysboot.core.ToolPackageBackend;
+import dev.sysboot.core.ToolPackagesModule;
 import dev.sysboot.core.UserGroupsModule;
 import java.net.URI;
 import java.nio.file.Path;
@@ -154,6 +166,13 @@ final class WorkstationProfileConfigMapper {
       case "dotfiles-apply" -> Optional.of(dotbotModule(entry));
       case "binstaller-profile" -> Optional.of(binstallerModule(entry, policy));
       case "user-groups" -> Optional.of(userGroupsModule(entry, policy));
+      case "git-config" -> Optional.of(gitConfigModule(entry, policy));
+      case "git-repo" -> Optional.of(gitRepoModule(entry, policy));
+      case "systemd-unit" -> Optional.of(systemdUnitModule(entry, policy));
+      case "system-setting" -> Optional.of(systemSettingModule(entry, policy));
+      case "system-update" -> Optional.of(systemUpdateModule(entry, policy));
+      case "gpg-key" -> Optional.of(gpgKeyModule(entry, policy));
+      case "tool-packages" -> Optional.of(toolPackagesModule(entry, policy));
       case "interrupt" -> Optional.of(interruptModule(entry));
       default -> Optional.empty();
     };
@@ -637,6 +656,118 @@ final class WorkstationProfileConfigMapper {
         spec.logoutCheckpoint(),
         spec.message(),
         continueOnError(entry, policy));
+  }
+
+  private GitConfigModule gitConfigModule(PlanEntryDocument entry, BootstrapPolicy policy) {
+    PlanSpecDocument spec = requireField(entry.spec().orElse(null), planName(entry) + ".spec");
+    return new GitConfigModule(
+        new ModuleName(planName(entry)),
+        planEnum(GitConfigScope.class, spec.scope().orElse("global")),
+        spec.entries(),
+        continueOnError(entry, policy));
+  }
+
+  private GitRepoModule gitRepoModule(PlanEntryDocument entry, BootstrapPolicy policy) {
+    PlanSpecDocument spec = requireField(entry.spec().orElse(null), planName(entry) + ".spec");
+    var repos =
+        spec.repos().stream()
+            .map(
+                repo ->
+                    new GitRepoModule.GitRepo(
+                        requireField(repo.url, planName(entry) + ".spec.repos[].url"),
+                        requireField(repo.dest, planName(entry) + ".spec.repos[].dest"),
+                        Optional.ofNullable(repo.ref),
+                        Optional.ofNullable(repo.depth),
+                        repo.submodules,
+                        planEnum(GitRepoUpdate.class, repo.update)))
+            .toList();
+    return new GitRepoModule(
+        new ModuleName(planName(entry)), repos, continueOnError(entry, policy));
+  }
+
+  private SystemdUnitModule systemdUnitModule(PlanEntryDocument entry, BootstrapPolicy policy) {
+    PlanSpecDocument spec = requireField(entry.spec().orElse(null), planName(entry) + ".spec");
+    var units =
+        spec.units().stream()
+            .map(
+                unit ->
+                    new SystemdUnitModule.SystemdUnit(
+                        requireField(unit.name, planName(entry) + ".spec.units[].name"),
+                        unit.enabled,
+                        planEnum(SystemdState.class, unit.state),
+                        unit.mask))
+            .toList();
+    return new SystemdUnitModule(
+        new ModuleName(planName(entry)),
+        planEnum(SystemdScope.class, spec.scope().orElse("system")),
+        units,
+        continueOnError(entry, policy));
+  }
+
+  private SystemSettingModule systemSettingModule(PlanEntryDocument entry, BootstrapPolicy policy) {
+    PlanSpecDocument spec = requireField(entry.spec().orElse(null), planName(entry) + ".spec");
+    return new SystemSettingModule(
+        new ModuleName(planName(entry)),
+        spec.localRtc(),
+        spec.ntp(),
+        spec.timezone(),
+        spec.hostname(),
+        spec.locale(),
+        continueOnError(entry, policy));
+  }
+
+  private SystemUpdateModule systemUpdateModule(PlanEntryDocument entry, BootstrapPolicy policy) {
+    PlanSpecDocument spec = requireField(entry.spec().orElse(null), planName(entry) + ".spec");
+    return new SystemUpdateModule(
+        new ModuleName(planName(entry)),
+        PackageManagerKind.valueOf(
+            requireField(
+                    spec.packageManager().orElse(null), planName(entry) + ".spec.packageManager")
+                .toUpperCase()),
+        spec.distUpgrade(),
+        spec.refreshOnly(),
+        spec.timeout().map(this::duration),
+        continueOnError(entry, policy));
+  }
+
+  private GpgKeyModule gpgKeyModule(PlanEntryDocument entry, BootstrapPolicy policy) {
+    PlanSpecDocument spec = requireField(entry.spec().orElse(null), planName(entry) + ".spec");
+    var keys =
+        spec.keys().stream()
+            .map(
+                key ->
+                    new GpgKeyModule.GpgKey(
+                        requireField(key.url, planName(entry) + ".spec.keys[].url"),
+                        Optional.ofNullable(key.keyring).map(path -> Path.of(expandHome(path))),
+                        Optional.ofNullable(key.fingerprint)))
+            .toList();
+    return new GpgKeyModule(new ModuleName(planName(entry)), keys, continueOnError(entry, policy));
+  }
+
+  private ToolPackagesModule toolPackagesModule(PlanEntryDocument entry, BootstrapPolicy policy) {
+    PlanSpecDocument spec = requireField(entry.spec().orElse(null), planName(entry) + ".spec");
+    var backend =
+        ToolPackageBackend.fromId(
+                requireField(spec.backend().orElse(null), planName(entry) + ".spec.backend"))
+            .orElseThrow(
+                () ->
+                    new IllegalArgumentException(
+                        "Unsupported tool-packages backend: " + spec.backend().orElse("")));
+    var packages = spec.packages().stream().map(this::planToolPackage).toList();
+    return new ToolPackagesModule(
+        new ModuleName(planName(entry)), backend, packages, continueOnError(entry, policy));
+  }
+
+  private ToolPackagesModule.ToolPackage planToolPackage(String raw) {
+    int at = raw.lastIndexOf('@');
+    return at <= 0
+        ? new ToolPackagesModule.ToolPackage(raw)
+        : new ToolPackagesModule.ToolPackage(
+            raw.substring(0, at), Optional.of(raw.substring(at + 1)));
+  }
+
+  private <E extends Enum<E>> E planEnum(Class<E> type, String raw) {
+    return Enum.valueOf(type, raw.strip().toUpperCase().replace('-', '_'));
   }
 
   private DotbotModule dotbotModule(PlanEntryDocument entry) {

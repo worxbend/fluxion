@@ -26,6 +26,13 @@ final class PhaseExecutors {
   private final ShellReloadExecutor shellReload;
   private final BinstallerExecutor binstaller;
   private final UserGroupsExecutor userGroups;
+  private final GitConfigExecutor gitConfig;
+  private final GitRepoExecutor gitRepo;
+  private final SystemdUnitExecutor systemdUnit;
+  private final SystemSettingExecutor systemSetting;
+  private final SystemUpdateExecutor systemUpdate;
+  private final GpgKeyExecutor gpgKey;
+  private final ToolPackagesExecutor toolPackages;
 
   private PhaseExecutors(
       ShellScriptExecutor shellScript,
@@ -37,7 +44,14 @@ final class PhaseExecutors {
       NerdFontExecutor nerdFont,
       ShellReloadExecutor shellReload,
       BinstallerExecutor binstaller,
-      UserGroupsExecutor userGroups) {
+      UserGroupsExecutor userGroups,
+      GitConfigExecutor gitConfig,
+      GitRepoExecutor gitRepo,
+      SystemdUnitExecutor systemdUnit,
+      SystemSettingExecutor systemSetting,
+      SystemUpdateExecutor systemUpdate,
+      GpgKeyExecutor gpgKey,
+      ToolPackagesExecutor toolPackages) {
     this.shellScript = Objects.requireNonNull(shellScript);
     this.shellCommand = Objects.requireNonNull(shellCommand);
     this.dotbot = Objects.requireNonNull(dotbot);
@@ -48,6 +62,13 @@ final class PhaseExecutors {
     this.shellReload = Objects.requireNonNull(shellReload);
     this.binstaller = Objects.requireNonNull(binstaller);
     this.userGroups = Objects.requireNonNull(userGroups);
+    this.gitConfig = Objects.requireNonNull(gitConfig);
+    this.gitRepo = Objects.requireNonNull(gitRepo);
+    this.systemdUnit = Objects.requireNonNull(systemdUnit);
+    this.systemSetting = Objects.requireNonNull(systemSetting);
+    this.systemUpdate = Objects.requireNonNull(systemUpdate);
+    this.gpgKey = Objects.requireNonNull(gpgKey);
+    this.toolPackages = Objects.requireNonNull(toolPackages);
   }
 
   static PhaseExecutors forRunner(ShellRunner runner) {
@@ -61,7 +82,14 @@ final class PhaseExecutors {
         new NerdFontExecutor(runner),
         new ShellReloadExecutor(runner),
         new BinstallerExecutor(runner),
-        new UserGroupsExecutor(runner));
+        new UserGroupsExecutor(runner),
+        new GitConfigExecutor(runner),
+        new GitRepoExecutor(runner),
+        new SystemdUnitExecutor(runner),
+        new SystemSettingExecutor(runner),
+        new SystemUpdateExecutor(runner),
+        new GpgKeyExecutor(runner),
+        new ToolPackagesExecutor(runner));
   }
 
   /** Uses the collaborators supplied to the orchestrator, so injected stubs take effect. */
@@ -84,7 +112,14 @@ final class PhaseExecutors {
         nerdFont,
         shellReload,
         new BinstallerExecutor(runner),
-        new UserGroupsExecutor(runner));
+        new UserGroupsExecutor(runner),
+        new GitConfigExecutor(runner),
+        new GitRepoExecutor(runner),
+        new SystemdUnitExecutor(runner),
+        new SystemSettingExecutor(runner),
+        new SystemUpdateExecutor(runner),
+        new GpgKeyExecutor(runner),
+        new ToolPackagesExecutor(runner));
   }
 
   ShellScriptExecutor shellScript() {
@@ -125,6 +160,34 @@ final class PhaseExecutors {
 
   UserGroupsExecutor userGroups() {
     return userGroups;
+  }
+
+  GitConfigExecutor gitConfig() {
+    return gitConfig;
+  }
+
+  GitRepoExecutor gitRepo() {
+    return gitRepo;
+  }
+
+  SystemdUnitExecutor systemdUnit() {
+    return systemdUnit;
+  }
+
+  SystemSettingExecutor systemSetting() {
+    return systemSetting;
+  }
+
+  SystemUpdateExecutor systemUpdate() {
+    return systemUpdate;
+  }
+
+  GpgKeyExecutor gpgKey() {
+    return gpgKey;
+  }
+
+  ToolPackagesExecutor toolPackages() {
+    return toolPackages;
   }
 
   /** Per-runner cache keyed by identity, since runners are wrappers built per restart policy. */

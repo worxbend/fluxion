@@ -45,7 +45,14 @@ final class WorkstationProfileValidator {
           "nerd-fonts",
           "dotfiles-apply",
           "binstaller-profile",
-          "user-groups");
+          "user-groups",
+          "git-config",
+          "git-repo",
+          "systemd-unit",
+          "system-setting",
+          "system-update",
+          "gpg-key",
+          "tool-packages");
   private static final Map<String, Set<String>> SUPPORTED_PACKAGE_ACTIONS =
       Map.of(
           "apt-packages", Set.of("update", "upgrade", "dist-upgrade"),
@@ -71,6 +78,13 @@ final class WorkstationProfileValidator {
           "dotfiles-apply",
           "binstaller-profile",
           "user-groups",
+          "git-config",
+          "git-repo",
+          "systemd-unit",
+          "system-setting",
+          "system-update",
+          "gpg-key",
+          "tool-packages",
           "commands",
           "interrupt");
 
@@ -317,6 +331,13 @@ final class WorkstationProfileValidator {
       case "dotfiles-apply" -> validateDotfilesSpec(path, entryName, spec, errors);
       case "binstaller-profile" -> validateBinstallerSpec(path, entryName, spec, errors);
       case "user-groups" -> validateUserGroupsSpec(path, entryName, spec, errors);
+      case "git-config" -> validateGitConfigSpec(path, entryName, spec, errors);
+      case "git-repo" -> validateGitRepoSpec(path, entryName, spec, errors);
+      case "systemd-unit" -> validateSystemdUnitSpec(path, entryName, spec, errors);
+      case "system-setting" -> validateSystemSettingSpec(path, entryName, spec, errors);
+      case "system-update" -> validateSystemUpdateSpec(path, entryName, spec, errors);
+      case "gpg-key" -> validateGpgKeySpec(path, entryName, spec, errors);
+      case "tool-packages" -> validateToolPackagesSpec(path, entryName, spec, errors);
       default -> {}
     }
   }
@@ -688,6 +709,125 @@ final class WorkstationProfileValidator {
                         + group
                         + "'. Group membership is append-only; Fluxion never removes a user from a"
                         + " group. Use gpasswd -d by hand."));
+  }
+
+  private void validateGitConfigSpec(
+      String path, String entryName, PlanSpecDocument spec, List<String> errors) {
+    if (spec.entries().isEmpty()) {
+      errors.add(path + ".spec.entries is required for plan entry '" + entryName + "'");
+    }
+    spec.entries().keySet().stream()
+        .filter(key -> !key.contains("."))
+        .forEach(
+            key ->
+                errors.add(
+                    path
+                        + ".spec.entries for plan entry '"
+                        + entryName
+                        + "' has key '"
+                        + key
+                        + "'; git config keys are section.key, for example user.email"));
+  }
+
+  private void validateGitRepoSpec(
+      String path, String entryName, PlanSpecDocument spec, List<String> errors) {
+    if (spec.repos().isEmpty()) {
+      errors.add(path + ".spec.repos is required for plan entry '" + entryName + "'");
+    }
+    spec.repos()
+        .forEach(
+            repo -> {
+              requirePresent(path + ".spec.repos[].url", repo.url, entryName, errors);
+              requirePresent(path + ".spec.repos[].dest", repo.dest, entryName, errors);
+            });
+  }
+
+  private void validateSystemdUnitSpec(
+      String path, String entryName, PlanSpecDocument spec, List<String> errors) {
+    if (spec.units().isEmpty()) {
+      errors.add(path + ".spec.units is required for plan entry '" + entryName + "'");
+    }
+    spec.units()
+        .forEach(
+            unit -> {
+              requirePresent(path + ".spec.units[].name", unit.name, entryName, errors);
+              if (unit.mask && unit.enabled) {
+                errors.add(
+                    path
+                        + ".spec.units[] for plan entry '"
+                        + entryName
+                        + "' cannot both mask and enable '"
+                        + unit.name
+                        + "'");
+              }
+            });
+  }
+
+  private void validateSystemSettingSpec(
+      String path, String entryName, PlanSpecDocument spec, List<String> errors) {
+    boolean empty =
+        spec.localRtc().isEmpty()
+            && spec.ntp().isEmpty()
+            && spec.timezone().isEmpty()
+            && spec.hostname().isEmpty()
+            && spec.locale().isEmpty();
+    if (empty) {
+      errors.add(
+          path + ".spec for plan entry '" + entryName + "' declares no system setting to apply");
+    }
+  }
+
+  private void validateSystemUpdateSpec(
+      String path, String entryName, PlanSpecDocument spec, List<String> errors) {
+    requirePresent(
+        path + ".spec.packageManager", spec.packageManager().orElse(null), entryName, errors);
+    if (spec.distUpgrade() && spec.refreshOnly()) {
+      errors.add(
+          path
+              + ".spec for plan entry '"
+              + entryName
+              + "' cannot be both distUpgrade and refreshOnly");
+    }
+  }
+
+  private void validateGpgKeySpec(
+      String path, String entryName, PlanSpecDocument spec, List<String> errors) {
+    if (spec.keys().isEmpty()) {
+      errors.add(path + ".spec.keys is required for plan entry '" + entryName + "'");
+    }
+    spec.keys()
+        .forEach(
+            key -> {
+              requirePresent(path + ".spec.keys[].url", key.url, entryName, errors);
+              if (key.url != null
+                  && !key.url.startsWith("https://")
+                  && !key.url.startsWith("file://")) {
+                errors.add(
+                    path
+                        + ".spec.keys[].url for plan entry '"
+                        + entryName
+                        + "' must be https or file: a signing key decides what this machine"
+                        + " trusts");
+              }
+            });
+  }
+
+  private void validateToolPackagesSpec(
+      String path, String entryName, PlanSpecDocument spec, List<String> errors) {
+    requirePresent(path + ".spec.backend", spec.backend().orElse(null), entryName, errors);
+    spec.backend()
+        .filter(backend -> dev.sysboot.core.ToolPackageBackend.fromId(backend).isEmpty())
+        .ifPresent(
+            backend ->
+                errors.add(
+                    path
+                        + ".spec.backend for plan entry '"
+                        + entryName
+                        + "' is not a supported backend: "
+                        + backend));
+    if (spec.packages().isEmpty()) {
+      errors.add(path + ".spec.packages is required for plan entry '" + entryName + "'");
+    }
   }
 
   private void validateNerdFontConfigShape(

@@ -11,6 +11,9 @@ import dev.sysboot.core.DotbotModule;
 import dev.sysboot.core.FileWriteModule;
 import dev.sysboot.core.FlatpakModule;
 import dev.sysboot.core.FlatpakRemoteModule;
+import dev.sysboot.core.GitConfigModule;
+import dev.sysboot.core.GitRepoModule;
+import dev.sysboot.core.GpgKeyModule;
 import dev.sysboot.core.InterruptModule;
 import dev.sysboot.core.ManualModule;
 import dev.sysboot.core.NerdFontConfig;
@@ -25,6 +28,10 @@ import dev.sysboot.core.SdkmanModule;
 import dev.sysboot.core.ShellCommandModule;
 import dev.sysboot.core.ShellReloadModule;
 import dev.sysboot.core.ShellScriptModule;
+import dev.sysboot.core.SystemSettingModule;
+import dev.sysboot.core.SystemUpdateModule;
+import dev.sysboot.core.SystemdUnitModule;
+import dev.sysboot.core.ToolPackagesModule;
 import dev.sysboot.core.ToolchainModule;
 import dev.sysboot.core.UserGroupsModule;
 import dev.sysboot.core.ZypperModule;
@@ -111,6 +118,13 @@ final class BootstrapConfigSelectionFilter {
       case SdkmanModule sdkmanModule -> filterSdkmanModule(sdkmanModule, entries);
       case BinstallerModule binstallerModule -> Optional.of(binstallerModule);
       case UserGroupsModule userGroupsModule -> Optional.of(userGroupsModule);
+      case GitConfigModule gitConfigModule -> Optional.of(gitConfigModule);
+      case GitRepoModule gitRepoModule -> Optional.of(gitRepoModule);
+      case SystemdUnitModule systemdUnitModule -> Optional.of(systemdUnitModule);
+      case SystemSettingModule systemSettingModule -> Optional.of(systemSettingModule);
+      case SystemUpdateModule systemUpdateModule -> Optional.of(systemUpdateModule);
+      case GpgKeyModule gpgKeyModule -> Optional.of(gpgKeyModule);
+      case ToolPackagesModule toolPackagesModule -> Optional.of(toolPackagesModule);
     };
   }
 

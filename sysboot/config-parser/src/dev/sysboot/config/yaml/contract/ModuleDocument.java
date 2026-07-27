@@ -24,7 +24,14 @@ import com.fasterxml.jackson.annotation.JsonTypeInfo;
   @JsonSubTypes.Type(value = AssertModuleDocument.class, name = "assert"),
   @JsonSubTypes.Type(value = ManualModuleDocument.class, name = "manual"),
   @JsonSubTypes.Type(value = BinstallerModuleDocument.class, name = "binstaller-profile"),
-  @JsonSubTypes.Type(value = UserGroupsModuleDocument.class, name = "user-groups")
+  @JsonSubTypes.Type(value = UserGroupsModuleDocument.class, name = "user-groups"),
+  @JsonSubTypes.Type(value = GitConfigModuleDocument.class, name = "git-config"),
+  @JsonSubTypes.Type(value = GitRepoModuleDocument.class, name = "git-repo"),
+  @JsonSubTypes.Type(value = SystemdUnitModuleDocument.class, name = "systemd-unit"),
+  @JsonSubTypes.Type(value = SystemSettingModuleDocument.class, name = "system-setting"),
+  @JsonSubTypes.Type(value = SystemUpdateModuleDocument.class, name = "system-update"),
+  @JsonSubTypes.Type(value = GpgKeyModuleDocument.class, name = "gpg-key"),
+  @JsonSubTypes.Type(value = ToolPackagesModuleDocument.class, name = "tool-packages")
 })
 public abstract sealed class ModuleDocument
     permits PackagesModuleDocument,
@@ -45,7 +52,14 @@ public abstract sealed class ModuleDocument
         AssertModuleDocument,
         ManualModuleDocument,
         BinstallerModuleDocument,
-        UserGroupsModuleDocument {
+        UserGroupsModuleDocument,
+        GitConfigModuleDocument,
+        GitRepoModuleDocument,
+        SystemdUnitModuleDocument,
+        SystemSettingModuleDocument,
+        SystemUpdateModuleDocument,
+        GpgKeyModuleDocument,
+        ToolPackagesModuleDocument {
 
   @JsonProperty("name")
   public String name;

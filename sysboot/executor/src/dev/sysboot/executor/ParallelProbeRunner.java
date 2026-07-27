@@ -10,6 +10,9 @@ import dev.sysboot.core.DotbotModule;
 import dev.sysboot.core.FileWriteModule;
 import dev.sysboot.core.FlatpakModule;
 import dev.sysboot.core.FlatpakRemoteModule;
+import dev.sysboot.core.GitConfigModule;
+import dev.sysboot.core.GitRepoModule;
+import dev.sysboot.core.GpgKeyModule;
 import dev.sysboot.core.InstallationStatus;
 import dev.sysboot.core.InterruptModule;
 import dev.sysboot.core.ItemType;
@@ -25,6 +28,10 @@ import dev.sysboot.core.SdkmanModule;
 import dev.sysboot.core.ShellCommandModule;
 import dev.sysboot.core.ShellReloadModule;
 import dev.sysboot.core.ShellScriptModule;
+import dev.sysboot.core.SystemSettingModule;
+import dev.sysboot.core.SystemUpdateModule;
+import dev.sysboot.core.SystemdUnitModule;
+import dev.sysboot.core.ToolPackagesModule;
 import dev.sysboot.core.ToolchainModule;
 import dev.sysboot.core.UserGroupsModule;
 import dev.sysboot.core.ZypperModule;
@@ -178,6 +185,39 @@ public final class ParallelProbeRunner {
             targets.add(new ModuleItem(im.name(), im.name().value(), ItemType.INTERRUPT));
         case BinstallerModule bsm ->
             targets.add(new ModuleItem(bsm.name(), bsm.itemKey(), ItemType.BINSTALLER_PROFILE));
+        case GitConfigModule gcm ->
+            gcm.sortedKeys()
+                .forEach(
+                    key ->
+                        targets.add(
+                            new ModuleItem(gcm.name(), gcm.itemKey(key), ItemType.GIT_CONFIG)));
+        case GitRepoModule grm ->
+            grm.repos()
+                .forEach(
+                    repo ->
+                        targets.add(
+                            new ModuleItem(grm.name(), repo.destination(), ItemType.GIT_REPO)));
+        case SystemdUnitModule sum ->
+            sum.units()
+                .forEach(
+                    unit ->
+                        targets.add(
+                            new ModuleItem(
+                                sum.name(), unit.qualifiedName(), ItemType.SYSTEMD_UNIT)));
+        case SystemSettingModule ssm ->
+            targets.add(new ModuleItem(ssm.name(), ssm.name().value(), ItemType.SYSTEM_SETTING));
+        case SystemUpdateModule sup ->
+            targets.add(new ModuleItem(sup.name(), sup.itemKey(), ItemType.SYSTEM_UPDATE));
+        case GpgKeyModule gkm ->
+            gkm.keys()
+                .forEach(
+                    key ->
+                        targets.add(new ModuleItem(gkm.name(), key.itemKey(), ItemType.GPG_KEY)));
+        case ToolPackagesModule tpm ->
+            tpm.packages()
+                .forEach(
+                    pkg ->
+                        targets.add(new ModuleItem(tpm.name(), pkg.name(), ItemType.TOOL_PACKAGE)));
         case UserGroupsModule ugm ->
             ugm.groups()
                 .forEach(
