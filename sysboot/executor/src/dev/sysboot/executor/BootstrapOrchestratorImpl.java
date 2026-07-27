@@ -5,7 +5,6 @@ import dev.sysboot.core.AssertModule;
 import dev.sysboot.core.BootstrapConfig;
 import dev.sysboot.core.BootstrapModule;
 import dev.sysboot.core.BootstrapOrchestrator;
-import dev.sysboot.core.BootstrapState;
 import dev.sysboot.core.CancellationSignal;
 import dev.sysboot.core.CompiledBinaryModule;
 import dev.sysboot.core.ExecutionEvent;
@@ -15,7 +14,6 @@ import dev.sysboot.core.FileWriteModule;
 import dev.sysboot.core.FlatpakModule;
 import dev.sysboot.core.FlatpakRemoteModule;
 import dev.sysboot.core.InterruptModule;
-import dev.sysboot.core.InterruptResumeMode;
 import dev.sysboot.core.ItemType;
 import dev.sysboot.core.ManualModule;
 import dev.sysboot.core.ModuleName;
@@ -23,10 +21,7 @@ import dev.sysboot.core.PackageModule;
 import dev.sysboot.core.PacmanRepositoryModule;
 import dev.sysboot.core.Phase;
 import dev.sysboot.core.PhaseName;
-import dev.sysboot.core.PhaseStateEntry;
 import dev.sysboot.core.PhaseStatus;
-import dev.sysboot.core.PlanEntryStateEntry;
-import dev.sysboot.core.PlanEntryStatus;
 import dev.sysboot.core.ProcessResult;
 import dev.sysboot.core.RestartPolicy;
 import dev.sysboot.core.RpmRepositoryModule;
@@ -37,13 +32,11 @@ import dev.sysboot.core.ShellScriptModule;
 import dev.sysboot.core.SkipDecision;
 import dev.sysboot.core.SkippedPlanEntry;
 import dev.sysboot.core.SourceSetup;
-import dev.sysboot.core.StateEntry;
 import dev.sysboot.core.StateRepository;
 import dev.sysboot.core.StepResult;
 import dev.sysboot.core.UserGroupsModule;
 import dev.sysboot.core.ZypperModule;
 import java.time.Duration;
-import java.time.Instant;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
@@ -70,6 +63,7 @@ public final class BootstrapOrchestratorImpl implements BootstrapOrchestrator {
   private final ShellRunner primaryRunner;
   private final DefaultShellRunner baseRunner;
   private final SourceSetupExecutor sourceSetupExecutor;
+  private final RunStateRecorder stateRecorder;
   private static final Duration CHECK_TIMEOUT = Duration.ofMinutes(5);
 
   public BootstrapOrchestratorImpl(
@@ -125,6 +119,9 @@ public final class BootstrapOrchestratorImpl implements BootstrapOrchestrator {
     this.fingerprintCalculator = new PhaseFingerprintCalculator();
     this.primaryRunner = primaryRunner;
     this.baseRunner = baseRunner;
+    this.stateRecorder =
+        new RunStateRecorder(
+            stateRepository, profileName, skipEvaluator, this.fingerprintCalculator);
     this.sourceSetupExecutor =
         new SourceSetupExecutor(
             aptRepositoryInstaller,
@@ -174,7 +171,7 @@ public final class BootstrapOrchestratorImpl implements BootstrapOrchestrator {
   @Override
   public void execute(
       BootstrapConfig config, ExecutionEventListener listener, CancellationSignal cancellation) {
-    prepareState(config);
+    stateRecorder.prepare(config);
     emitSkippedPlanEntries(config.skippedPlanEntries(), listener);
     if (executeSourceSetups(config, listener) == PhaseExecutionResult.HARD_FAILURE) {
       return;
@@ -191,7 +188,7 @@ public final class BootstrapOrchestratorImpl implements BootstrapOrchestrator {
       if (isBlocked(phase, failed)) {
         blocked.add(phase.name());
         String failedDependency = firstFailedDep(phase, failed);
-        recordPhaseState(
+        stateRecorder.recordPhase(
             phase.name(),
             PhaseStatus.BLOCKED,
             fingerprintCalculator.fingerprint(phase),
@@ -201,7 +198,7 @@ public final class BootstrapOrchestratorImpl implements BootstrapOrchestrator {
       }
 
       String fingerprint = fingerprintCalculator.fingerprint(phase);
-      if (shouldSkipPhase(phase, fingerprint)) {
+      if (stateRecorder.isPhaseAlreadyCompleted(phase, fingerprint)) {
         listener.onEvent(ExecutionEvent.phaseStarted(phase.name()));
         listener.onEvent(ExecutionEvent.phaseCompleted(phase.name()));
         continue;
@@ -216,14 +213,15 @@ public final class BootstrapOrchestratorImpl implements BootstrapOrchestrator {
 
       if (phaseResult == PhaseExecutionResult.HARD_FAILURE) {
         failed.add(phase.name());
-        recordPhaseState(
+        stateRecorder.recordPhase(
             phase.name(),
             PhaseStatus.FAILED,
             fingerprint,
             Optional.of("Phase stopped after a module failure"));
         listener.onEvent(ExecutionEvent.phaseFailed(phase.name()));
       } else {
-        recordPhaseState(phase.name(), PhaseStatus.COMPLETED, fingerprint, Optional.empty());
+        stateRecorder.recordPhase(
+            phase.name(), PhaseStatus.COMPLETED, fingerprint, Optional.empty());
         listener.onEvent(ExecutionEvent.phaseCompleted(phase.name()));
         handleRestartPolicy(phase, listener);
 
@@ -247,9 +245,9 @@ public final class BootstrapOrchestratorImpl implements BootstrapOrchestrator {
         BootstrapModule module = modules.get(index);
         listener.onEvent(ExecutionEvent.moduleStarted(module.name()));
         if (module instanceof InterruptModule interrupt) {
-          dryRunInterrupt(interrupt, nextModuleName(modules, index), listener);
+          dryRunPlanner().previewInterrupt(interrupt, nextModuleName(modules, index), listener);
         } else {
-          dryRunModule(module, listener);
+          dryRunPlanner().preview(module, listener);
         }
         listener.onEvent(ExecutionEvent.moduleCompleted(module.name()));
       }
@@ -263,7 +261,7 @@ public final class BootstrapOrchestratorImpl implements BootstrapOrchestrator {
       ShellRunner phaseRunner,
       CancellationSignal cancellation) {
     List<BootstrapModule> modules = phase.modules();
-    int startIndex = resumeStartIndex(modules);
+    int startIndex = stateRecorder.resumeStartIndex(modules);
     for (int index = startIndex; index < modules.size(); index++) {
       BootstrapModule module = modules.get(index);
       if (cancellation.isCancelled()) {
@@ -324,7 +322,7 @@ public final class BootstrapOrchestratorImpl implements BootstrapOrchestrator {
     }
     StepResult result = sourceSetupExecutor.execute(setup);
     listener.onEvent(ExecutionEvent.itemCompleted(setup.name(), item.key(), result));
-    recordSuccess(setup.name(), item.key(), item.itemType(), result);
+    stateRecorder.recordSuccess(setup.name(), item.key(), item.itemType(), result);
     listener.onEvent(ExecutionEvent.moduleCompleted(setup.name()));
     return result instanceof StepResult.Failure;
   }
@@ -345,7 +343,9 @@ public final class BootstrapOrchestratorImpl implements BootstrapOrchestrator {
       return moduleExecutor
           .orElseThrow()
           .execute(
-              module, listener, new ModuleExecutionContext(skipEvaluator, this::recordSuccess));
+              module,
+              listener,
+              new ModuleExecutionContext(skipEvaluator, stateRecorder::recordSuccess));
     }
     PhaseExecutors executors = phaseExecutors.forRunner(phaseRunner);
     Optional<StepBinding> binding = StepBinding.find(module);
@@ -392,13 +392,13 @@ public final class BootstrapOrchestratorImpl implements BootstrapOrchestrator {
       Optional<ModuleName> followingModule,
       ExecutionEventListener listener) {
     String itemKey = module.name().value();
-    Optional<String> nextEntry = nextPlanEntry(module, followingModule);
+    Optional<String> nextEntry = RunStateRecorder.nextPlanEntry(module, followingModule);
     listener.onEvent(ExecutionEvent.itemStarted(module.name(), itemKey));
     var result =
         new StepResult.Paused(
             itemKey, interruptMessage(module, nextEntry), nextEntry, module.exitCode());
     listener.onEvent(ExecutionEvent.itemCompleted(module.name(), itemKey, result));
-    recordInterrupt(module, nextEntry);
+    stateRecorder.recordInterrupt(module, nextEntry);
     throw new ExecutionPausedException(
         itemKey, interruptMessage(module, nextEntry), nextEntry, module.exitCode());
   }
@@ -415,7 +415,7 @@ public final class BootstrapOrchestratorImpl implements BootstrapOrchestrator {
                 module.name().value(), module.message(), result.exitCode(), result.elapsed());
     listener.onEvent(
         ExecutionEvent.itemCompleted(module.name(), module.name().value(), stepResult));
-    recordSuccess(module.name(), module.name().value(), ItemType.ASSERT, stepResult);
+    stateRecorder.recordSuccess(module.name(), module.name().value(), ItemType.ASSERT, stepResult);
     return stepResult instanceof StepResult.Failure;
   }
 
@@ -429,7 +429,7 @@ public final class BootstrapOrchestratorImpl implements BootstrapOrchestrator {
     }
     StepResult result = manualResult(module, phaseRunner);
     listener.onEvent(ExecutionEvent.itemCompleted(module.name(), module.name().value(), result));
-    recordSuccess(module.name(), module.name().value(), ItemType.MANUAL, result);
+    stateRecorder.recordSuccess(module.name(), module.name().value(), ItemType.MANUAL, result);
     return result instanceof StepResult.Failure;
   }
 
@@ -470,7 +470,7 @@ public final class BootstrapOrchestratorImpl implements BootstrapOrchestrator {
       }
       StepResult result = flatpakInstaller.install(module, appId);
       listener.onEvent(ExecutionEvent.itemCompleted(module.name(), appId, result));
-      recordSuccess(module.name(), appId, ItemType.FLATPAK, result);
+      stateRecorder.recordSuccess(module.name(), appId, ItemType.FLATPAK, result);
       if (result instanceof StepResult.Failure) anyFailed = true;
     }
     return anyFailed && !module.continueOnError();
@@ -551,7 +551,7 @@ public final class BootstrapOrchestratorImpl implements BootstrapOrchestrator {
     }
     StepResult result = executors.shellScript().execute(module);
     listener.onEvent(ExecutionEvent.itemCompleted(module.name(), scriptKey, result));
-    recordSuccess(module.name(), scriptKey, ItemType.SHELL_SCRIPT, result);
+    stateRecorder.recordSuccess(module.name(), scriptKey, ItemType.SHELL_SCRIPT, result);
     return result instanceof StepResult.Failure && !module.continueOnError();
   }
 
@@ -570,7 +570,7 @@ public final class BootstrapOrchestratorImpl implements BootstrapOrchestrator {
     }
     StepResult result = binaryInstaller.install(module);
     listener.onEvent(ExecutionEvent.itemCompleted(module.name(), module.binaryName(), result));
-    recordBinarySuccess(module, installKey, result);
+    stateRecorder.recordBinarySuccess(module, installKey, result);
     return result instanceof StepResult.Failure && !module.continueOnError();
   }
 
@@ -619,7 +619,7 @@ public final class BootstrapOrchestratorImpl implements BootstrapOrchestrator {
     }
     StepResult result = streamingOutput(moduleName, itemKey, listener, action);
     listener.onEvent(ExecutionEvent.itemCompleted(moduleName, itemKey, result));
-    recordSuccess(moduleName, itemKey, itemType, result);
+    stateRecorder.recordSuccess(moduleName, itemKey, itemType, result);
     return result instanceof StepResult.Failure;
   }
 
@@ -638,122 +638,6 @@ public final class BootstrapOrchestratorImpl implements BootstrapOrchestrator {
   private java.util.function.Consumer<String> outputSink(
       ModuleName moduleName, String itemKey, ExecutionEventListener listener) {
     return line -> listener.onEvent(ExecutionEvent.itemOutput(moduleName, itemKey, line));
-  }
-
-  private void dryRunModule(BootstrapModule module, ExecutionEventListener listener) {
-    Optional<ModuleExecutor> moduleExecutor = moduleExecutorRegistry.find(module);
-    if (moduleExecutor.isPresent()) {
-      moduleExecutor.orElseThrow().dryRun(module, listener);
-      return;
-    }
-    Optional<StepBinding> binding = StepBinding.find(module);
-    if (binding.isPresent()) {
-      StepBinding step = binding.orElseThrow();
-      emitDryRun(
-          module.name(),
-          step.itemKey(module),
-          step.commandPreview(module, primaryExecutors()),
-          listener);
-      return;
-    }
-    switch (module) {
-      case AptRepositoryModule arm ->
-          emitDryRun(
-              arm.name(),
-              arm.sourceListPath().toString(),
-              aptRepositoryInstaller.addCommand(arm),
-              listener);
-      case RpmRepositoryModule rrm ->
-          emitDryRun(
-              rrm.name(),
-              rrm.repoFilePath().toString(),
-              rpmRepositoryInstaller.addCommand(rrm),
-              listener);
-      case PacmanRepositoryModule prm ->
-          emitDryRun(
-              prm.name(),
-              prm.repositoryName(),
-              pacmanRepositoryInstaller.addCommand(prm),
-              listener);
-      case FileWriteModule fwm ->
-          fwm.items()
-              .forEach(
-                  item ->
-                      emitDryRun(
-                          fwm.name(),
-                          item.itemKey(),
-                          fileWriteExecutor.dryRunCommand(item),
-                          listener));
-      case FlatpakModule fm ->
-          fm.appIds()
-              .forEach(
-                  appId ->
-                      emitDryRun(
-                          fm.name(),
-                          appId,
-                          List.of("flatpak", "install", "-y", fm.remote(), appId),
-                          listener));
-      case FlatpakRemoteModule frm ->
-          emitDryRun(frm.name(), frm.remote(), flatpakRemoteInstaller.addCommand(frm), listener);
-      case ShellScriptModule sm ->
-          sm.items()
-              .forEach(
-                  item ->
-                      emitDryRun(
-                          sm.name(),
-                          item.name(),
-                          primaryExecutors().shellScript().commandPreview(item),
-                          listener));
-      case CompiledBinaryModule bm ->
-          emitDryRun(bm.name(), bm.binaryName(), binaryInstaller.dryRunCommand(bm), listener);
-      case ShellCommandModule sc ->
-          sc.items()
-              .forEach(
-                  item ->
-                      emitDryRun(
-                          sc.name(),
-                          item.name(),
-                          primaryExecutors().shellCommand().commandPreview(item),
-                          listener));
-      case UserGroupsModule ugm ->
-          emitDryRun(
-              ugm.name(),
-              ugm.itemKey(ugm.groups().getFirst()),
-              primaryExecutors().userGroups().commandPreview(ugm),
-              listener);
-      case AssertModule am ->
-          emitDryRun(
-              am.name(), am.name().value(), List.of(am.shell(), "-lc", am.command()), listener);
-      case ManualModule mm ->
-          emitDryRun(mm.name(), mm.name().value(), List.of("manual", mm.message()), listener);
-      case InterruptModule ignored -> throw new IllegalStateException("Interrupt handled by phase");
-      case SdkmanModule ignored -> throw new IllegalStateException("SDKMAN executor missing");
-      case PackageModule ignored -> throw new IllegalStateException("Package executor missing");
-      case ZypperModule ignored -> throw new IllegalStateException("Zypper executor missing");
-      // Everything else is a StepBinding row, handled above.
-      default ->
-          throw new IllegalStateException("No preview for " + module.getClass().getSimpleName());
-    }
-  }
-
-  private void dryRunInterrupt(
-      InterruptModule module,
-      Optional<ModuleName> followingModule,
-      ExecutionEventListener listener) {
-    Optional<String> nextEntry = nextPlanEntry(module, followingModule);
-    emitDryRun(
-        module.name(),
-        module.name().value(),
-        List.of(
-            "interrupt",
-            module.name().value(),
-            "message=" + module.message(),
-            "resumeFrom=" + module.resumeFrom().name().toLowerCase(),
-            "exitCode=" + module.exitCode(),
-            "state-write",
-            "status=" + interruptStatus(module).name().toLowerCase(),
-            "nextPlanEntry=" + nextEntry.orElse("<complete>")),
-        listener);
   }
 
   private void emitSkipped(
@@ -798,75 +682,16 @@ public final class BootstrapOrchestratorImpl implements BootstrapOrchestrator {
         .orElse("unknown");
   }
 
-  private boolean shouldSkipPhase(Phase phase, String fingerprint) {
-    return stateRepository
-        .flatMap(repo -> repo.load(profileName))
-        .map(state -> state.isPhaseCompleted(phase.name().value(), fingerprint))
-        .orElse(false);
-  }
-
-  private void prepareState(BootstrapConfig config) {
-    stateRepository.ifPresent(
-        repo -> {
-          String identity = config.profileName().value();
-          String fingerprint = fingerprintCalculator.manifestFingerprint(config);
-          BootstrapState current =
-              repo.load(profileName).orElse(BootstrapState.empty(profileName, "1.0.0"));
-          rejectStaleState(current, identity, fingerprint);
-          BootstrapState stamped = current.withManifestMetadata(identity, fingerprint);
-          repo.save(stamped);
-          skipEvaluator.refreshState(stamped);
-        });
-  }
-
-  private void rejectStaleState(BootstrapState state, String identity, String fingerprint) {
-    if (!state.hasRecordedWork()) {
-      return;
-    }
-    if (state.manifestIdentity().filter(identity::equals).isEmpty()) {
-      throw staleState("manifest identity");
-    }
-    if (state.manifestFingerprint().filter(fingerprint::equals).isEmpty()) {
-      throw staleState("manifest fingerprint");
-    }
-  }
-
-  private StaleStateException staleState(String reason) {
-    return new StaleStateException(
-        "Saved state is stale: "
-            + reason
-            + " differs. Reset state with `fluxion state reset "
-            + profileName
-            + " --force` or re-run apply with --reset-state.");
-  }
-
-  private int resumeStartIndex(List<BootstrapModule> modules) {
-    Optional<String> nextEntry =
-        stateRepository
-            .flatMap(repo -> repo.load(profileName))
-            .flatMap(state -> state.nextPlanEntry());
-    if (nextEntry.isEmpty()) {
-      return 0;
-    }
-    for (int index = 0; index < modules.size(); index++) {
-      if (modules.get(index).name().value().equals(nextEntry.orElseThrow())) {
-        clearNextPlanEntry();
-        return index;
-      }
-    }
-    return 0;
-  }
-
-  private void clearNextPlanEntry() {
-    stateRepository.ifPresent(
-        repo ->
-            repo.load(profileName)
-                .map(dev.sysboot.core.BootstrapState::withoutNextPlanEntry)
-                .ifPresent(
-                    updated -> {
-                      repo.save(updated);
-                      skipEvaluator.refreshState(updated);
-                    }));
+  private DryRunPlanner dryRunPlanner() {
+    return new DryRunPlanner(
+        moduleExecutorRegistry,
+        primaryExecutors(),
+        aptRepositoryInstaller,
+        rpmRepositoryInstaller,
+        pacmanRepositoryInstaller,
+        fileWriteExecutor,
+        flatpakRemoteInstaller,
+        binaryInstaller);
   }
 
   private PhaseExecutors primaryExecutors() {
@@ -886,99 +711,10 @@ public final class BootstrapOrchestratorImpl implements BootstrapOrchestrator {
     }
   }
 
-  private void recordSuccess(
-      ModuleName moduleName, String itemKey, ItemType itemType, StepResult result) {
-    recordSuccess(moduleName, itemKey, itemType, result, Optional.empty());
-  }
-
-  private void recordBinarySuccess(CompiledBinaryModule module, String itemKey, StepResult result) {
-    recordSuccess(
-        module.name(),
-        itemKey,
-        ItemType.COMPILED_BINARY,
-        result,
-        Optional.of(module.url().toString()));
-  }
-
-  private void recordSuccess(
-      ModuleName moduleName,
-      String itemKey,
-      ItemType itemType,
-      StepResult result,
-      Optional<String> sourceUrl) {
-    if (!(result instanceof StepResult.Success success)) return;
-    stateRepository.ifPresent(
-        repo -> {
-          var updatedState =
-              repo.recordSuccess(
-                  profileName,
-                  new StateEntry(
-                      profileName,
-                      moduleName.value(),
-                      itemKey,
-                      itemType,
-                      java.time.Instant.now(),
-                      success.detectedVersion(),
-                      success.checksum(),
-                      sourceUrl));
-          skipEvaluator.refreshState(updatedState);
-        });
-  }
-
-  private void recordPhaseState(
-      PhaseName phase, PhaseStatus status, String fingerprint, Optional<String> reason) {
-    stateRepository.ifPresent(
-        repo -> {
-          var current =
-              repo.load(profileName)
-                  .orElse(dev.sysboot.core.BootstrapState.empty(profileName, "1.0.0"));
-          var updated =
-              current.withPhaseEntry(
-                  new PhaseStateEntry(
-                      phase.value(), status, Instant.now(), Optional.of(fingerprint), reason));
-          repo.save(updated);
-          skipEvaluator.refreshState(updated);
-        });
-  }
-
   private Optional<ModuleName> nextModuleName(List<BootstrapModule> modules, int currentIndex) {
     return currentIndex + 1 < modules.size()
         ? Optional.of(modules.get(currentIndex + 1).name())
         : Optional.empty();
-  }
-
-  private Optional<String> nextPlanEntry(
-      InterruptModule module, Optional<ModuleName> followingModule) {
-    if (module.resumeFrom() == InterruptResumeMode.CURRENT) {
-      return Optional.of(module.name().value());
-    }
-    return followingModule.map(ModuleName::value);
-  }
-
-  private PlanEntryStatus interruptStatus(InterruptModule module) {
-    return module.resumeFrom() == InterruptResumeMode.CURRENT
-        ? PlanEntryStatus.INTERRUPTED
-        : PlanEntryStatus.COMPLETED;
-  }
-
-  private void recordInterrupt(InterruptModule module, Optional<String> nextEntry) {
-    stateRepository.ifPresent(
-        repo -> {
-          var current =
-              repo.load(profileName)
-                  .orElse(dev.sysboot.core.BootstrapState.empty(profileName, "1.0.0"));
-          var updated =
-              current
-                  .withPlanEntry(
-                      new PlanEntryStateEntry(
-                          module.name().value(),
-                          interruptStatus(module),
-                          Instant.now(),
-                          Optional.of(module.message())))
-                  .withNextPlanEntry(nextEntry);
-          repo.save(updated);
-          skipEvaluator.refreshState(updated);
-        });
   }
 
   private String interruptMessage(InterruptModule module, Optional<String> nextEntry) {
@@ -999,27 +735,15 @@ public final class BootstrapOrchestratorImpl implements BootstrapOrchestrator {
   private void recordCancellation(Phase phase, ExecutionEventListener listener) {
     Optional<String> firstEntry =
         phase.modules().stream().findFirst().map(module -> module.name().value());
-    stateRepository.ifPresent(
-        repo -> {
-          var current = repo.load(profileName).orElse(BootstrapState.empty(profileName, "1.0.0"));
-          var updated = current.withNextPlanEntry(firstEntry);
-          repo.save(updated);
-          skipEvaluator.refreshState(updated);
-        });
+    stateRecorder.recordResumePoint(firstEntry);
     listener.onEvent(ExecutionEvent.cancelled(phase.name(), firstEntry));
   }
 
   private void recordCancellation(
       Phase phase, BootstrapModule nextModule, ExecutionEventListener listener) {
-    stateRepository.ifPresent(
-        repo -> {
-          var current = repo.load(profileName).orElse(BootstrapState.empty(profileName, "1.0.0"));
-          var updated = current.withNextPlanEntry(Optional.of(nextModule.name().value()));
-          repo.save(updated);
-          skipEvaluator.refreshState(updated);
-        });
-    listener.onEvent(
-        ExecutionEvent.cancelled(phase.name(), Optional.of(nextModule.name().value())));
+    Optional<String> nextEntry = Optional.of(nextModule.name().value());
+    stateRecorder.recordResumePoint(nextEntry);
+    listener.onEvent(ExecutionEvent.cancelled(phase.name(), nextEntry));
   }
 
   private enum PhaseExecutionResult {
