@@ -1,5 +1,9 @@
 package dev.sysboot.config;
 
+import static dev.sysboot.config.MappingSupport.enumValue;
+import static dev.sysboot.config.MappingSupport.expandHome;
+import static dev.sysboot.config.MappingSupport.requireField;
+
 import dev.sysboot.config.yaml.contract.AptRepositoryModuleDocument;
 import dev.sysboot.config.yaml.contract.AssertModuleDocument;
 import dev.sysboot.config.yaml.contract.BinstallerModuleDocument;
@@ -542,31 +546,13 @@ final class ConfigMapper {
                         "Unsupported tool-packages backend: " + dto.backend));
     var packages =
         requireField(dto.packages, "tool-packages.packages").stream()
-            .map(ConfigMapper::toolPackage)
+            .map(MappingSupport::toolPackage)
             .toList();
     return new ToolPackagesModule(
         new ModuleName(requireField(dto.name, "name")), backend, packages, dto.continueOnError);
   }
 
   /** Splits a {@code name@version} entry, leaving a bare name unpinned. */
-  private static ToolPackagesModule.ToolPackage toolPackage(String raw) {
-    int at = raw.lastIndexOf('@');
-    if (at <= 0) {
-      return new ToolPackagesModule.ToolPackage(raw);
-    }
-    return new ToolPackagesModule.ToolPackage(
-        raw.substring(0, at), Optional.of(raw.substring(at + 1)));
-  }
-
-  private <E extends Enum<E>> E enumValue(Class<E> type, String raw, String field) {
-    String normalized = requireField(raw, field).strip().toUpperCase().replace('-', '_');
-    try {
-      return Enum.valueOf(type, normalized);
-    } catch (IllegalArgumentException e) {
-      throw new IllegalArgumentException("Unsupported value for " + field + ": " + raw, e);
-    }
-  }
-
   private ZypperRepositoryModule mapZypperRepositoryModule(ZypperRepositoryModuleDocument dto) {
     String name = requireField(dto.name, "name");
     return new ZypperRepositoryModule(
@@ -602,26 +588,6 @@ final class ConfigMapper {
       throw new IllegalArgumentException("Required field '" + fieldName + "' must be absolute");
     }
     return path;
-  }
-
-  private String expandHome(String rawPath) {
-    if (rawPath.equals("~")) {
-      return System.getProperty("user.home");
-    }
-    if (rawPath.startsWith("~/")) {
-      return System.getProperty("user.home") + rawPath.substring(1);
-    }
-    return rawPath;
-  }
-
-  private <T> T requireField(T value, String fieldName) {
-    if (value == null) {
-      throw new IllegalArgumentException("Required field '" + fieldName + "' is missing");
-    }
-    if (value instanceof String s && s.isBlank()) {
-      throw new IllegalArgumentException("Required field '" + fieldName + "' must not be blank");
-    }
-    return value;
   }
 
   private void validateSchemaVersion(Integer schemaVersion) {

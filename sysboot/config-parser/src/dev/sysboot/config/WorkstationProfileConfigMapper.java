@@ -1,5 +1,9 @@
 package dev.sysboot.config;
 
+import static dev.sysboot.config.MappingSupport.enumValue;
+import static dev.sysboot.config.MappingSupport.expandHome;
+import static dev.sysboot.config.MappingSupport.requireField;
+
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import dev.sysboot.config.yaml.contract.MetadataDocument;
@@ -585,7 +589,7 @@ final class WorkstationProfileConfigMapper {
 
   private Optional<Duration> timeout(JsonNode node) {
     return text(node, "timeout")
-        .map(this::duration)
+        .map(MappingSupport::duration)
         .or(
             () ->
                 child(node, "timeoutSeconds")
@@ -595,26 +599,9 @@ final class WorkstationProfileConfigMapper {
 
   private Duration timeout(PlanSpecDocument spec) {
     return spec.timeout()
-        .map(this::duration)
+        .map(MappingSupport::duration)
         .or(() -> spec.timeoutSeconds().map(Duration::ofSeconds))
         .orElse(Duration.ofMinutes(30));
-  }
-
-  private Duration duration(String raw) {
-    String value = raw.strip().toLowerCase(Locale.ROOT);
-    if (value.matches("\\d+")) {
-      return Duration.ofSeconds(Long.parseLong(value));
-    }
-    if (value.endsWith("ms")) {
-      return Duration.ofMillis(Long.parseLong(value.substring(0, value.length() - 2)));
-    }
-    if (value.endsWith("s")) {
-      return Duration.ofSeconds(Long.parseLong(value.substring(0, value.length() - 1)));
-    }
-    if (value.endsWith("m")) {
-      return Duration.ofMinutes(Long.parseLong(value.substring(0, value.length() - 1)));
-    }
-    return Duration.parse(raw);
   }
 
   private NerdFontModule nerdFontModule(PlanEntryDocument entry) {
@@ -664,7 +651,7 @@ final class WorkstationProfileConfigMapper {
     PlanSpecDocument spec = requireField(entry.spec().orElse(null), planName(entry) + ".spec");
     return new GitConfigModule(
         new ModuleName(planName(entry)),
-        planEnum(GitConfigScope.class, spec.scope().orElse("global")),
+        enumValue(GitConfigScope.class, spec.scope().orElse("global")),
         spec.entries(),
         continueOnError(entry, policy));
   }
@@ -681,7 +668,7 @@ final class WorkstationProfileConfigMapper {
                         Optional.ofNullable(repo.ref),
                         Optional.ofNullable(repo.depth),
                         repo.submodules,
-                        planEnum(GitRepoUpdate.class, repo.update)))
+                        enumValue(GitRepoUpdate.class, repo.update)))
             .toList();
     return new GitRepoModule(
         new ModuleName(planName(entry)), repos, continueOnError(entry, policy));
@@ -696,12 +683,12 @@ final class WorkstationProfileConfigMapper {
                     new SystemdUnitModule.SystemdUnit(
                         requireField(unit.name, planName(entry) + ".spec.units[].name"),
                         unit.enabled,
-                        planEnum(SystemdState.class, unit.state),
+                        enumValue(SystemdState.class, unit.state),
                         unit.mask))
             .toList();
     return new SystemdUnitModule(
         new ModuleName(planName(entry)),
-        planEnum(SystemdScope.class, spec.scope().orElse("system")),
+        enumValue(SystemdScope.class, spec.scope().orElse("system")),
         units,
         continueOnError(entry, policy));
   }
@@ -728,7 +715,7 @@ final class WorkstationProfileConfigMapper {
                 .toUpperCase()),
         spec.distUpgrade(),
         spec.refreshOnly(),
-        spec.timeout().map(this::duration),
+        spec.timeout().map(MappingSupport::duration),
         continueOnError(entry, policy));
   }
 
@@ -755,21 +742,9 @@ final class WorkstationProfileConfigMapper {
                 () ->
                     new IllegalArgumentException(
                         "Unsupported tool-packages backend: " + spec.backend().orElse("")));
-    var packages = spec.packages().stream().map(this::planToolPackage).toList();
+    var packages = spec.packages().stream().map(MappingSupport::toolPackage).toList();
     return new ToolPackagesModule(
         new ModuleName(planName(entry)), backend, packages, continueOnError(entry, policy));
-  }
-
-  private ToolPackagesModule.ToolPackage planToolPackage(String raw) {
-    int at = raw.lastIndexOf('@');
-    return at <= 0
-        ? new ToolPackagesModule.ToolPackage(raw)
-        : new ToolPackagesModule.ToolPackage(
-            raw.substring(0, at), Optional.of(raw.substring(at + 1)));
-  }
-
-  private <E extends Enum<E>> E planEnum(Class<E> type, String raw) {
-    return Enum.valueOf(type, raw.strip().toUpperCase().replace('-', '_'));
   }
 
   private ZypperRepositoryModule zypperRepositoryModule(PlanEntryDocument entry) {
@@ -831,15 +806,6 @@ final class WorkstationProfileConfigMapper {
     return path;
   }
 
-  private String expandHome(String rawPath) {
-    if (rawPath.equals("~")) {
-      return System.getProperty("user.home");
-    }
-    return rawPath.startsWith("~/")
-        ? System.getProperty("user.home") + rawPath.substring(1)
-        : rawPath;
-  }
-
   private String planKind(PlanEntryDocument entry) {
     return requireField(entry.kind().orElse(null), planName(entry) + ".kind")
         .strip()
@@ -875,15 +841,5 @@ final class WorkstationProfileConfigMapper {
 
   private String debianRelease(TargetOsDocument os) {
     return os.codename().or(() -> os.release()).or(() -> os.version()).orElse("");
-  }
-
-  private <T> T requireField(T value, String fieldName) {
-    if (value == null) {
-      throw new IllegalArgumentException("Required field '" + fieldName + "' is missing");
-    }
-    if (value instanceof String s && s.isBlank()) {
-      throw new IllegalArgumentException("Required field '" + fieldName + "' must not be blank");
-    }
-    return value;
   }
 }
