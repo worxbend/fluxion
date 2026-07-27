@@ -37,11 +37,7 @@ public final class GpgKeyExecutor {
       }
       importKey(key).ifPresent(failures::add);
     }
-    if (!failures.isEmpty() && !module.continueOnError()) {
-      return new StepResult.Failure(
-          module.name().value(), String.join("; ", failures), 1, Duration.ZERO);
-    }
-    return new StepResult.Success(module.name().value(), Duration.ZERO);
+    return StepOutcome.of(module.name(), failures, module.continueOnError());
   }
 
   /** True when a keyring-backed key is already present. RPM imports are always re-run (cheap). */
@@ -61,7 +57,7 @@ public final class GpgKeyExecutor {
     }
     ProcessResult result = shellRunner.run(importCommand(key), Map.of(), TIMEOUT);
     if (!result.isSuccess()) {
-      return Optional.of("import " + key.url() + ": " + detail(result));
+      return Optional.of("import " + key.url() + ": " + StepOutcome.detail(result));
     }
     return verifyFingerprint(key);
   }
@@ -117,10 +113,5 @@ public final class GpgKeyExecutor {
 
   private String normalize(String value) {
     return value.replace(" ", "").replace(":", "").toUpperCase(Locale.ROOT);
-  }
-
-  private String detail(ProcessResult result) {
-    String text = result.stderr().isBlank() ? result.stdout() : result.stderr();
-    return text.isBlank() ? "exit " + result.exitCode() : text.strip();
   }
 }

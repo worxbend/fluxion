@@ -30,11 +30,7 @@ public final class GitRepoExecutor {
       }
       apply(repo).ifPresent(failures::add);
     }
-    if (!failures.isEmpty() && !module.continueOnError()) {
-      return new StepResult.Failure(
-          module.name().value(), String.join("; ", failures), 1, Duration.ZERO);
-    }
-    return new StepResult.Success(module.name().value(), Duration.ZERO);
+    return StepOutcome.of(module.name(), failures, module.continueOnError());
   }
 
   /** True when the destination is already a worktree for this repository. */
@@ -55,7 +51,7 @@ public final class GitRepoExecutor {
     }
     ProcessResult result = run(cloneCommand(repo));
     if (!result.isSuccess()) {
-      return java.util.Optional.of("clone " + repo.url() + ": " + detail(result));
+      return java.util.Optional.of("clone " + repo.url() + ": " + StepOutcome.detail(result));
     }
     return repo.submodules() ? submodules(repo) : java.util.Optional.empty();
   }
@@ -76,7 +72,7 @@ public final class GitRepoExecutor {
     ProcessResult result = run(command);
     return result.isSuccess()
         ? java.util.Optional.empty()
-        : java.util.Optional.of("update " + repo.destination() + ": " + detail(result));
+        : java.util.Optional.of("update " + repo.destination() + ": " + StepOutcome.detail(result));
   }
 
   private java.util.Optional<String> submodules(GitRepoModule.GitRepo repo) {
@@ -92,7 +88,8 @@ public final class GitRepoExecutor {
                 "--recursive"));
     return result.isSuccess()
         ? java.util.Optional.empty()
-        : java.util.Optional.of("submodules " + repo.destination() + ": " + detail(result));
+        : java.util.Optional.of(
+            "submodules " + repo.destination() + ": " + StepOutcome.detail(result));
   }
 
   private List<String> cloneCommand(GitRepoModule.GitRepo repo) {
@@ -109,10 +106,5 @@ public final class GitRepoExecutor {
 
   private ProcessResult run(List<String> command) {
     return shellRunner.run(command, Map.of(), TIMEOUT);
-  }
-
-  private String detail(ProcessResult result) {
-    String text = result.stderr().isBlank() ? result.stdout() : result.stderr();
-    return text.isBlank() ? "exit " + result.exitCode() : text.strip();
   }
 }

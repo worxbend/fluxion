@@ -29,14 +29,10 @@ public final class SystemSettingExecutor {
       }
       ProcessResult result = shellRunner.run(command, Map.of(), TIMEOUT);
       if (!result.isSuccess()) {
-        failures.add(String.join(" ", command) + ": " + detail(result));
+        failures.add(String.join(" ", command) + ": " + StepOutcome.detail(result));
       }
     }
-    if (!failures.isEmpty() && !module.continueOnError()) {
-      return new StepResult.Failure(
-          module.name().value(), String.join("; ", failures), 1, Duration.ZERO);
-    }
-    return new StepResult.Success(module.name().value(), Duration.ZERO);
+    return StepOutcome.of(module.name(), failures, module.continueOnError());
   }
 
   /** True when every requested setting already holds. */
@@ -113,10 +109,5 @@ public final class SystemSettingExecutor {
     }
     String value = result.stdout().strip();
     return value.isBlank() ? Optional.empty() : Optional.of(value);
-  }
-
-  private String detail(ProcessResult result) {
-    String text = result.stderr().isBlank() ? result.stdout() : result.stderr();
-    return text.isBlank() ? "exit " + result.exitCode() : text.strip();
   }
 }

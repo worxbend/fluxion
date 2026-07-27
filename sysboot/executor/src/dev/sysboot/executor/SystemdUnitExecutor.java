@@ -45,11 +45,7 @@ public final class SystemdUnitExecutor {
       }
       apply(module, unit).ifPresent(failures::add);
     }
-    if (!failures.isEmpty() && !module.continueOnError()) {
-      return new StepResult.Failure(
-          module.name().value(), String.join("; ", failures), 1, Duration.ZERO);
-    }
-    return new StepResult.Success(module.name().value(), Duration.ZERO);
+    return StepOutcome.of(module.name(), failures, module.continueOnError());
   }
 
   /** True when the unit is already in the requested enablement and runtime state. */
@@ -108,7 +104,7 @@ public final class SystemdUnitExecutor {
     ProcessResult result = run(systemctl(module, verb, unit.qualifiedName()));
     return result.isSuccess()
         ? Optional.empty()
-        : Optional.of(verb + " " + unit.qualifiedName() + ": " + detail(result));
+        : Optional.of(verb + " " + unit.qualifiedName() + ": " + StepOutcome.detail(result));
   }
 
   private boolean runtimeSatisfied(SystemdUnitModule module, SystemdUnitModule.SystemdUnit unit) {
@@ -158,10 +154,5 @@ public final class SystemdUnitExecutor {
 
   private ProcessResult run(List<String> command) {
     return shellRunner.run(command, Map.of(), TIMEOUT);
-  }
-
-  private String detail(ProcessResult result) {
-    String text = result.stderr().isBlank() ? result.stdout() : result.stderr();
-    return text.isBlank() ? "exit " + result.exitCode() : text.strip();
   }
 }

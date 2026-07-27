@@ -44,14 +44,10 @@ public final class ToolPackagesExecutor {
       }
       ProcessResult result = shellRunner.run(installCommand(module, pkg), Map.of(), TIMEOUT);
       if (!result.isSuccess()) {
-        failures.add(pkg.name() + ": " + detail(result));
+        failures.add(pkg.name() + ": " + StepOutcome.detail(result));
       }
     }
-    if (!failures.isEmpty() && !module.continueOnError()) {
-      return new StepResult.Failure(
-          module.name().value(), String.join("; ", failures), 1, Duration.ZERO);
-    }
-    return new StepResult.Success(module.name().value(), Duration.ZERO);
+    return StepOutcome.of(module.name(), failures, module.continueOnError());
   }
 
   public List<String> commandPreview(ToolPackagesModule module) {
@@ -96,10 +92,5 @@ public final class ToolPackagesExecutor {
               .orElseGet(() -> List.of("npm", "install", "-g", pkg.name()));
       case GO_INSTALL -> List.of("go", "install", pkg.name() + "@" + version.orElse("latest"));
     };
-  }
-
-  private String detail(ProcessResult result) {
-    String text = result.stderr().isBlank() ? result.stdout() : result.stderr();
-    return text.isBlank() ? "exit " + result.exitCode() : text.strip();
   }
 }

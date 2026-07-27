@@ -41,11 +41,7 @@ public final class UserGroupsExecutor {
     for (String group : missing) {
       addGroup(module, user, group).ifPresent(failures::add);
     }
-    if (!failures.isEmpty() && !module.continueOnError()) {
-      return new StepResult.Failure(
-          module.name().value(), String.join("; ", failures), 1, Duration.ZERO);
-    }
-    return new StepResult.Success(module.name().value(), Duration.ZERO);
+    return StepOutcome.of(module.name(), failures, module.continueOnError());
   }
 
   /**
@@ -100,7 +96,7 @@ public final class UserGroupsExecutor {
     ProcessResult result = run(List.of("sudo", "usermod", "-aG", group, user));
     return result.isSuccess()
         ? Optional.empty()
-        : Optional.of("failed to add " + user + " to " + group + ": " + detail(result));
+        : Optional.of("failed to add " + user + " to " + group + ": " + StepOutcome.detail(result));
   }
 
   private boolean groupExists(String group) {
@@ -143,10 +139,5 @@ public final class UserGroupsExecutor {
 
   private ProcessResult run(List<String> command) {
     return shellRunner.run(command, Map.of(), COMMAND_TIMEOUT);
-  }
-
-  private String detail(ProcessResult result) {
-    String text = result.stderr().isBlank() ? result.stdout() : result.stderr();
-    return text.isBlank() ? "exit " + result.exitCode() : text.strip();
   }
 }

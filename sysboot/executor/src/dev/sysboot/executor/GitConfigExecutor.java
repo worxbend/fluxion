@@ -33,14 +33,10 @@ public final class GitConfigExecutor {
       }
       ProcessResult result = shellRunner.run(setCommand(module, key, desired), Map.of(), TIMEOUT);
       if (!result.isSuccess()) {
-        failures.add(key + ": " + detail(result));
+        failures.add(key + ": " + StepOutcome.detail(result));
       }
     }
-    if (!failures.isEmpty() && !module.continueOnError()) {
-      return new StepResult.Failure(
-          module.name().value(), String.join("; ", failures), 1, Duration.ZERO);
-    }
-    return new StepResult.Success(module.name().value(), Duration.ZERO);
+    return StepOutcome.of(module.name(), failures, module.continueOnError());
   }
 
   /** Current value of a key, empty when unset. Used for skip decisions and drift reporting. */
@@ -76,10 +72,5 @@ public final class GitConfigExecutor {
     elevated.add("sudo");
     elevated.addAll(command);
     return List.copyOf(elevated);
-  }
-
-  private String detail(ProcessResult result) {
-    String text = result.stderr().isBlank() ? result.stdout() : result.stderr();
-    return text.isBlank() ? "exit " + result.exitCode() : text.strip();
   }
 }

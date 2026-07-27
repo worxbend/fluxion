@@ -36,7 +36,7 @@ public final class SystemUpdateExecutor {
       if (!succeeded(module, result)) {
         return new StepResult.Failure(
             module.itemKey(),
-            String.join(" ", command) + ": " + detail(result),
+            String.join(" ", command) + ": " + StepOutcome.detail(result),
             result.exitCode(),
             result.elapsed());
       }
@@ -103,10 +103,5 @@ public final class SystemUpdateExecutor {
     }
     String verb = module.distUpgrade() ? "full-upgrade" : "upgrade";
     return List.of(update, List.of("sudo", "apt-get", verb, "-y"));
-  }
-
-  private String detail(ProcessResult result) {
-    String text = result.stderr().isBlank() ? result.stdout() : result.stderr();
-    return text.isBlank() ? "exit " + result.exitCode() : text.strip();
   }
 }
