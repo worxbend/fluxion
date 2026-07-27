@@ -22,26 +22,31 @@ Updated: 2026-07-26. Gate is green throughout (`just verify`, `just format-check
 | **M2.1 — ToolBroker** | ✅ **done** |
 | **M2.2 — `binstaller-profile` step kind** | ✅ **done** |
 | M2.3–M2.5 — `fluxion tools`, worxbend preset library | not started |
-| M3 — parity step kinds | `user-groups` done; `git-config`, `git-repo`, `systemd-unit`, `system-setting`, `system-update`, `repository`/`gpg-key`, `cargo-binstall`/`snap` outstanding |
+| **M3.1 — parity step kinds** | ✅ **done**: `user-groups`, `git-config`, `git-repo`, `systemd-unit`, `system-setting`, `system-update`, `gpg-key`, `tool-packages` (cargo-binstall/cargo/snap/pipx/uv-tool/npm-global/go-install) |
+| M3.2 — unified `repository` kind | outstanding; the three existing per-distro repository kinds still stand, plus the unmodelled `ZypperRepositoryInstaller` |
 | M4–M10 | not started |
 
-### A. Open defects carried forward
+### A. Audit defects — all closed
 
 An audit of the M0–M2 work produced 28 candidate defects. Its verification stage was lost to a
-session limit, so each was checked by hand instead. The ones fixed are listed under their milestone
-below; these are the ones **still open**, recorded so they are not lost:
+session limit, so each was checked by hand instead. **All nine that proved real have been fixed**,
+including the three criticals: the 30-second Ctrl-C hang, the warm-sudo-timestamp misdetection, and
+children sharing the JVM's process group (now started under `setsid`, so a terminal Ctrl-C no longer
+signals the package manager).
+
+The table below is retained as a record of what was found and why each mattered.
 
 | Severity | Where | Defect |
 | --- | --- | --- |
-| Critical | `ProcessExecution` | Children run in the JVM's own process group, so a terminal Ctrl-C delivers SIGINT to the package manager too. The "item in flight finishes" guarantee only holds for a signal sent to the JVM alone. Fix is to start children via `setsid`, which needs care: it also detaches the controlling terminal. |
-| High | `BootstrapOrchestratorImpl` | Cancellation is checked between modules only. Ctrl-C during a 70-app Flatpak step or a 60-package install does nothing until that whole module finishes. |
-| High | `ApplyCommand.resumeCommandFor` | The resume command printed on cancellation resolves to the phase *after* the cancelled one, so following it skips the rest of the interrupted phase. |
-| Medium | `BootstrapOrchestratorImpl` | Cancelling exactly on a phase boundary records the un-started phase as `BLOCKED` with no `nextPlanEntry`, so `status` reports a dependency failure that never happened. |
-| Medium | `StdoutExecutionEventListener` | `itemLineOpen` is mutated from both the orchestrator thread and the output pump thread with no synchronisation. |
-| Medium | `ProcessExecution` | `writeStdin` completes on the calling thread before the timeout is armed, so a stdin payload larger than the pipe buffer blocks indefinitely. |
-| Medium | `SudoSession` | A single declined or timed-out prompt latches for the whole run; every later privileged step then fails without asking again. |
-| Low | `BoundedTextCapture` | The head/tail split and the circular eviction can cut between the halves of a surrogate pair, leaving unpaired UTF-16 in captured output. |
-| Low | `ProcessExecution` | The `ExecutionException` branch of `awaitExit` reports a timeout without terminating a still-running child. |
+| ~~Critical~~ fixed | `ProcessExecution` | Children ran in the JVM's own process group, so a terminal Ctrl-C delivers SIGINT to the package manager too. The "item in flight finishes" guarantee only holds for a signal sent to the JVM alone. Fix is to start children via `setsid`, which needs care: it also detaches the controlling terminal. |
+| ~~High~~ fixed | `BootstrapOrchestratorImpl` | Cancellation is checked between modules only. Ctrl-C during a 70-app Flatpak step or a 60-package install does nothing until that whole module finishes. |
+| ~~High~~ fixed | `ApplyCommand.resumeCommandFor` | The resume command printed on cancellation resolves to the phase *after* the cancelled one, so following it skips the rest of the interrupted phase. |
+| ~~Medium~~ fixed | `BootstrapOrchestratorImpl` | Cancelling exactly on a phase boundary records the un-started phase as `BLOCKED` with no `nextPlanEntry`, so `status` reports a dependency failure that never happened. |
+| ~~Medium~~ fixed | `StdoutExecutionEventListener` | `itemLineOpen` is mutated from both the orchestrator thread and the output pump thread with no synchronisation. |
+| ~~Medium~~ fixed | `ProcessExecution` | `writeStdin` completes on the calling thread before the timeout is armed, so a stdin payload larger than the pipe buffer blocks indefinitely. |
+| ~~Medium~~ fixed | `SudoSession` | A single declined or timed-out prompt latches for the whole run; every later privileged step then fails without asking again. |
+| ~~Low~~ fixed | `BoundedTextCapture` | The head/tail split and the circular eviction can cut between the halves of a surrogate pair, leaving unpaired UTF-16 in captured output. |
+| ~~Low~~ fixed | `ProcessExecution` | The `ExecutionException` branch of `awaitExit` reports a timeout without terminating a still-running child. |
 
 Shipped in M1:
 
