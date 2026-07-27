@@ -23,9 +23,9 @@ Updated: 2026-07-26. Gate is green throughout (`just verify`, `just format-check
 | **M2.2 — `binstaller-profile` step kind** | ✅ **done** |
 | M2.3–M2.5 — `fluxion tools`, worxbend preset library | not started |
 | **M3.1 — parity step kinds** | ✅ **done**: `user-groups`, `git-config`, `git-repo`, `systemd-unit`, `system-setting`, `system-update`, `gpg-key`, `tool-packages` (cargo-binstall/cargo/snap/pipx/uv-tool/npm-global/go-install) |
-| M3.2 — unified `repository` kind | outstanding; the three existing per-distro repository kinds still stand, plus the unmodelled `ZypperRepositoryInstaller` |
+| **M3.2 — `zypper-repository` step kind** | ✅ **done**. Correction: `ZypperRepositoryInstaller` was *not* unmodelled as previously stated here — it was reachable through `ZypperRepositorySourceSetup` under `spec.sources`. The real gap was narrower: zypper had no repository *step kind* while apt, dnf and pacman did. Closed by reusing the existing installer via `asSourceSetup()` rather than unifying the four kinds, which would have been a breaking change for no user-visible gain. |
 | **Delegation to binstaller** | ✅ **done**: `compiled-binary` translates to a `BinaryDistributionProfile`, gaining zip and tar.xz; built-in installer retained as fallback for what binstaller cannot express (detached GPG signatures, non-SHA-256 checksums, unmappable archives) and for hosts where binstaller cannot be obtained |
-| **§11.1 orchestrator dedup** | partial: 1193 → 1028 lines, 60 → 32 case arms via `StepBinding`. The §11 target of <200 lines needs the repository kinds and multi-item loops moved too |
+| **§11.1 orchestrator dedup** | substantial: **1193 → 754 lines, 60 → 16 case arms** via `StepBinding`, `RunStateRecorder` and `DryRunPlanner`. Still above the §11 target of 200; what remains is genuinely orchestration (phase loop, dependency blocking, restart policy, source setups, cancellation, interrupts) plus the bespoke multi-item arms |
 | §11.2 unified IR / single validator | not started — the two config frontends still duplicate mapping and validation |
 | M4–M10 | not started |
 

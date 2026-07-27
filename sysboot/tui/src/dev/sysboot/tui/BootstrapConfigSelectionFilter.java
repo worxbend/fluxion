@@ -35,6 +35,7 @@ import dev.sysboot.core.ToolPackagesModule;
 import dev.sysboot.core.ToolchainModule;
 import dev.sysboot.core.UserGroupsModule;
 import dev.sysboot.core.ZypperModule;
+import dev.sysboot.core.ZypperRepositoryModule;
 import java.util.List;
 import java.util.Optional;
 import java.util.Set;
@@ -118,6 +119,7 @@ final class BootstrapConfigSelectionFilter {
       case SdkmanModule sdkmanModule -> filterSdkmanModule(sdkmanModule, entries);
       case BinstallerModule binstallerModule -> Optional.of(binstallerModule);
       case UserGroupsModule userGroupsModule -> Optional.of(userGroupsModule);
+      case ZypperRepositoryModule zypperRepositoryModule -> Optional.of(zypperRepositoryModule);
       case GitConfigModule gitConfigModule -> Optional.of(gitConfigModule);
       case GitRepoModule gitRepoModule -> Optional.of(gitRepoModule);
       case SystemdUnitModule systemdUnitModule -> Optional.of(systemdUnitModule);

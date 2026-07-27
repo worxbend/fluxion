@@ -33,6 +33,7 @@ final class PhaseExecutors {
   private final SystemUpdateExecutor systemUpdate;
   private final GpgKeyExecutor gpgKey;
   private final ToolPackagesExecutor toolPackages;
+  private final ZypperRepositoryInstaller zypperRepository;
 
   private PhaseExecutors(
       ShellScriptExecutor shellScript,
@@ -51,7 +52,8 @@ final class PhaseExecutors {
       SystemSettingExecutor systemSetting,
       SystemUpdateExecutor systemUpdate,
       GpgKeyExecutor gpgKey,
-      ToolPackagesExecutor toolPackages) {
+      ToolPackagesExecutor toolPackages,
+      ZypperRepositoryInstaller zypperRepository) {
     this.shellScript = Objects.requireNonNull(shellScript);
     this.shellCommand = Objects.requireNonNull(shellCommand);
     this.dotbot = Objects.requireNonNull(dotbot);
@@ -69,6 +71,7 @@ final class PhaseExecutors {
     this.systemUpdate = Objects.requireNonNull(systemUpdate);
     this.gpgKey = Objects.requireNonNull(gpgKey);
     this.toolPackages = Objects.requireNonNull(toolPackages);
+    this.zypperRepository = Objects.requireNonNull(zypperRepository);
   }
 
   static PhaseExecutors forRunner(ShellRunner runner) {
@@ -89,7 +92,8 @@ final class PhaseExecutors {
         new SystemSettingExecutor(runner),
         new SystemUpdateExecutor(runner),
         new GpgKeyExecutor(runner),
-        new ToolPackagesExecutor(runner));
+        new ToolPackagesExecutor(runner),
+        new ZypperRepositoryInstaller(runner));
   }
 
   /** Uses the collaborators supplied to the orchestrator, so injected stubs take effect. */
@@ -119,7 +123,8 @@ final class PhaseExecutors {
         new SystemSettingExecutor(runner),
         new SystemUpdateExecutor(runner),
         new GpgKeyExecutor(runner),
-        new ToolPackagesExecutor(runner));
+        new ToolPackagesExecutor(runner),
+        new ZypperRepositoryInstaller(runner));
   }
 
   ShellScriptExecutor shellScript() {
@@ -188,6 +193,10 @@ final class PhaseExecutors {
 
   ToolPackagesExecutor toolPackages() {
     return toolPackages;
+  }
+
+  ZypperRepositoryInstaller zypperRepository() {
+    return zypperRepository;
   }
 
   /** Per-runner cache keyed by identity, since runners are wrappers built per restart policy. */

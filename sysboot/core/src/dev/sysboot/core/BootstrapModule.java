@@ -30,7 +30,8 @@ public sealed interface BootstrapModule
         SystemSettingModule,
         SystemUpdateModule,
         GpgKeyModule,
-        ToolPackagesModule {
+        ToolPackagesModule,
+        ZypperRepositoryModule {
 
   ModuleName name();
 }

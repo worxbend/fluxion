@@ -33,6 +33,7 @@ import dev.sysboot.config.yaml.contract.SystemdUnitModuleDocument;
 import dev.sysboot.config.yaml.contract.ToolPackagesModuleDocument;
 import dev.sysboot.config.yaml.contract.ToolchainModuleDocument;
 import dev.sysboot.config.yaml.contract.UserGroupsModuleDocument;
+import dev.sysboot.config.yaml.contract.ZypperRepositoryModuleDocument;
 import dev.sysboot.core.AptRepositoryModule;
 import dev.sysboot.core.AssertModule;
 import dev.sysboot.core.BinaryUrl;
@@ -81,6 +82,7 @@ import dev.sysboot.core.ToolPackagesModule;
 import dev.sysboot.core.ToolchainKind;
 import dev.sysboot.core.ToolchainModule;
 import dev.sysboot.core.UserGroupsModule;
+import dev.sysboot.core.ZypperRepositoryModule;
 import java.net.URI;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -202,6 +204,7 @@ final class ConfigMapper {
       case SystemUpdateModuleDocument sup -> mapSystemUpdateModule(sup);
       case GpgKeyModuleDocument gk -> mapGpgKeyModule(gk);
       case ToolPackagesModuleDocument tp -> mapToolPackagesModule(tp);
+      case ZypperRepositoryModuleDocument zr -> mapZypperRepositoryModule(zr);
     };
   }
 
@@ -562,6 +565,19 @@ final class ConfigMapper {
     } catch (IllegalArgumentException e) {
       throw new IllegalArgumentException("Unsupported value for " + field + ": " + raw, e);
     }
+  }
+
+  private ZypperRepositoryModule mapZypperRepositoryModule(ZypperRepositoryModuleDocument dto) {
+    String name = requireField(dto.name, "name");
+    return new ZypperRepositoryModule(
+        new ModuleName(name),
+        dto.id != null ? dto.id : name,
+        URI.create(requireField(dto.baseUrl, "zypper-repository.baseUrl")),
+        Path.of(dto.repoFile != null ? dto.repoFile : "/etc/zypp/repos.d/" + name + ".repo"),
+        Optional.ofNullable(dto.gpgKeyUrl).map(URI::create),
+        dto.enabled,
+        dto.gpgCheck,
+        dto.autoRefresh);
   }
 
   private Optional<Checksum> mapChecksum(ChecksumDocument dto) {

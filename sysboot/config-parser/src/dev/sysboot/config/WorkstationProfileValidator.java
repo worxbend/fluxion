@@ -52,7 +52,8 @@ final class WorkstationProfileValidator {
           "system-setting",
           "system-update",
           "gpg-key",
-          "tool-packages");
+          "tool-packages",
+          "zypper-repository");
   private static final Map<String, Set<String>> SUPPORTED_PACKAGE_ACTIONS =
       Map.of(
           "apt-packages", Set.of("update", "upgrade", "dist-upgrade"),
@@ -85,6 +86,7 @@ final class WorkstationProfileValidator {
           "system-update",
           "gpg-key",
           "tool-packages",
+          "zypper-repository",
           "commands",
           "interrupt");
 
@@ -338,6 +340,7 @@ final class WorkstationProfileValidator {
       case "system-update" -> validateSystemUpdateSpec(path, entryName, spec, errors);
       case "gpg-key" -> validateGpgKeySpec(path, entryName, spec, errors);
       case "tool-packages" -> validateToolPackagesSpec(path, entryName, spec, errors);
+      case "zypper-repository" -> validateZypperRepositorySpec(path, entryName, spec, errors);
       default -> {}
     }
   }
@@ -827,6 +830,27 @@ final class WorkstationProfileValidator {
                         + backend));
     if (spec.packages().isEmpty()) {
       errors.add(path + ".spec.packages is required for plan entry '" + entryName + "'");
+    }
+  }
+
+  private void validateZypperRepositorySpec(
+      String path, String entryName, PlanSpecDocument spec, List<String> errors) {
+    requirePresent(path + ".spec.baseUrl", spec.baseUrl().orElse(null), entryName, errors);
+    spec.baseUrl()
+        .filter(url -> !url.startsWith("https://"))
+        .ifPresent(
+            url ->
+                errors.add(
+                    path
+                        + ".spec.baseUrl for plan entry '"
+                        + entryName
+                        + "' should use HTTPS: a repository decides what this machine installs"));
+    if (spec.gpgCheck() && spec.gpgKeyUrl().isEmpty()) {
+      errors.add(
+          path
+              + ".spec.gpgKeyUrl is required for plan entry '"
+              + entryName
+              + "' because gpgCheck is enabled");
     }
   }
 

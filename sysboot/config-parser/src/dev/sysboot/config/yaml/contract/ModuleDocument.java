@@ -31,7 +31,8 @@ import com.fasterxml.jackson.annotation.JsonTypeInfo;
   @JsonSubTypes.Type(value = SystemSettingModuleDocument.class, name = "system-setting"),
   @JsonSubTypes.Type(value = SystemUpdateModuleDocument.class, name = "system-update"),
   @JsonSubTypes.Type(value = GpgKeyModuleDocument.class, name = "gpg-key"),
-  @JsonSubTypes.Type(value = ToolPackagesModuleDocument.class, name = "tool-packages")
+  @JsonSubTypes.Type(value = ToolPackagesModuleDocument.class, name = "tool-packages"),
+  @JsonSubTypes.Type(value = ZypperRepositoryModuleDocument.class, name = "zypper-repository")
 })
 public abstract sealed class ModuleDocument
     permits PackagesModuleDocument,
@@ -59,7 +60,8 @@ public abstract sealed class ModuleDocument
         SystemSettingModuleDocument,
         SystemUpdateModuleDocument,
         GpgKeyModuleDocument,
-        ToolPackagesModuleDocument {
+        ToolPackagesModuleDocument,
+        ZypperRepositoryModuleDocument {
 
   @JsonProperty("name")
   public String name;

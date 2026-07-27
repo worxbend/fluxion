@@ -750,3 +750,27 @@ Prefer `cargo-binstall` over `cargo`: it fetches prebuilt binaries instead of co
 Each package installs in its own process, so one yanked crate does not block the other nineteen —
 the same isolation `packages` already provides. The backend must be on `PATH`; the step fails with
 an actionable message rather than a confusing command-not-found if it is missing.
+
+---
+
+### `zypper-repository` — add an openSUSE repository
+
+```yaml
+- type: zypper-repository
+  name: vscode
+  id: vscode                                            # default: the step name
+  baseUrl: "https://packages.microsoft.com/yumrepos/vscode"
+  repoFile: /etc/zypp/repos.d/vscode.repo               # default: /etc/zypp/repos.d/<name>.repo
+  gpgKeyUrl: "https://packages.microsoft.com/keys/microsoft.asc"
+  enabled: true
+  gpgCheck: true
+  autoRefresh: true
+```
+
+apt, dnf and pacman each had a repository step kind; zypper repositories could previously only be
+declared under `spec.sources`. That asymmetry mattered on openSUSE, where adding a repository next to
+the packages that need it is the ordinary case.
+
+Writes an auditable `.repo` file with `sudo tee`. Pair it with `gpg-key` when the key must be
+imported into the RPM database first. Validation requires HTTPS and refuses `gpgCheck: true` without
+a `gpgKeyUrl`, since a repository decides what the machine will install.

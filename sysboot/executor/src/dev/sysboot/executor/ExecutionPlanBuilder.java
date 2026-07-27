@@ -37,6 +37,7 @@ import dev.sysboot.core.ToolPackagesModule;
 import dev.sysboot.core.ToolchainModule;
 import dev.sysboot.core.UserGroupsModule;
 import dev.sysboot.core.ZypperModule;
+import dev.sysboot.core.ZypperRepositoryModule;
 import java.util.List;
 import java.util.Optional;
 
@@ -265,6 +266,10 @@ public final class ExecutionPlanBuilder {
           List.of(new ModuleItem(im.name(), im.name().value(), ItemType.INTERRUPT));
       case BinstallerModule bsm ->
           List.of(new ModuleItem(bsm.name(), bsm.itemKey(), ItemType.BINSTALLER_PROFILE));
+      case ZypperRepositoryModule zrm ->
+          List.of(
+              new ModuleItem(
+                  zrm.name(), zrm.repoFilePath().toString(), ItemType.ZYPPER_REPOSITORY));
       case UserGroupsModule ugm ->
           ugm.groups().stream()
               .map(group -> new ModuleItem(ugm.name(), ugm.itemKey(group), ItemType.USER_GROUP))
@@ -332,6 +337,7 @@ public final class ExecutionPlanBuilder {
       case SdkmanModule ignored -> "sdkman-packages";
       case BinstallerModule ignored -> "binstaller-profile";
       case UserGroupsModule ignored -> "user-groups";
+      case ZypperRepositoryModule ignored -> "zypper-repository";
       case GitConfigModule ignored -> "git-config";
       case GitRepoModule ignored -> "git-repo";
       case SystemdUnitModule ignored -> "systemd-unit";

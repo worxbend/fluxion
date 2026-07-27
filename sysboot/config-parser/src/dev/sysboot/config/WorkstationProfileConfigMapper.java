@@ -59,6 +59,7 @@ import dev.sysboot.core.SystemdUnitModule;
 import dev.sysboot.core.ToolPackageBackend;
 import dev.sysboot.core.ToolPackagesModule;
 import dev.sysboot.core.UserGroupsModule;
+import dev.sysboot.core.ZypperRepositoryModule;
 import java.net.URI;
 import java.nio.file.Path;
 import java.time.Duration;
@@ -173,6 +174,7 @@ final class WorkstationProfileConfigMapper {
       case "system-update" -> Optional.of(systemUpdateModule(entry, policy));
       case "gpg-key" -> Optional.of(gpgKeyModule(entry, policy));
       case "tool-packages" -> Optional.of(toolPackagesModule(entry, policy));
+      case "zypper-repository" -> Optional.of(zypperRepositoryModule(entry));
       case "interrupt" -> Optional.of(interruptModule(entry));
       default -> Optional.empty();
     };
@@ -768,6 +770,20 @@ final class WorkstationProfileConfigMapper {
 
   private <E extends Enum<E>> E planEnum(Class<E> type, String raw) {
     return Enum.valueOf(type, raw.strip().toUpperCase().replace('-', '_'));
+  }
+
+  private ZypperRepositoryModule zypperRepositoryModule(PlanEntryDocument entry) {
+    PlanSpecDocument spec = requireField(entry.spec().orElse(null), planName(entry) + ".spec");
+    String name = planName(entry);
+    return new ZypperRepositoryModule(
+        new ModuleName(name),
+        spec.repositoryId().orElse(name),
+        java.net.URI.create(requireField(spec.baseUrl().orElse(null), name + ".spec.baseUrl")),
+        Path.of(expandHome(spec.repoFile().orElse("/etc/zypp/repos.d/" + name + ".repo"))),
+        spec.gpgKeyUrl().map(java.net.URI::create),
+        spec.repoEnabled(),
+        spec.gpgCheck(),
+        spec.autoRefresh());
   }
 
   private DotbotModule dotbotModule(PlanEntryDocument entry) {

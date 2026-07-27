@@ -34,6 +34,7 @@ import dev.sysboot.core.ToolPackagesModule;
 import dev.sysboot.core.ToolchainModule;
 import dev.sysboot.core.UserGroupsModule;
 import dev.sysboot.core.ZypperModule;
+import dev.sysboot.core.ZypperRepositoryModule;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
 import java.security.MessageDigest;
@@ -228,6 +229,16 @@ final class PhaseFingerprintCalculator {
                         "package",
                         pkg.name() + pkg.version().map(v -> "@" + v).orElse("")));
         append(builder, "continueOnError", tpm.continueOnError());
+      }
+      case ZypperRepositoryModule zrm -> {
+        append(builder, "type", "zypper-repository");
+        append(builder, "id", zrm.repositoryId());
+        append(builder, "baseUrl", zrm.baseUrl().toString());
+        append(builder, "repoFile", zrm.repoFilePath().toString());
+        zrm.gpgKeyUrl().ifPresent(url -> append(builder, "gpgKeyUrl", url.toString()));
+        append(builder, "enabled", zrm.enabled());
+        append(builder, "gpgCheck", zrm.gpgCheck());
+        append(builder, "autoRefresh", zrm.autoRefresh());
       }
       case UserGroupsModule ugm -> {
         append(builder, "type", "user-groups");

@@ -35,6 +35,7 @@ import dev.sysboot.core.ToolPackagesModule;
 import dev.sysboot.core.ToolchainModule;
 import dev.sysboot.core.UserGroupsModule;
 import dev.sysboot.core.ZypperModule;
+import dev.sysboot.core.ZypperRepositoryModule;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
@@ -218,6 +219,10 @@ public final class ParallelProbeRunner {
                 .forEach(
                     pkg ->
                         targets.add(new ModuleItem(tpm.name(), pkg.name(), ItemType.TOOL_PACKAGE)));
+        case ZypperRepositoryModule zrm ->
+            targets.add(
+                new ModuleItem(
+                    zrm.name(), zrm.repoFilePath().toString(), ItemType.ZYPPER_REPOSITORY));
         case UserGroupsModule ugm ->
             ugm.groups()
                 .forEach(

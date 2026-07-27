@@ -172,6 +172,27 @@ public final class PlanSpecDocument {
   @JsonProperty("scope")
   private String scope;
 
+  @JsonProperty("id")
+  private String repositoryId;
+
+  @JsonProperty("baseUrl")
+  private String baseUrl;
+
+  @JsonProperty("repoFile")
+  private String repoFile;
+
+  @JsonProperty("gpgKeyUrl")
+  private String gpgKeyUrl;
+
+  @JsonProperty("gpgCheck")
+  private Boolean gpgCheck;
+
+  @JsonProperty("autoRefresh")
+  private Boolean autoRefresh;
+
+  @JsonProperty("enabled")
+  private Boolean repoEnabled;
+
   @JsonProperty("entries")
   private java.util.Map<String, String> entries;
 
@@ -506,6 +527,34 @@ public final class PlanSpecDocument {
 
   public Optional<String> scope() {
     return DocumentDefaults.optional(scope);
+  }
+
+  public Optional<String> repositoryId() {
+    return DocumentDefaults.optional(repositoryId);
+  }
+
+  public Optional<String> baseUrl() {
+    return DocumentDefaults.optional(baseUrl);
+  }
+
+  public Optional<String> repoFile() {
+    return DocumentDefaults.optional(repoFile);
+  }
+
+  public Optional<String> gpgKeyUrl() {
+    return DocumentDefaults.optional(gpgKeyUrl);
+  }
+
+  public boolean gpgCheck() {
+    return DocumentDefaults.optional(gpgCheck).orElse(true);
+  }
+
+  public boolean autoRefresh() {
+    return DocumentDefaults.optional(autoRefresh).orElse(true);
+  }
+
+  public boolean repoEnabled() {
+    return DocumentDefaults.optional(repoEnabled).orElse(true);
   }
 
   public java.util.Map<String, String> entries() {

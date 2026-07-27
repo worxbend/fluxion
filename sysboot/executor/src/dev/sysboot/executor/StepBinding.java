@@ -17,6 +17,7 @@ import dev.sysboot.core.SystemUpdateModule;
 import dev.sysboot.core.SystemdUnitModule;
 import dev.sysboot.core.ToolPackagesModule;
 import dev.sysboot.core.ToolchainModule;
+import dev.sysboot.core.ZypperRepositoryModule;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -170,6 +171,13 @@ final class StepBinding {
                   module -> module.name().value(),
                   (module, executors) -> executors.gpgKey().execute(module),
                   (module, executors) -> executors.gpgKey().commandPreview(module)),
+              bind(
+                  ZypperRepositoryModule.class,
+                  ItemType.ZYPPER_REPOSITORY,
+                  module -> module.repoFilePath().toString(),
+                  (module, executors) -> executors.zypperRepository().add(module.asSourceSetup()),
+                  (module, executors) ->
+                      executors.zypperRepository().addCommand(module.asSourceSetup())),
               bind(
                   ToolPackagesModule.class,
                   ItemType.TOOL_PACKAGE,

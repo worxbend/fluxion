@@ -31,6 +31,7 @@ import dev.sysboot.core.ToolPackagesModule;
 import dev.sysboot.core.ToolchainModule;
 import dev.sysboot.core.UserGroupsModule;
 import dev.sysboot.core.ZypperModule;
+import dev.sysboot.core.ZypperRepositoryModule;
 import java.util.List;
 
 final class SelectionEntryCatalog {
@@ -74,6 +75,8 @@ final class SelectionEntryCatalog {
       case BinstallerModule binstallerModule -> List.of(binstallerModule.itemKey());
       case UserGroupsModule userGroupsModule ->
           userGroupsModule.groups().stream().map(userGroupsModule::itemKey).toList();
+      case ZypperRepositoryModule zypperRepositoryModule ->
+          List.of(zypperRepositoryModule.repoFilePath().toString());
       case GitConfigModule gitConfigModule -> gitConfigModule.sortedKeys();
       case GitRepoModule gitRepoModule ->
           gitRepoModule.repos().stream().map(GitRepoModule.GitRepo::destination).toList();

@@ -36,6 +36,7 @@ import dev.sysboot.core.ToolPackagesModule;
 import dev.sysboot.core.ToolchainModule;
 import dev.sysboot.core.UserGroupsModule;
 import dev.sysboot.core.ZypperModule;
+import dev.sysboot.core.ZypperRepositoryModule;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import picocli.CommandLine.Command;
@@ -120,6 +121,7 @@ public final class ListCommand implements Runnable {
       case SdkmanModule ignored -> "🧰 sdkman";
       case BinstallerModule ignored -> "📥 binstaller";
       case UserGroupsModule ignored -> "👤 groups";
+      case ZypperRepositoryModule ignored -> "📦 zypper-repo";
       case GitConfigModule ignored -> "🔧 git-config";
       case GitRepoModule ignored -> "🌿 git-repo";
       case SystemdUnitModule ignored -> "⚙️ systemd";
@@ -155,6 +157,7 @@ public final class ListCommand implements Runnable {
       case SdkmanModule ignored -> "sdkman-packages";
       case BinstallerModule ignored -> "binstaller-profile";
       case UserGroupsModule ignored -> "user-groups";
+      case ZypperRepositoryModule ignored -> "zypper-repository";
       case GitConfigModule ignored -> "git-config";
       case GitRepoModule ignored -> "git-repo";
       case SystemdUnitModule ignored -> "systemd-unit";
@@ -190,6 +193,7 @@ public final class ListCommand implements Runnable {
       case SdkmanModule sm -> sm.packages().size() + " SDKMAN packages";
       case BinstallerModule bsm -> binstallerDescription(bsm);
       case UserGroupsModule ugm -> String.join(", ", ugm.groups());
+      case ZypperRepositoryModule zrm -> zrm.repoFilePath() + " <- " + zrm.baseUrl();
       case GitConfigModule gcm -> gcm.entries().size() + " git config entries";
       case GitRepoModule grm -> grm.repos().size() + " repositories";
       case SystemdUnitModule sum -> sum.units().size() + " units (" + sum.scope() + ")";
