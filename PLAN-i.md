@@ -24,6 +24,9 @@ Updated: 2026-07-26. Gate is green throughout (`just verify`, `just format-check
 | M2.3–M2.5 — `fluxion tools`, worxbend preset library | not started |
 | **M3.1 — parity step kinds** | ✅ **done**: `user-groups`, `git-config`, `git-repo`, `systemd-unit`, `system-setting`, `system-update`, `gpg-key`, `tool-packages` (cargo-binstall/cargo/snap/pipx/uv-tool/npm-global/go-install) |
 | M3.2 — unified `repository` kind | outstanding; the three existing per-distro repository kinds still stand, plus the unmodelled `ZypperRepositoryInstaller` |
+| **Delegation to binstaller** | ✅ **done**: `compiled-binary` translates to a `BinaryDistributionProfile`, gaining zip and tar.xz; built-in installer retained as fallback for what binstaller cannot express (detached GPG signatures, non-SHA-256 checksums, unmappable archives) and for hosts where binstaller cannot be obtained |
+| **§11.1 orchestrator dedup** | partial: 1193 → 1028 lines, 60 → 32 case arms via `StepBinding`. The §11 target of <200 lines needs the repository kinds and multi-item loops moved too |
+| §11.2 unified IR / single validator | not started — the two config frontends still duplicate mapping and validation |
 | M4–M10 | not started |
 
 ### A. Audit defects — all closed
