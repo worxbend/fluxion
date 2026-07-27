@@ -90,7 +90,7 @@ class ConfigValidatorTest {
         new CompiledBinaryModule(
             new ModuleName("ripgrep"),
             "rg",
-            new BinaryUrl(new URI("https://example.test/rg.zip")),
+            new BinaryUrl(new URI("https://example.test/rg.7z")),
             Optional.empty(),
             Optional.empty(),
             Path.of("/usr/local/bin/rg"),

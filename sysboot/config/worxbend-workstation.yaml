@@ -1,0 +1,91 @@
+# Fluxion profile that drives the worxbend tool chain instead of duplicating it.
+#
+# This mirrors the shape of the `system-bootstrap` Justfile workflow:
+#
+#   just install-binaries   ->  binstaller apply  (binstaller-profile step)
+#   just install-fonts      ->  nerd-fonts-installer  (nerd-fonts step)
+#   just apply-dotfiles     ->  dotbot                (dotbot step)
+#
+# Each of those tools already models plan / dry-run / apply and owns its own config file. Fluxion
+# points at the configs you already maintain, orders the work, decides what to skip, records state,
+# and reports progress. It does not re-declare your tool list in a second schema.
+#
+# Preview before running anything:
+#   fluxion plan    --no-tui -c config/worxbend-workstation.yaml --show-commands
+#   fluxion dry-run --no-tui -c config/worxbend-workstation.yaml
+
+profile: worxbend-workstation
+os:
+  type: opensuse
+  release: tumbleweed
+
+jobs:
+  - name: system-foundation
+    description: Packages the rest of the profile depends on
+    dependsOn: []
+    restartPolicy:
+      type: none
+    steps:
+      - type: packages
+        name: core-cli
+        packageManager: zypper
+        continueOnError: true
+        packages:
+          - git
+          - curl
+          - wget
+          - zsh
+          - tmux
+          - fzf
+          - fuse
+
+  - name: developer-binaries
+    description: Portable binary tools, installed by binstaller into ~/.apps
+    dependsOn: [system-foundation]
+    restartPolicy:
+      type: none
+    steps:
+      # Fluxion resolves `binstaller` from PATH, then from its own cache, and only downloads
+      # (checksum-verified) if neither has it. Your existing profile is used unchanged.
+      - type: binstaller-profile
+        name: portable-tools
+        config: ~/.config/binstaller/config.yaml
+        # only: [yazi, neovim]          # optional: install a subset
+        # skip: [zig]                   # optional: omit specific tools
+        # locked: true                  # optional: require a lock file
+        # lockFile: ~/.config/binstaller/binstaller.lock.json
+
+  - name: fonts
+    description: Nerd Fonts for terminal and editor glyphs
+    dependsOn: [system-foundation]
+    restartPolicy:
+      type: none
+    steps:
+      # `configPath` reuses the font list you already keep, so there is one source of truth.
+      - type: nerd-fonts
+        name: nerd-fonts
+        configPath: ~/.config/nerd-fonts-installer/config.yaml
+        probeCommand: "fc-list | grep -qi JetBrainsMono"
+
+  - name: dotfiles
+    description: Link dotfiles with dotbot
+    dependsOn: [developer-binaries, fonts]
+    restartPolicy:
+      type: none
+    steps:
+      # Dotbot links are force-linked in this repo: applying replaces matching local config paths.
+      # `fluxion plan` shows dotbot's own per-link plan before anything is written.
+      - type: dotbot
+        name: link-dotfiles
+        config: ~/.system-bootstrap/.files/install.conf.yaml
+
+  - name: shell
+    description: Make zsh the login shell, then require a fresh shell for later work
+    dependsOn: [dotfiles]
+    restartPolicy:
+      type: prompt-logout
+      message: "Log out and back in so the new login shell and PATH take effect."
+    steps:
+      - type: default-shell
+        name: login-shell
+        shellPath: /usr/bin/zsh

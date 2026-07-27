@@ -39,7 +39,7 @@ Keep this direction intact.
 - `core`: domain model, value objects, ports, no production dependencies.
 - `config-parser`: Jackson YAML DTOs and mapping into `core`.
 - `executor`: package manager executors, shell runners, probes, state repository, orchestrator.
-- `tui`: TamboUI screens, sudo prompt, event listener.
+- `tui`: hand-rolled ANSI screens, sudo prompt, event listener. No third-party terminal library.
 - `app`: compile-time dependency wiring in `ApplicationContext`.
 - `cli`: Picocli commands and `Main`.
 

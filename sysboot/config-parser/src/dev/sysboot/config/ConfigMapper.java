@@ -1,7 +1,12 @@
 package dev.sysboot.config;
 
+import static dev.sysboot.config.MappingSupport.enumValue;
+import static dev.sysboot.config.MappingSupport.expandHome;
+import static dev.sysboot.config.MappingSupport.requireField;
+
 import dev.sysboot.config.yaml.contract.AptRepositoryModuleDocument;
 import dev.sysboot.config.yaml.contract.AssertModuleDocument;
+import dev.sysboot.config.yaml.contract.BinstallerModuleDocument;
 import dev.sysboot.config.yaml.contract.ChecksumDocument;
 import dev.sysboot.config.yaml.contract.CompiledBinaryModuleDocument;
 import dev.sysboot.config.yaml.contract.ConfigDocument;
@@ -9,8 +14,12 @@ import dev.sysboot.config.yaml.contract.DefaultShellModuleDocument;
 import dev.sysboot.config.yaml.contract.DotbotModuleDocument;
 import dev.sysboot.config.yaml.contract.FlatpakModuleDocument;
 import dev.sysboot.config.yaml.contract.FlatpakRemoteModuleDocument;
+import dev.sysboot.config.yaml.contract.GitConfigModuleDocument;
+import dev.sysboot.config.yaml.contract.GitRepoModuleDocument;
+import dev.sysboot.config.yaml.contract.GpgKeyModuleDocument;
 import dev.sysboot.config.yaml.contract.ManualModuleDocument;
 import dev.sysboot.config.yaml.contract.ModuleDocument;
+import dev.sysboot.config.yaml.contract.NerdFontConfigDocument;
 import dev.sysboot.config.yaml.contract.NerdFontModuleDocument;
 import dev.sysboot.config.yaml.contract.OhMyZshModuleDocument;
 import dev.sysboot.config.yaml.contract.OsDocument;
@@ -22,10 +31,17 @@ import dev.sysboot.config.yaml.contract.RpmRepositoryModuleDocument;
 import dev.sysboot.config.yaml.contract.ShellCommandModuleDocument;
 import dev.sysboot.config.yaml.contract.ShellReloadModuleDocument;
 import dev.sysboot.config.yaml.contract.ShellScriptModuleDocument;
+import dev.sysboot.config.yaml.contract.SystemSettingModuleDocument;
+import dev.sysboot.config.yaml.contract.SystemUpdateModuleDocument;
+import dev.sysboot.config.yaml.contract.SystemdUnitModuleDocument;
+import dev.sysboot.config.yaml.contract.ToolPackagesModuleDocument;
 import dev.sysboot.config.yaml.contract.ToolchainModuleDocument;
+import dev.sysboot.config.yaml.contract.UserGroupsModuleDocument;
+import dev.sysboot.config.yaml.contract.ZypperRepositoryModuleDocument;
 import dev.sysboot.core.AptRepositoryModule;
 import dev.sysboot.core.AssertModule;
 import dev.sysboot.core.BinaryUrl;
+import dev.sysboot.core.BinstallerModule;
 import dev.sysboot.core.BootstrapConfig;
 import dev.sysboot.core.BootstrapModule;
 import dev.sysboot.core.Checksum;
@@ -34,6 +50,11 @@ import dev.sysboot.core.DefaultShellModule;
 import dev.sysboot.core.DotbotModule;
 import dev.sysboot.core.FlatpakModule;
 import dev.sysboot.core.FlatpakRemoteModule;
+import dev.sysboot.core.GitConfigModule;
+import dev.sysboot.core.GitConfigScope;
+import dev.sysboot.core.GitRepoModule;
+import dev.sysboot.core.GitRepoUpdate;
+import dev.sysboot.core.GpgKeyModule;
 import dev.sysboot.core.ManualModule;
 import dev.sysboot.core.ModuleName;
 import dev.sysboot.core.NerdFontConfig;
@@ -50,12 +71,22 @@ import dev.sysboot.core.ProfileName;
 import dev.sysboot.core.RestartPolicy;
 import dev.sysboot.core.RpmRepositoryModule;
 import dev.sysboot.core.ScriptPath;
+import dev.sysboot.core.ShellCommandItem;
 import dev.sysboot.core.ShellCommandModule;
 import dev.sysboot.core.ShellKind;
 import dev.sysboot.core.ShellReloadModule;
 import dev.sysboot.core.ShellScriptModule;
+import dev.sysboot.core.SystemSettingModule;
+import dev.sysboot.core.SystemUpdateModule;
+import dev.sysboot.core.SystemdScope;
+import dev.sysboot.core.SystemdState;
+import dev.sysboot.core.SystemdUnitModule;
+import dev.sysboot.core.ToolPackageBackend;
+import dev.sysboot.core.ToolPackagesModule;
 import dev.sysboot.core.ToolchainKind;
 import dev.sysboot.core.ToolchainModule;
+import dev.sysboot.core.UserGroupsModule;
+import dev.sysboot.core.ZypperRepositoryModule;
 import java.net.URI;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -168,6 +199,16 @@ final class ConfigMapper {
       case ShellCommandModuleDocument sc -> mapShellCommandModule(sc);
       case AssertModuleDocument am -> mapAssertModule(am);
       case ManualModuleDocument mm -> mapManualModule(mm);
+      case BinstallerModuleDocument bs -> mapBinstallerModule(bs);
+      case UserGroupsModuleDocument ug -> mapUserGroupsModule(ug);
+      case GitConfigModuleDocument gc -> mapGitConfigModule(gc);
+      case GitRepoModuleDocument gr -> mapGitRepoModule(gr);
+      case SystemdUnitModuleDocument su -> mapSystemdUnitModule(su);
+      case SystemSettingModuleDocument ss -> mapSystemSettingModule(ss);
+      case SystemUpdateModuleDocument sup -> mapSystemUpdateModule(sup);
+      case GpgKeyModuleDocument gk -> mapGpgKeyModule(gk);
+      case ToolPackagesModuleDocument tp -> mapToolPackagesModule(tp);
+      case ZypperRepositoryModuleDocument zr -> mapZypperRepositoryModule(zr);
     };
   }
 
@@ -264,9 +305,22 @@ final class ConfigMapper {
         mapBinaryUrl(dto.checksumUrl),
         mapBinaryUrl(dto.signatureUrl),
         installPath,
+        Optional.ofNullable(dto.archivePath),
+        dto.stripComponents != null ? dto.stripComponents : 0,
+        Optional.ofNullable(binaryMode(dto)).or(() -> Optional.of("0755")),
+        mapSymlinkPath(dto),
         dto.continueOnError,
         Optional.ofNullable(dto.versionCommand),
         Optional.ofNullable(dto.expectedVersion));
+  }
+
+  private String binaryMode(CompiledBinaryModuleDocument dto) {
+    return dto.installMode != null ? dto.installMode : dto.mode;
+  }
+
+  private Optional<Path> mapSymlinkPath(CompiledBinaryModuleDocument dto) {
+    String rawPath = dto.symlinkPath != null ? dto.symlinkPath : dto.symlink;
+    return Optional.ofNullable(rawPath).map(path -> absolutePath(path, "symlinkPath"));
   }
 
   private DotbotModule mapDotbotModule(DotbotModuleDocument dto, Path configFile) {
@@ -310,7 +364,12 @@ final class ConfigMapper {
   }
 
   private NerdFontModule mapNerdFontModule(NerdFontModuleDocument dto) {
-    var configDocument = requireField(dto.config, "nerd-fonts.config");
+    // `configPath` points at an installer config the user already maintains, so an inline `config`
+    // block is only required when Fluxion has to generate one.
+    var configDocument =
+        dto.configPath != null && dto.config == null
+            ? new NerdFontConfigDocument()
+            : requireField(dto.config, "nerd-fonts.config");
     var dest =
         configDocument.destination != null
             ? Path.of(configDocument.destination.replace("~", System.getProperty("user.home")))
@@ -324,8 +383,11 @@ final class ConfigMapper {
     return new NerdFontModule(
         new ModuleName(requireField(dto.name, "name")),
         requireField(dto.installerVersion, "nerd-fonts.installerVersion"),
-        dto.nerdfontBinary != null ? dto.nerdfontBinary : "nerdfont-install",
+        dto.nerdfontBinary != null
+            ? dto.nerdfontBinary
+            : dev.sysboot.core.KnownTools.NERD_FONTS_INSTALLER.executableName(),
         config,
+        Optional.ofNullable(dto.configPath).map(path -> Path.of(expandHome(path))),
         Optional.ofNullable(dto.probeCommand));
   }
 
@@ -341,7 +403,12 @@ final class ConfigMapper {
         dto.workingDir != null ? Optional.of(Path.of(dto.workingDir)) : Optional.<Path>empty();
     return new ShellCommandModule(
         new ModuleName(requireField(dto.name, "name")),
-        requireField(dto.commands, "shell-command.commands"),
+        requireField(dto.commands, "shell-command.commands").stream()
+            .map(
+                command ->
+                    ShellCommandItem.shell(
+                        command, dto.shell != null ? dto.shell : "/bin/bash", workingDir))
+            .toList(),
         dto.shell != null ? dto.shell : "/bin/bash",
         workingDir,
         dto.continueOnError,
@@ -366,6 +433,139 @@ final class ConfigMapper {
         Optional.ofNullable(dto.probeCommand));
   }
 
+  private BinstallerModule mapBinstallerModule(BinstallerModuleDocument dto) {
+    return new BinstallerModule(
+        new ModuleName(requireField(dto.name, "name")),
+        Path.of(expandHome(requireField(dto.config, "binstaller-profile.config"))),
+        dto.only != null ? dto.only : List.of(),
+        dto.skip != null ? dto.skip : List.of(),
+        dto.locked,
+        Optional.ofNullable(dto.lockFile).map(path -> Path.of(expandHome(path))),
+        requireField(dto.installerVersion, "binstaller-profile.installerVersion"),
+        requireField(dto.binstallerBinary, "binstaller-profile.binstallerBinary"),
+        Optional.ofNullable(dto.probeCommand),
+        dto.continueOnError);
+  }
+
+  private UserGroupsModule mapUserGroupsModule(UserGroupsModuleDocument dto) {
+    return new UserGroupsModule(
+        new ModuleName(requireField(dto.name, "name")),
+        Optional.ofNullable(dto.user),
+        requireField(dto.groups, "user-groups.groups"),
+        dto.createMissing,
+        dto.logoutCheckpoint,
+        Optional.ofNullable(dto.checkpointMessage),
+        dto.continueOnError);
+  }
+
+  private GitConfigModule mapGitConfigModule(GitConfigModuleDocument dto) {
+    return new GitConfigModule(
+        new ModuleName(requireField(dto.name, "name")),
+        enumValue(GitConfigScope.class, dto.scope, "git-config.scope"),
+        requireField(dto.entries, "git-config.entries"),
+        dto.continueOnError);
+  }
+
+  private GitRepoModule mapGitRepoModule(GitRepoModuleDocument dto) {
+    var repos =
+        requireField(dto.repos, "git-repo.repos").stream()
+            .map(
+                repo ->
+                    new GitRepoModule.GitRepo(
+                        requireField(repo.url, "git-repo.url"),
+                        requireField(repo.dest, "git-repo.dest"),
+                        Optional.ofNullable(repo.ref),
+                        Optional.ofNullable(repo.depth),
+                        repo.submodules,
+                        enumValue(GitRepoUpdate.class, repo.update, "git-repo.update")))
+            .toList();
+    return new GitRepoModule(
+        new ModuleName(requireField(dto.name, "name")), repos, dto.continueOnError);
+  }
+
+  private SystemdUnitModule mapSystemdUnitModule(SystemdUnitModuleDocument dto) {
+    var units =
+        requireField(dto.units, "systemd-unit.units").stream()
+            .map(
+                unit ->
+                    new SystemdUnitModule.SystemdUnit(
+                        requireField(unit.name, "systemd-unit.units[].name"),
+                        unit.enabled,
+                        enumValue(SystemdState.class, unit.state, "systemd-unit.state"),
+                        unit.mask))
+            .toList();
+    return new SystemdUnitModule(
+        new ModuleName(requireField(dto.name, "name")),
+        enumValue(SystemdScope.class, dto.scope, "systemd-unit.scope"),
+        units,
+        dto.continueOnError);
+  }
+
+  private SystemSettingModule mapSystemSettingModule(SystemSettingModuleDocument dto) {
+    return new SystemSettingModule(
+        new ModuleName(requireField(dto.name, "name")),
+        Optional.ofNullable(dto.localRtc),
+        Optional.ofNullable(dto.ntp),
+        Optional.ofNullable(dto.timezone),
+        Optional.ofNullable(dto.hostname),
+        dto.locale != null ? dto.locale : java.util.Map.of(),
+        dto.continueOnError);
+  }
+
+  private SystemUpdateModule mapSystemUpdateModule(SystemUpdateModuleDocument dto) {
+    return new SystemUpdateModule(
+        new ModuleName(requireField(dto.name, "name")),
+        PackageManagerKind.valueOf(
+            requireField(dto.packageManager, "system-update.packageManager").toUpperCase()),
+        dto.distUpgrade,
+        dto.refreshOnly,
+        Optional.ofNullable(dto.timeout).map(java.time.Duration::parse),
+        dto.continueOnError);
+  }
+
+  private GpgKeyModule mapGpgKeyModule(GpgKeyModuleDocument dto) {
+    var keys =
+        requireField(dto.keys, "gpg-key.keys").stream()
+            .map(
+                key ->
+                    new GpgKeyModule.GpgKey(
+                        requireField(key.url, "gpg-key.keys[].url"),
+                        Optional.ofNullable(key.keyring).map(Path::of),
+                        Optional.ofNullable(key.fingerprint)))
+            .toList();
+    return new GpgKeyModule(
+        new ModuleName(requireField(dto.name, "name")), keys, dto.continueOnError);
+  }
+
+  private ToolPackagesModule mapToolPackagesModule(ToolPackagesModuleDocument dto) {
+    var backend =
+        ToolPackageBackend.fromId(requireField(dto.backend, "tool-packages.backend"))
+            .orElseThrow(
+                () ->
+                    new IllegalArgumentException(
+                        "Unsupported tool-packages backend: " + dto.backend));
+    var packages =
+        requireField(dto.packages, "tool-packages.packages").stream()
+            .map(MappingSupport::toolPackage)
+            .toList();
+    return new ToolPackagesModule(
+        new ModuleName(requireField(dto.name, "name")), backend, packages, dto.continueOnError);
+  }
+
+  /** Splits a {@code name@version} entry, leaving a bare name unpinned. */
+  private ZypperRepositoryModule mapZypperRepositoryModule(ZypperRepositoryModuleDocument dto) {
+    String name = requireField(dto.name, "name");
+    return new ZypperRepositoryModule(
+        new ModuleName(name),
+        dto.id != null ? dto.id : name,
+        URI.create(requireField(dto.baseUrl, "zypper-repository.baseUrl")),
+        Path.of(dto.repoFile != null ? dto.repoFile : "/etc/zypp/repos.d/" + name + ".repo"),
+        Optional.ofNullable(dto.gpgKeyUrl).map(URI::create),
+        dto.enabled,
+        dto.gpgCheck,
+        dto.autoRefresh);
+  }
+
   private Optional<Checksum> mapChecksum(ChecksumDocument dto) {
     if (dto == null) return Optional.empty();
     return Optional.of(
@@ -388,26 +588,6 @@ final class ConfigMapper {
       throw new IllegalArgumentException("Required field '" + fieldName + "' must be absolute");
     }
     return path;
-  }
-
-  private String expandHome(String rawPath) {
-    if (rawPath.equals("~")) {
-      return System.getProperty("user.home");
-    }
-    if (rawPath.startsWith("~/")) {
-      return System.getProperty("user.home") + rawPath.substring(1);
-    }
-    return rawPath;
-  }
-
-  private <T> T requireField(T value, String fieldName) {
-    if (value == null) {
-      throw new IllegalArgumentException("Required field '" + fieldName + "' is missing");
-    }
-    if (value instanceof String s && s.isBlank()) {
-      throw new IllegalArgumentException("Required field '" + fieldName + "' must not be blank");
-    }
-    return value;
   }
 
   private void validateSchemaVersion(Integer schemaVersion) {

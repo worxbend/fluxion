@@ -23,7 +23,10 @@ public enum ExitCode {
   IO_ERROR(4),
 
   /** An external command, package manager, or runtime dependency failed. */
-  EXTERNAL_DEPENDENCY_ERROR(5);
+  EXTERNAL_DEPENDENCY_ERROR(5),
+
+  /** Execution paused at an explicit interrupt checkpoint. */
+  PAUSED(75);
 
   private final int value;
 

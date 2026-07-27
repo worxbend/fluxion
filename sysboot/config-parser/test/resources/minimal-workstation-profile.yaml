@@ -1,0 +1,5 @@
+apiVersion: initkit.io/v1alpha1
+kind: WorkstationProfile
+metadata:
+  name: developer-workstation
+spec: {}

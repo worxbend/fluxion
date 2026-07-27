@@ -8,6 +8,7 @@ import dev.sysboot.cli.option.GlobalOptions;
 import dev.sysboot.config.ConfigLoadException;
 import dev.sysboot.core.AptRepositoryModule;
 import dev.sysboot.core.AssertModule;
+import dev.sysboot.core.BinstallerModule;
 import dev.sysboot.core.BootstrapConfig;
 import dev.sysboot.core.BootstrapModule;
 import dev.sysboot.core.CompiledBinaryModule;
@@ -18,6 +19,7 @@ import dev.sysboot.core.PackageManagerKind;
 import dev.sysboot.core.PackageModule;
 import dev.sysboot.core.PacmanRepositoryModule;
 import dev.sysboot.core.RpmRepositoryModule;
+import dev.sysboot.core.SdkmanModule;
 import dev.sysboot.core.ShellCommandModule;
 import dev.sysboot.core.ZypperModule;
 import dev.sysboot.executor.CompiledBinaryArtifactFormat;
@@ -198,6 +200,7 @@ public final class DoctorCommand implements Runnable {
       case APT -> "apt-get";
       case FLATPAK -> "flatpak";
       case ZYPPER -> "zypper";
+      case CARGO -> "cargo";
     };
   }
 
@@ -216,6 +219,8 @@ public final class DoctorCommand implements Runnable {
       case FlatpakRemoteModule frm -> addFlatpakRemoteChecks(frm, checks);
       case DefaultShellModule dsm -> checks.add(checkShellPath(dsm.shellPath()));
       case ShellCommandModule scm -> checks.add(checkRequiredCommand(scm.shell(), "shell"));
+      case SdkmanModule ignored -> addSdkmanChecks(checks);
+      case BinstallerModule bsm -> addBinstallerChecks(bsm, checks);
       case AssertModule am -> checks.add(checkRequiredCommand(am.shell(), "assert shell"));
       case CompiledBinaryModule cbm -> addNetworkCheck(cbm, checks);
       default -> {}
@@ -227,6 +232,15 @@ public final class DoctorCommand implements Runnable {
     if (module.remote().equals("flathub")) {
       checks.add(Check.warn("flatpak remote", "verify Flathub is configured before run"));
     }
+  }
+
+  private void addSdkmanChecks(List<Check> checks) {
+    checks.add(checkRequiredCommand("/bin/bash", "SDKMAN shell"));
+    Path init = Path.of(System.getProperty("user.home"), ".sdkman", "bin", "sdkman-init.sh");
+    checks.add(
+        Files.isRegularFile(init)
+            ? Check.pass("SDKMAN init", init.toString())
+            : Check.warn("SDKMAN init", init + " not found"));
   }
 
   private void addAptRepositoryChecks(AptRepositoryModule module, List<Check> checks) {
@@ -249,6 +263,22 @@ public final class DoctorCommand implements Runnable {
   private void addFlatpakRemoteChecks(FlatpakRemoteModule module, List<Check> checks) {
     checks.add(checkRequiredCommand("flatpak", "flatpak command"));
     checks.add(checkUrl("flatpak remote", module.url()));
+  }
+
+  private void addBinstallerChecks(BinstallerModule module, List<Check> checks) {
+    Path config = module.config();
+    checks.add(
+        Files.isReadable(config)
+            ? Check.pass("binstaller profile", config.toString())
+            : Check.fail("binstaller profile", config + " is not readable"));
+    module
+        .lockFile()
+        .ifPresent(
+            lock ->
+                checks.add(
+                    Files.isReadable(lock)
+                        ? Check.pass("binstaller lock", lock.toString())
+                        : Check.fail("binstaller lock", lock + " is not readable")));
   }
 
   private Check checkShellPath(Path shellPath) {

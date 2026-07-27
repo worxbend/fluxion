@@ -13,6 +13,7 @@ import dev.sysboot.core.Phase;
 import dev.sysboot.core.PhaseName;
 import dev.sysboot.core.ProfileName;
 import dev.sysboot.core.RestartPolicy;
+import dev.sysboot.core.SkippedPlanEntry;
 import java.io.ByteArrayOutputStream;
 import java.io.PrintStream;
 import java.nio.charset.StandardCharsets;
@@ -44,6 +45,24 @@ class TuiSelectionPromptTest {
     assertThat(selected.phases()).hasSize(1);
     assertThat(selected.phases().getFirst().name().value()).isEqualTo("desktop");
     assertThat(selected.phases().getFirst().dependsOn()).isEmpty();
+  }
+
+  @Test
+  void select_rendersDisabledSkippedPlanEntriesWithoutConsole() {
+    var out = new ByteArrayOutputStream();
+    var prompt =
+        new TuiSelectionPrompt(
+            new ScriptedLineReader("s 1", "run"),
+            new PrintStream(out, true, StandardCharsets.UTF_8),
+            new BootstrapConfigSelectionFilter());
+
+    BootstrapConfig selected = prompt.select(configWithSkippedPlanEntry()).orElseThrow();
+
+    assertThat(selected.skippedPlanEntries()).hasSize(1);
+    assertThat(out.toString(StandardCharsets.UTF_8))
+        .contains("[-] arch-only")
+        .contains("dnf-packages skipped")
+        .contains("when.distribution expected fedora");
   }
 
   private TuiSelectionPrompt prompt(String... commands) {
@@ -79,6 +98,29 @@ class TuiSelectionPromptTest {
                         "flathub",
                         List.of("org.mozilla.firefox", "com.slack.Slack"))),
                 List.of(new PhaseName("base")),
+                new RestartPolicy.None()))
+        .build();
+  }
+
+  private BootstrapConfig configWithSkippedPlanEntry() {
+    return BootstrapConfig.builder()
+        .profileName(new ProfileName("selection-test"))
+        .target(new OsTarget.FedoraTarget("40"))
+        .skippedPlanEntries(
+            List.of(
+                new SkippedPlanEntry(
+                    "arch-only", "dnf-packages", "when.distribution expected fedora")))
+        .addPhase(
+            new Phase(
+                new PhaseName("manifest-plan"),
+                "WorkstationProfile plan",
+                List.of(
+                    new PackageModule(
+                        new ModuleName("selected"),
+                        PackageManagerKind.DNF,
+                        List.of(new PackageName("git")),
+                        false)),
+                List.of(),
                 new RestartPolicy.None()))
         .build();
   }

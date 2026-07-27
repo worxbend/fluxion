@@ -1,0 +1,166 @@
+apiVersion: initkit.io/v1alpha1
+kind: WorkstationProfile
+metadata:
+  name: ubuntu-workstation
+  labels:
+    distro: ubuntu
+    example: workstation-profile
+spec:
+  target:
+    os:
+      distribution: ubuntu
+      release: "24.04"
+      codename: noble
+  policy:
+    dryRun: false
+    continueOnError: true
+    requireSudo: true
+  vars:
+    aptKeyring: /etc/apt/keyrings/docker.gpg
+    aptSourceList: /etc/apt/sources.list.d/docker.list
+    configDir: ${HOME}/.config/fluxion/examples
+    binDir: ${HOME}/.local/bin
+    ubuntuCodename: noble
+  sources:
+    apt:
+      - name: docker-apt
+        kind: apt-repository
+        spec:
+          source: deb [arch=amd64 signed-by=${aptKeyring}] https://download.docker.com/linux/ubuntu ${ubuntuCodename} stable
+          sourceList: ${aptSourceList}
+          signingKeyUrl: https://download.docker.com/linux/ubuntu/gpg
+          keyring: ${aptKeyring}
+    flatpak:
+      - name: flathub
+        kind: flatpak-remote
+        spec:
+          remote: flathub
+          url: https://flathub.org/repo/flathub.flatpakrepo
+          system: true
+  plan:
+    - name: apt-foundation
+      kind: apt-packages
+      when:
+        distribution: ubuntu
+        commandExists: apt
+      execution:
+        continueOnError: false
+      spec:
+        actions:
+          - update
+          - action: upgrade
+        packages:
+          - ca-certificates
+          - curl
+          - git
+          - gnupg
+          - ripgrep
+          - fd-find
+          - bat
+          - zsh
+          - build-essential
+          - docker-ce-cli
+
+    - name: skipped-optional-packages
+      kind: apt-packages
+      when:
+        commandExists: fluxion-example-skipped-command
+      spec:
+        packages:
+          - shellcheck
+
+    - name: desktop-flatpaks
+      kind: flatpak-packages
+      when:
+        distribution: ubuntu
+      spec:
+        remote: flathub
+        apps:
+          - com.github.tchx84.Flatseal
+          - org.mozilla.firefox
+
+    - name: developer-fonts
+      kind: nerd-fonts
+      spec:
+        installerVersion: v1.0.5
+        nerdfontBinary: nerdfont-install
+        config:
+          release: latest
+          destination: ${HOME}/.local/share/fonts/NerdFonts
+          refreshFontCache: true
+          families:
+            - JetBrainsMono
+            - Hack
+
+    - name: local-tool-download
+      kind: binary-downloads
+      spec:
+        binaryName: fluxion-demo-tool
+        url: https://example.invalid/fluxion-demo-tool-x86_64.tar.gz
+        checksum:
+          algorithm: SHA-256
+          value: "0000000000000000000000000000000000000000000000000000000000000000"
+        installPath: ${binDir}/fluxion-demo-tool
+        archivePath: fluxion-demo-tool
+        stripComponents: 1
+        mode: "0755"
+
+    - name: shell-bootstrap-script
+      kind: shell-scripts
+      execution:
+        continueOnError: true
+      spec:
+        scripts:
+          - name: local-post-package-hook
+            script: ./scripts/ubuntu-post-packages.sh
+            args:
+              - --profile
+              - ubuntu-workstation
+            cwd: /tmp
+            allowedExitCodes:
+              - 0
+              - 75
+            timeout: 5m
+
+    - name: post-install-files
+      kind: file-writes
+      spec:
+        files:
+          - name: sample-shell-env
+            destination: ${configDir}/shell.env
+            content: |
+              FLUXION_EXAMPLE_PROFILE=ubuntu-workstation
+              FLUXION_EXAMPLE_BIN_DIR=${binDir}
+            mode: "0644"
+          - name: sample-tool-config
+            destination: ${configDir}/tool.toml
+            content: |
+              theme = "system"
+              telemetry = false
+            mode: "0644"
+
+    - name: post-install-commands
+      kind: commands
+      spec:
+        shell: /bin/bash
+        commands:
+          - name: create-example-bin-dir
+            argv:
+              - mkdir
+              - -p
+              - ${binDir}
+          - name: git-default-branch
+            run: git config --global init.defaultBranch main
+            allowedExitCodes:
+              - 0
+        timeoutSeconds: 60
+
+    - name: relogin-after-shell-change
+      kind: interrupt
+      spec:
+        message: Reopen the session after changing login shell or PATH-related environment.
+        instructions:
+          - Close the current terminal session.
+          - Open a fresh terminal and run the resume command printed by Fluxion.
+        resumeFrom: next
+        exitCode: 75

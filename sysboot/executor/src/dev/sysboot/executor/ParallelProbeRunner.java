@@ -2,13 +2,19 @@ package dev.sysboot.executor;
 
 import dev.sysboot.core.AptRepositoryModule;
 import dev.sysboot.core.AssertModule;
+import dev.sysboot.core.BinstallerModule;
 import dev.sysboot.core.BootstrapModule;
 import dev.sysboot.core.CompiledBinaryModule;
 import dev.sysboot.core.DefaultShellModule;
 import dev.sysboot.core.DotbotModule;
+import dev.sysboot.core.FileWriteModule;
 import dev.sysboot.core.FlatpakModule;
 import dev.sysboot.core.FlatpakRemoteModule;
+import dev.sysboot.core.GitConfigModule;
+import dev.sysboot.core.GitRepoModule;
+import dev.sysboot.core.GpgKeyModule;
 import dev.sysboot.core.InstallationStatus;
+import dev.sysboot.core.InterruptModule;
 import dev.sysboot.core.ItemType;
 import dev.sysboot.core.ManualModule;
 import dev.sysboot.core.ModuleItem;
@@ -18,15 +24,23 @@ import dev.sysboot.core.PackageManagerKind;
 import dev.sysboot.core.PackageModule;
 import dev.sysboot.core.PacmanRepositoryModule;
 import dev.sysboot.core.RpmRepositoryModule;
+import dev.sysboot.core.SdkmanModule;
 import dev.sysboot.core.ShellCommandModule;
 import dev.sysboot.core.ShellReloadModule;
 import dev.sysboot.core.ShellScriptModule;
+import dev.sysboot.core.SystemSettingModule;
+import dev.sysboot.core.SystemUpdateModule;
+import dev.sysboot.core.SystemdUnitModule;
+import dev.sysboot.core.ToolPackagesModule;
 import dev.sysboot.core.ToolchainModule;
+import dev.sysboot.core.UserGroupsModule;
 import dev.sysboot.core.ZypperModule;
+import dev.sysboot.core.ZypperRepositoryModule;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -106,13 +120,33 @@ public final class ParallelProbeRunner {
         case PacmanRepositoryModule prm ->
             targets.add(
                 new ModuleItem(prm.name(), prm.repositoryName(), ItemType.PACMAN_REPOSITORY));
+        case FileWriteModule fwm ->
+            fwm.items()
+                .forEach(
+                    item ->
+                        targets.add(
+                            new ModuleItem(
+                                fwm.name(),
+                                item.itemKey(),
+                                item.name(),
+                                ItemType.FILE_WRITE,
+                                Optional.empty())));
         case FlatpakModule fm ->
             fm.appIds()
                 .forEach(appId -> targets.add(new ModuleItem(fm.name(), appId, ItemType.FLATPAK)));
         case FlatpakRemoteModule frm ->
             targets.add(new ModuleItem(frm.name(), frm.remote(), ItemType.FLATPAK_REMOTE));
         case ShellScriptModule sm ->
-            targets.add(new ModuleItem(sm.name(), sm.script().toString(), ItemType.SHELL_SCRIPT));
+            sm.items()
+                .forEach(
+                    item ->
+                        targets.add(
+                            new ModuleItem(
+                                sm.name(),
+                                item.name(),
+                                item.key(),
+                                ItemType.SHELL_SCRIPT,
+                                Optional.empty())));
         case CompiledBinaryModule bm ->
             targets.add(
                 new ModuleItem(bm.name(), bm.installPath().toString(), ItemType.COMPILED_BINARY));
@@ -139,11 +173,68 @@ public final class ParallelProbeRunner {
             targets.add(
                 new ModuleItem(srm.name(), srm.shell().binaryName(), ItemType.SHELL_RELOAD));
         case ShellCommandModule sc ->
-            targets.add(new ModuleItem(sc.name(), sc.name().value(), ItemType.SHELL_COMMAND));
+            sc.items()
+                .forEach(
+                    item ->
+                        targets.add(
+                            new ModuleItem(sc.name(), item.name(), ItemType.SHELL_COMMAND)));
         case AssertModule am ->
             targets.add(new ModuleItem(am.name(), am.name().value(), ItemType.ASSERT));
         case ManualModule mm ->
             targets.add(new ModuleItem(mm.name(), mm.name().value(), ItemType.MANUAL));
+        case InterruptModule im ->
+            targets.add(new ModuleItem(im.name(), im.name().value(), ItemType.INTERRUPT));
+        case BinstallerModule bsm ->
+            targets.add(new ModuleItem(bsm.name(), bsm.itemKey(), ItemType.BINSTALLER_PROFILE));
+        case GitConfigModule gcm ->
+            gcm.sortedKeys()
+                .forEach(
+                    key ->
+                        targets.add(
+                            new ModuleItem(gcm.name(), gcm.itemKey(key), ItemType.GIT_CONFIG)));
+        case GitRepoModule grm ->
+            grm.repos()
+                .forEach(
+                    repo ->
+                        targets.add(
+                            new ModuleItem(grm.name(), repo.destination(), ItemType.GIT_REPO)));
+        case SystemdUnitModule sum ->
+            sum.units()
+                .forEach(
+                    unit ->
+                        targets.add(
+                            new ModuleItem(
+                                sum.name(), unit.qualifiedName(), ItemType.SYSTEMD_UNIT)));
+        case SystemSettingModule ssm ->
+            targets.add(new ModuleItem(ssm.name(), ssm.name().value(), ItemType.SYSTEM_SETTING));
+        case SystemUpdateModule sup ->
+            targets.add(new ModuleItem(sup.name(), sup.itemKey(), ItemType.SYSTEM_UPDATE));
+        case GpgKeyModule gkm ->
+            gkm.keys()
+                .forEach(
+                    key ->
+                        targets.add(new ModuleItem(gkm.name(), key.itemKey(), ItemType.GPG_KEY)));
+        case ToolPackagesModule tpm ->
+            tpm.packages()
+                .forEach(
+                    pkg ->
+                        targets.add(new ModuleItem(tpm.name(), pkg.name(), ItemType.TOOL_PACKAGE)));
+        case ZypperRepositoryModule zrm ->
+            targets.add(
+                new ModuleItem(
+                    zrm.name(), zrm.repoFilePath().toString(), ItemType.ZYPPER_REPOSITORY));
+        case UserGroupsModule ugm ->
+            ugm.groups()
+                .forEach(
+                    group ->
+                        targets.add(
+                            new ModuleItem(ugm.name(), ugm.itemKey(group), ItemType.USER_GROUP)));
+        case SdkmanModule sm ->
+            sm.packages()
+                .forEach(
+                    pkg ->
+                        targets.add(
+                            new ModuleItem(sm.name(), pkg.itemKey(), ItemType.SDKMAN_PACKAGE)));
       }
     }
     return List.copyOf(targets);

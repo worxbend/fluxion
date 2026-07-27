@@ -1,7 +1,13 @@
-# SKILL: Java · Mill · GraalVM Native Image · Picocli · TamboUI
+# SKILL: Java · Mill · GraalVM Native Image · Picocli · TUI
 
 > Read this entire file before writing a single line of code.
 > Every constraint here is non-negotiable unless explicitly overridden by the task prompt.
+
+> **Status note (2026-07-26).** The TamboUI and pty4j sections below describe the *intended*
+> terminal stack, not the current build. Today the `tui` module has no third-party dependencies
+> (hand-rolled ANSI, line-based prompt) and `PtyShellRunner` is a `ProcessBuilder`, not a PTY.
+> `PLAN-i.md` §10 and §8.1 cover replacing both; JLine is the current front-runner over TamboUI
+> pending a native-image spike. Treat those sections as design intent until that lands.
 
 ---
 

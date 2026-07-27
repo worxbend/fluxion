@@ -16,8 +16,11 @@ import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
+import java.util.regex.Pattern;
 
 public final class ConfigValidator {
+
+  private static final Pattern FILE_MODE = Pattern.compile("[0-7]{3,4}");
 
   private final PhaseExecutionPlanner planner;
 
@@ -193,6 +196,13 @@ public final class ConfigValidator {
           "Compiled binary '%s' uses an unsupported artifact format; supported formats are %s"
               .formatted(module.name().value(), CompiledBinaryArtifactFormat.supportedFormats()));
     }
+    if (CompiledBinaryArtifactFormat.requiresDelegation(module.url().value())) {
+      addWarning(
+          issues,
+          path + ".url",
+          "Compiled binary '%s' installs via binstaller, which must be obtainable on the target host: Fluxion cannot extract this archive format itself"
+              .formatted(module.name().value()));
+    }
     if (module.checksum().isPresent() && module.checksumUrl().isPresent()) {
       addError(
           issues,
@@ -219,9 +229,24 @@ public final class ConfigValidator {
           "Compiled binary '%s' has no checksum or detached signature"
               .formatted(module.name().value()));
     }
+    validateBinaryInstallOptions(module, path, issues);
+  }
+
+  private void validateBinaryInstallOptions(
+      CompiledBinaryModule module, String path, List<ValidationIssue> issues) {
+    if (module.stripComponents() < 0) {
+      addError(issues, path + ".stripComponents", "Compiled binary stripComponents is negative");
+    }
+    module
+        .installMode()
+        .filter(mode -> !FILE_MODE.matcher(mode).matches())
+        .ifPresent(mode -> addError(issues, path + ".mode", "Compiled binary mode is invalid"));
   }
 
   private boolean managerAllowed(OsTarget target, PackageManagerKind manager) {
+    if (manager == PackageManagerKind.CARGO) {
+      return true;
+    }
     return switch (target) {
       case OsTarget.FedoraTarget ignored -> manager == PackageManagerKind.DNF;
       case OsTarget.ArchTarget ignored ->

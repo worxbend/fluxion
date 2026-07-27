@@ -1,13 +1,21 @@
 package dev.sysboot.cli.command;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import dev.sysboot.app.ApplicationContext;
 import dev.sysboot.cli.error.CliFailureException;
 import dev.sysboot.cli.error.ExitCode;
 import dev.sysboot.cli.option.GlobalOptions;
+import dev.sysboot.cli.output.PlainExecutionReport;
 import dev.sysboot.cli.output.StdoutExecutionEventListener;
 import dev.sysboot.core.BootstrapConfig;
+import dev.sysboot.core.ExecutionEvent;
+import dev.sysboot.core.ExecutionPausedException;
 import dev.sysboot.core.Phase;
+import dev.sysboot.core.StepResult;
+import dev.sysboot.executor.ExecutionPlan;
+import dev.sysboot.executor.JsonStateRepository;
 import dev.sysboot.executor.PhaseExecutionPlanner;
+import java.io.PrintWriter;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Optional;
@@ -55,6 +63,11 @@ public final class ApplyCommand implements Runnable {
   private boolean reProbe;
 
   @Option(
+      names = {"--reset-state"},
+      description = "Delete saved state before applying this profile")
+  private boolean resetState;
+
+  @Option(
       names = {"--probe-only"},
       description = "Run probes and print status without installing")
   private boolean probeOnly;
@@ -75,7 +88,18 @@ public final class ApplyCommand implements Runnable {
   public void run() {
     boolean effectiveSkip = skipAlreadyInstalled || reProbe;
     boolean useTui = options.useTui();
-    var context = ApplicationContext.create(!useTui, profile, effectiveSkip, reProbe);
+    var stateRepository = new JsonStateRepository(new ObjectMapper());
+    if (resetState) {
+      stateRepository.reset(profile);
+    }
+    try (var context = ApplicationContext.create(!useTui, profile, effectiveSkip, reProbe)) {
+      execute(context, stateRepository, useTui);
+    }
+  }
+
+  /** Closing the context zeroes the cached sudo password and stops its keepalive. */
+  private void execute(
+      ApplicationContext context, JsonStateRepository stateRepository, boolean useTui) {
     BootstrapConfig config = context.configLoader().load(options.resolvedConfigFile());
     BootstrapConfig filtered = applyFilters(config);
 
@@ -87,29 +111,77 @@ public final class ApplyCommand implements Runnable {
     if (!useTui) {
       var listener =
           new StdoutExecutionEventListener(
-              event ->
-                  event
-                      .phaseContext()
-                      .map(
-                          phase ->
-                              ResumeCommandFormatter.command(
-                                  options.resolvedConfigFile(),
-                                  profile,
-                                  nextPhaseAfter(filtered, phase))));
-      if (dryRun) {
-        context.orchestrator().dryRun(filtered, listener);
-      } else {
-        context.orchestrator().execute(filtered, listener);
+                  event -> resumeCommandFor(event, filtered),
+                  () -> Optional.of(stateRepository.path(profile)))
+              .streamingOutput(options.verbose());
+      writePlainReport(context, filtered, stateRepository);
+      var failure = new java.util.concurrent.atomic.AtomicReference<RuntimeException>();
+      try {
+        if (dryRun) {
+          context.orchestrator().dryRun(filtered, listener);
+        } else {
+          InterruptibleRun.run(
+              cancellation -> {
+                try {
+                  context.orchestrator().execute(filtered, listener, cancellation);
+                } catch (ExecutionPausedException e) {
+                  failure.set(e);
+                }
+              },
+              () ->
+                  System.out.println(
+                      System.lineSeparator()
+                          + "Stopping after the current step; press Ctrl-C again to force quit."));
+        }
+      } finally {
+        listener.printSummary();
+      }
+      if (failure.get() instanceof ExecutionPausedException paused) {
+        throw new CliFailureException(ExitCode.PAUSED, paused.getMessage(), paused);
       }
     } else {
-      try {
-        context
-            .tuiApp()
-            .orElseThrow(() -> new IllegalStateException("TUI mode is not available"))
-            .run(filtered, dryRun);
-      } catch (java.io.IOException e) {
-        throw new CliFailureException(ExitCode.IO_ERROR, "TUI error: " + e.getMessage(), e);
+      var tui =
+          context
+              .tuiApp()
+              .orElseThrow(() -> new IllegalStateException("TUI mode is not available"));
+      tui.showCommandOutput(options.verbose());
+      var tuiFailure = new java.util.concurrent.atomic.AtomicReference<RuntimeException>();
+      InterruptibleRun.run(
+          cancellation -> {
+            try {
+              tui.run(filtered, dryRun, cancellation);
+            } catch (java.io.IOException e) {
+              tuiFailure.set(
+                  new CliFailureException(ExitCode.IO_ERROR, "TUI error: " + e.getMessage(), e));
+            }
+          },
+          () -> {});
+      if (tuiFailure.get() != null) {
+        throw tuiFailure.get();
       }
+    }
+  }
+
+  private void writePlainReport(
+      ApplicationContext context, BootstrapConfig config, JsonStateRepository stateRepository) {
+    ExecutionPlan plan = buildPlan(context, config);
+    var out = new PrintWriter(System.out, true);
+    PlainExecutionReport.writeHeader(
+        out,
+        "apply",
+        dryRun ? "dry-run" : "live",
+        plan.profileName(),
+        context.hostFactsProvider().facts(),
+        Optional.of(stateRepository.path(profile)));
+    PlainExecutionReport.writeWorkstationSelection(out, plan);
+  }
+
+  private ExecutionPlan buildPlan(ApplicationContext context, BootstrapConfig config) {
+    try {
+      return context.executionPlanBuilder().build(config);
+    } catch (dev.sysboot.executor.CyclicDependencyException e) {
+      throw new CliFailureException(
+          ExitCode.CONFIGURATION_ERROR, "Cycle detected: " + e.getMessage(), e);
     }
   }
 
@@ -161,7 +233,11 @@ public final class ApplyCommand implements Runnable {
     if (phases == config.phases()) return config;
 
     var builder =
-        BootstrapConfig.builder().profileName(config.profileName()).target(config.target());
+        BootstrapConfig.builder()
+            .profileName(config.profileName())
+            .target(config.target())
+            .policy(config.policy())
+            .skippedPlanEntries(config.skippedPlanEntries());
     phases.forEach(builder::addPhase);
     return builder.build();
   }
@@ -198,5 +274,37 @@ public final class ApplyCommand implements Runnable {
       }
     }
     return Optional.empty();
+  }
+
+  private Optional<String> resumeCommandFor(ExecutionEvent event, BootstrapConfig config) {
+    // A cancelled run stopped *inside* its phase, so resuming must re-enter that same phase.
+    // Falling through to nextPhaseAfter silently skipped every remaining module of it.
+    if (event.kind() == dev.sysboot.core.EventKind.CANCELLED) {
+      return Optional.of(
+          ResumeCommandFormatter.command(
+              options.resolvedConfigFile(), profile, event.phaseContext()));
+    }
+    Optional<String> phase =
+        event
+            .result()
+            .filter(StepResult.Paused.class::isInstance)
+            .flatMap(ignored -> phaseContainingModule(config, event.moduleName().value()))
+            .or(
+                () ->
+                    event
+                        .phaseContext()
+                        .flatMap(completedPhase -> nextPhaseAfter(config, completedPhase)));
+    return Optional.of(
+        ResumeCommandFormatter.command(options.resolvedConfigFile(), profile, phase));
+  }
+
+  private Optional<String> phaseContainingModule(BootstrapConfig config, String moduleName) {
+    return config.phases().stream()
+        .filter(
+            phase ->
+                phase.modules().stream()
+                    .anyMatch(module -> module.name().value().equals(moduleName)))
+        .map(phase -> phase.name().value())
+        .findFirst();
   }
 }

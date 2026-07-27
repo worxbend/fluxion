@@ -2,12 +2,19 @@ package dev.sysboot.executor;
 
 import dev.sysboot.core.AptRepositoryModule;
 import dev.sysboot.core.AssertModule;
+import dev.sysboot.core.BinstallerModule;
+import dev.sysboot.core.BootstrapConfig;
 import dev.sysboot.core.BootstrapModule;
 import dev.sysboot.core.CompiledBinaryModule;
 import dev.sysboot.core.DefaultShellModule;
 import dev.sysboot.core.DotbotModule;
+import dev.sysboot.core.FileWriteModule;
 import dev.sysboot.core.FlatpakModule;
 import dev.sysboot.core.FlatpakRemoteModule;
+import dev.sysboot.core.GitConfigModule;
+import dev.sysboot.core.GitRepoModule;
+import dev.sysboot.core.GpgKeyModule;
+import dev.sysboot.core.InterruptModule;
 import dev.sysboot.core.ManualModule;
 import dev.sysboot.core.NerdFontModule;
 import dev.sysboot.core.OhMyZshModule;
@@ -16,12 +23,20 @@ import dev.sysboot.core.PacmanRepositoryModule;
 import dev.sysboot.core.Phase;
 import dev.sysboot.core.RestartPolicy;
 import dev.sysboot.core.RpmRepositoryModule;
+import dev.sysboot.core.SdkmanModule;
 import dev.sysboot.core.ShellCommandModule;
 import dev.sysboot.core.ShellReloadModule;
 import dev.sysboot.core.ShellScriptModule;
+import dev.sysboot.core.SystemSettingModule;
+import dev.sysboot.core.SystemUpdateModule;
+import dev.sysboot.core.SystemdUnitModule;
+import dev.sysboot.core.ToolPackagesModule;
 import dev.sysboot.core.ToolchainModule;
+import dev.sysboot.core.UserGroupsModule;
 import dev.sysboot.core.ZypperModule;
+import dev.sysboot.core.ZypperRepositoryModule;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Path;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.util.HexFormat;
@@ -37,6 +52,19 @@ final class PhaseFingerprintCalculator {
     phase.dependsOn().forEach(dep -> append(builder, "dependsOn", dep.value()));
     appendRestartPolicy(builder, phase.restartPolicy());
     phase.modules().forEach(module -> appendModule(builder, module));
+    return sha256(builder.toString());
+  }
+
+  String manifestFingerprint(BootstrapConfig config) {
+    var builder = new StringBuilder();
+    append(builder, "profile", config.profileName().value());
+    append(builder, "target", config.target().toString());
+    append(builder, "dryRun", config.policy().dryRunDefault().map(Object::toString));
+    append(
+        builder, "continueOnError", config.policy().continueOnErrorDefault().map(Object::toString));
+    append(builder, "requireSudo", config.policy().requireSudoDefault().map(Object::toString));
+    config.sourceSetups().forEach(setup -> append(builder, "sourceSetup", setup.toString()));
+    config.phases().forEach(phase -> append(builder, "phaseFingerprint", fingerprint(phase)));
     return sha256(builder.toString());
   }
 
@@ -62,6 +90,7 @@ final class PhaseFingerprintCalculator {
       case AptRepositoryModule arm -> appendAptRepository(builder, arm);
       case RpmRepositoryModule rrm -> appendRpmRepository(builder, rrm);
       case PacmanRepositoryModule prm -> appendPacmanRepository(builder, prm);
+      case FileWriteModule fwm -> appendFileWrite(builder, fwm);
       case FlatpakModule fm -> {
         append(builder, "type", "flatpak");
         append(builder, "remote", fm.remote());
@@ -75,8 +104,7 @@ final class PhaseFingerprintCalculator {
       }
       case ShellScriptModule sm -> {
         append(builder, "type", "shell-script");
-        append(builder, "script", sm.script().toString());
-        sm.args().forEach(arg -> append(builder, "arg", arg));
+        sm.items().forEach(item -> appendShellScriptItem(builder, item));
         append(builder, "workingDir", sm.workingDir().map(Object::toString));
         append(builder, "continueOnError", sm.continueOnError());
         append(builder, "probe", sm.probeCommand());
@@ -108,7 +136,7 @@ final class PhaseFingerprintCalculator {
       }
       case ShellCommandModule scm -> {
         append(builder, "type", "shell-command");
-        scm.commands().forEach(command -> append(builder, "command", command));
+        scm.items().forEach(item -> appendShellCommandItem(builder, item));
         append(builder, "shell", scm.shell());
         append(builder, "workingDir", scm.workingDir().map(Object::toString));
         append(builder, "continueOnError", scm.continueOnError());
@@ -126,6 +154,110 @@ final class PhaseFingerprintCalculator {
         append(builder, "message", mm.message());
         append(builder, "probe", mm.probeCommand());
       }
+      case InterruptModule im -> {
+        append(builder, "type", "interrupt");
+        append(builder, "message", im.message());
+        im.instructions().forEach(instruction -> append(builder, "instruction", instruction));
+        append(builder, "resumeFrom", im.resumeFrom().name());
+        append(builder, "exitCode", Integer.toString(im.exitCode()));
+      }
+      case SdkmanModule sm -> {
+        append(builder, "type", "sdkman-packages");
+        sm.packages().forEach(pkg -> append(builder, "package", pkg.itemKey()));
+        append(builder, "continueOnError", sm.continueOnError());
+      }
+      case GitConfigModule gcm -> {
+        append(builder, "type", "git-config");
+        append(builder, "scope", gcm.scope().name());
+        gcm.sortedKeys().forEach(key -> append(builder, key, gcm.entries().get(key)));
+      }
+      case GitRepoModule grm -> {
+        append(builder, "type", "git-repo");
+        grm.repos()
+            .forEach(
+                repo -> {
+                  append(builder, "url", repo.url());
+                  append(builder, "destination", repo.destination());
+                  repo.ref().ifPresent(ref -> append(builder, "ref", ref));
+                  append(builder, "update", repo.update().name());
+                });
+      }
+      case SystemdUnitModule sum -> {
+        append(builder, "type", "systemd-unit");
+        append(builder, "scope", sum.scope().name());
+        sum.units()
+            .forEach(
+                unit -> {
+                  append(builder, "unit", unit.qualifiedName());
+                  append(builder, "enabled", unit.enabled());
+                  append(builder, "state", unit.state().name());
+                  append(builder, "masked", unit.masked());
+                });
+      }
+      case SystemSettingModule ssm -> {
+        append(builder, "type", "system-setting");
+        ssm.localRtc().ifPresent(v -> append(builder, "localRtc", v));
+        ssm.ntp().ifPresent(v -> append(builder, "ntp", v));
+        ssm.timezone().ifPresent(v -> append(builder, "timezone", v));
+        ssm.hostname().ifPresent(v -> append(builder, "hostname", v));
+        ssm.locale().forEach((k, v) -> append(builder, k, v));
+      }
+      case SystemUpdateModule sup -> {
+        append(builder, "type", "system-update");
+        append(builder, "packageManager", sup.packageManager().name());
+        append(builder, "distUpgrade", sup.distUpgrade());
+        append(builder, "refreshOnly", sup.refreshOnly());
+      }
+      case GpgKeyModule gkm -> {
+        append(builder, "type", "gpg-key");
+        gkm.keys()
+            .forEach(
+                key -> {
+                  append(builder, "url", key.url());
+                  key.keyring().ifPresent(ring -> append(builder, "keyring", ring.toString()));
+                  key.fingerprint().ifPresent(fp -> append(builder, "fingerprint", fp));
+                });
+      }
+      case ToolPackagesModule tpm -> {
+        append(builder, "type", "tool-packages");
+        append(builder, "backend", tpm.backend().id());
+        tpm.packages()
+            .forEach(
+                pkg ->
+                    append(
+                        builder,
+                        "package",
+                        pkg.name() + pkg.version().map(v -> "@" + v).orElse("")));
+        append(builder, "continueOnError", tpm.continueOnError());
+      }
+      case ZypperRepositoryModule zrm -> {
+        append(builder, "type", "zypper-repository");
+        append(builder, "id", zrm.repositoryId());
+        append(builder, "baseUrl", zrm.baseUrl().toString());
+        append(builder, "repoFile", zrm.repoFilePath().toString());
+        zrm.gpgKeyUrl().ifPresent(url -> append(builder, "gpgKeyUrl", url.toString()));
+        append(builder, "enabled", zrm.enabled());
+        append(builder, "gpgCheck", zrm.gpgCheck());
+        append(builder, "autoRefresh", zrm.autoRefresh());
+      }
+      case UserGroupsModule ugm -> {
+        append(builder, "type", "user-groups");
+        ugm.user().ifPresent(user -> append(builder, "user", user));
+        ugm.groups().forEach(group -> append(builder, "group", group));
+        append(builder, "createMissing", ugm.createMissing());
+        append(builder, "logoutCheckpoint", ugm.logoutCheckpoint());
+        append(builder, "continueOnError", ugm.continueOnError());
+      }
+      case BinstallerModule bsm -> {
+        append(builder, "type", "binstaller-profile");
+        append(builder, "config", bsm.config().toString());
+        bsm.only().forEach(tool -> append(builder, "only", tool));
+        bsm.skip().forEach(tool -> append(builder, "skip", tool));
+        append(builder, "locked", bsm.locked());
+        bsm.lockFile().ifPresent(path -> append(builder, "lockFile", path.toString()));
+        append(builder, "installerVersion", bsm.installerVersion());
+        append(builder, "continueOnError", bsm.continueOnError());
+      }
     }
   }
 
@@ -133,7 +265,43 @@ final class PhaseFingerprintCalculator {
     append(builder, "type", "packages");
     append(builder, "packageManager", module.packageManager().name());
     append(builder, "continueOnError", module.continueOnError());
+    module.actions().forEach(action -> appendPackageAction(builder, action));
     module.packages().forEach(pkg -> append(builder, "package", pkg.value()));
+  }
+
+  private void appendPackageAction(
+      StringBuilder builder, dev.sysboot.core.PackageManagerAction action) {
+    append(builder, "action", action.action());
+    action.args().forEach(arg -> append(builder, "actionArg", arg));
+  }
+
+  private void appendShellScriptItem(StringBuilder builder, dev.sysboot.core.ShellScriptItem item) {
+    append(builder, "scriptItem", item.name());
+    append(builder, "script", item.script().map(Object::toString));
+    append(builder, "url", item.url().map(Object::toString));
+    item.args().forEach(arg -> append(builder, "arg", arg));
+    append(builder, "cwd", item.workingDir().map(Object::toString));
+    append(builder, "sudo", item.sudo());
+    item.allowedExitCodes().forEach(code -> append(builder, "allowedExit", code.toString()));
+    append(builder, "creates", item.creates().map(Object::toString));
+    append(builder, "unless", item.unless());
+    append(builder, "confirm", item.confirm());
+    append(builder, "timeout", item.timeout().toString());
+  }
+
+  private void appendShellCommandItem(
+      StringBuilder builder, dev.sysboot.core.ShellCommandItem item) {
+    append(builder, "commandItem", item.name());
+    append(builder, "shellCommand", item.shellCommand());
+    item.argv().ifPresent(argv -> argv.forEach(arg -> append(builder, "argv", arg)));
+    append(builder, "shell", item.shell());
+    append(builder, "cwd", item.workingDir().map(Object::toString));
+    append(builder, "sudo", item.sudo());
+    item.allowedExitCodes().forEach(code -> append(builder, "allowedExit", code.toString()));
+    append(builder, "creates", item.creates().map(Object::toString));
+    append(builder, "unless", item.unless());
+    append(builder, "confirm", item.confirm());
+    append(builder, "timeout", item.timeout().toString());
   }
 
   private void appendAptRepository(StringBuilder builder, AptRepositoryModule module) {
@@ -164,6 +332,24 @@ final class PhaseFingerprintCalculator {
     append(builder, "enabled", module.enabled());
   }
 
+  private void appendFileWrite(StringBuilder builder, FileWriteModule module) {
+    append(builder, "type", "file-writes");
+    module
+        .items()
+        .forEach(
+            item -> {
+              append(builder, "file", item.name());
+              append(builder, "destination", item.destination().toString());
+              append(builder, "content", item.content().map(this::sha256));
+              append(builder, "source", item.source().map(Path::toString));
+              append(builder, "owner", item.owner());
+              append(builder, "group", item.group());
+              append(builder, "mode", item.mode());
+              append(builder, "sudo", item.sudo());
+            });
+    append(builder, "continueOnError", module.continueOnError());
+  }
+
   private void appendCompiledBinary(StringBuilder builder, CompiledBinaryModule module) {
     append(builder, "type", "compiled-binary");
     append(builder, "binaryName", module.binaryName());
@@ -172,6 +358,10 @@ final class PhaseFingerprintCalculator {
     append(builder, "checksumUrl", module.checksumUrl().map(Object::toString));
     append(builder, "signatureUrl", module.signatureUrl().map(Object::toString));
     append(builder, "installPath", module.installPath().toString());
+    append(builder, "archivePath", module.archivePath());
+    append(builder, "stripComponents", Integer.toString(module.stripComponents()));
+    append(builder, "installMode", module.installMode());
+    append(builder, "symlinkPath", module.symlinkPath().map(Path::toString));
     append(builder, "continueOnError", module.continueOnError());
     append(builder, "versionCommand", module.versionCommand());
     append(builder, "expectedVersion", module.expectedVersion());

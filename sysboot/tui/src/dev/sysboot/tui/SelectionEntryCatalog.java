@@ -2,23 +2,36 @@ package dev.sysboot.tui;
 
 import dev.sysboot.core.AptRepositoryModule;
 import dev.sysboot.core.AssertModule;
+import dev.sysboot.core.BinstallerModule;
 import dev.sysboot.core.BootstrapModule;
 import dev.sysboot.core.CompiledBinaryModule;
 import dev.sysboot.core.DefaultShellModule;
 import dev.sysboot.core.DotbotModule;
+import dev.sysboot.core.FileWriteModule;
 import dev.sysboot.core.FlatpakModule;
 import dev.sysboot.core.FlatpakRemoteModule;
+import dev.sysboot.core.GitConfigModule;
+import dev.sysboot.core.GitRepoModule;
+import dev.sysboot.core.GpgKeyModule;
+import dev.sysboot.core.InterruptModule;
 import dev.sysboot.core.ManualModule;
 import dev.sysboot.core.NerdFontModule;
 import dev.sysboot.core.OhMyZshModule;
 import dev.sysboot.core.PackageModule;
 import dev.sysboot.core.PacmanRepositoryModule;
 import dev.sysboot.core.RpmRepositoryModule;
+import dev.sysboot.core.SdkmanModule;
 import dev.sysboot.core.ShellCommandModule;
 import dev.sysboot.core.ShellReloadModule;
 import dev.sysboot.core.ShellScriptModule;
+import dev.sysboot.core.SystemSettingModule;
+import dev.sysboot.core.SystemUpdateModule;
+import dev.sysboot.core.SystemdUnitModule;
+import dev.sysboot.core.ToolPackagesModule;
 import dev.sysboot.core.ToolchainModule;
+import dev.sysboot.core.UserGroupsModule;
 import dev.sysboot.core.ZypperModule;
+import dev.sysboot.core.ZypperRepositoryModule;
 import java.util.List;
 
 final class SelectionEntryCatalog {
@@ -37,12 +50,16 @@ final class SelectionEntryCatalog {
           List.of(rpmRepositoryModule.repoFilePath().toString());
       case PacmanRepositoryModule pacmanRepositoryModule ->
           List.of(pacmanRepositoryModule.repositoryName());
+      case FileWriteModule fileWriteModule ->
+          fileWriteModule.items().stream().map(item -> item.itemKey()).toList();
       case FlatpakModule flatpakModule -> flatpakModule.appIds();
       case FlatpakRemoteModule flatpakRemoteModule -> List.of(flatpakRemoteModule.remote());
-      case ShellCommandModule shellCommandModule -> shellCommandModule.commands();
+      case ShellCommandModule shellCommandModule ->
+          shellCommandModule.items().stream().map(item -> item.name()).toList();
       case NerdFontModule nerdFontModule -> nerdFontModule.config().families();
       case CompiledBinaryModule compiledBinaryModule -> List.of(compiledBinaryModule.binaryName());
-      case ShellScriptModule shellScriptModule -> List.of(shellScriptModule.script().toString());
+      case ShellScriptModule shellScriptModule ->
+          shellScriptModule.items().stream().map(item -> item.name()).toList();
       case DotbotModule dotbotModule -> List.of(dotbotModule.config().toString());
       case DefaultShellModule defaultShellModule ->
           List.of(defaultShellModule.shellPath().toString());
@@ -52,6 +69,27 @@ final class SelectionEntryCatalog {
           List.of(shellReloadModule.shell().name().toLowerCase());
       case AssertModule assertModule -> List.of(assertModule.name().value());
       case ManualModule manualModule -> List.of(manualModule.name().value());
+      case InterruptModule interruptModule -> List.of(interruptModule.name().value());
+      case SdkmanModule sdkmanModule ->
+          sdkmanModule.packages().stream().map(pkg -> pkg.itemKey()).toList();
+      case BinstallerModule binstallerModule -> List.of(binstallerModule.itemKey());
+      case UserGroupsModule userGroupsModule ->
+          userGroupsModule.groups().stream().map(userGroupsModule::itemKey).toList();
+      case ZypperRepositoryModule zypperRepositoryModule ->
+          List.of(zypperRepositoryModule.repoFilePath().toString());
+      case GitConfigModule gitConfigModule -> gitConfigModule.sortedKeys();
+      case GitRepoModule gitRepoModule ->
+          gitRepoModule.repos().stream().map(GitRepoModule.GitRepo::destination).toList();
+      case SystemdUnitModule systemdUnitModule ->
+          systemdUnitModule.units().stream()
+              .map(SystemdUnitModule.SystemdUnit::qualifiedName)
+              .toList();
+      case SystemSettingModule systemSettingModule -> List.of(systemSettingModule.name().value());
+      case SystemUpdateModule systemUpdateModule -> List.of(systemUpdateModule.itemKey());
+      case GpgKeyModule gpgKeyModule ->
+          gpgKeyModule.keys().stream().map(GpgKeyModule.GpgKey::itemKey).toList();
+      case ToolPackagesModule toolPackagesModule ->
+          toolPackagesModule.packages().stream().map(ToolPackagesModule.ToolPackage::name).toList();
     };
   }
 }
