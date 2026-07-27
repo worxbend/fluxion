@@ -7,8 +7,7 @@ import java.util.Optional;
 
 public record ShellScriptModule(
     ModuleName name,
-    ScriptPath script,
-    List<String> args,
+    List<ShellScriptItem> items,
     Optional<Path> workingDir,
     boolean continueOnError,
     Optional<String> probeCommand)
@@ -16,11 +15,13 @@ public record ShellScriptModule(
 
   public ShellScriptModule {
     Objects.requireNonNull(name);
-    Objects.requireNonNull(script);
-    Objects.requireNonNull(args);
+    Objects.requireNonNull(items);
     Objects.requireNonNull(workingDir);
     Objects.requireNonNull(probeCommand);
-    args = List.copyOf(args);
+    items = List.copyOf(items);
+    if (items.isEmpty()) {
+      throw new IllegalArgumentException("script items must not be empty");
+    }
   }
 
   public ShellScriptModule(
@@ -35,5 +36,28 @@ public record ShellScriptModule(
   public ShellScriptModule(
       ModuleName name, ScriptPath script, List<String> args, boolean continueOnError) {
     this(name, script, args, Optional.empty(), continueOnError, Optional.empty());
+  }
+
+  public ShellScriptModule(
+      ModuleName name,
+      ScriptPath script,
+      List<String> args,
+      Optional<Path> workingDir,
+      boolean continueOnError,
+      Optional<String> probeCommand) {
+    this(
+        name,
+        List.of(ShellScriptItem.local(script, args, workingDir)),
+        workingDir,
+        continueOnError,
+        probeCommand);
+  }
+
+  public ScriptPath script() {
+    return items.getFirst().script().orElseThrow();
+  }
+
+  public List<String> args() {
+    return items.getFirst().args();
   }
 }

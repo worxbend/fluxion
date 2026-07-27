@@ -2,6 +2,7 @@ package dev.sysboot.executor;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import dev.sysboot.config.YamlConfigLoader;
 import dev.sysboot.core.AptRepositoryModule;
 import dev.sysboot.core.AssertModule;
 import dev.sysboot.core.BootstrapConfig;
@@ -10,6 +11,7 @@ import dev.sysboot.core.ItemType;
 import dev.sysboot.core.ManualModule;
 import dev.sysboot.core.ModuleName;
 import dev.sysboot.core.OsTarget;
+import dev.sysboot.core.PackageManagerAction;
 import dev.sysboot.core.PackageManagerExecutor;
 import dev.sysboot.core.PackageManagerKind;
 import dev.sysboot.core.PackageModule;
@@ -20,13 +22,18 @@ import dev.sysboot.core.PhaseName;
 import dev.sysboot.core.ProfileName;
 import dev.sysboot.core.RestartPolicy;
 import dev.sysboot.core.RpmRepositoryModule;
+import dev.sysboot.core.RpmRepositorySourceSetup;
+import dev.sysboot.core.SkippedPlanEntry;
 import dev.sysboot.core.StepResult;
+import java.io.IOException;
 import java.net.URI;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.util.List;
 import java.util.Optional;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
 
 class ExecutionPlanBuilderTest {
 
@@ -54,6 +61,111 @@ class ExecutionPlanBuilderTest {
     ExecutionPlan.Item item = plan.phases().get(0).modules().get(0).items().get(0);
     assertThat(item.item().key()).isEqualTo("git");
     assertThat(item.commandPreview()).contains(List.of("sudo", "dnf", "install", "-y", "git"));
+  }
+
+  @Test
+  void build_whenWorkstationProfilePackagePlansLoaded_includesDryRunPlanItems(@TempDir Path tmpDir)
+      throws IOException {
+    Path configFile = tmpDir.resolve("config.yaml");
+    Files.writeString(configFile, workstationProfileWithAllPackageKinds());
+    BootstrapConfig config = new YamlConfigLoader().load(configFile);
+    var builder = new ExecutionPlanBuilder(new PackageManagerExecutorRegistry(packageExecutors()));
+
+    ExecutionPlan plan = builder.build(config);
+
+    assertThat(plan.profileName()).isEqualTo("package-plan-test");
+    assertThat(plan.phases().getFirst().modules())
+        .extracting(ExecutionPlan.Module::name)
+        .containsExactly(
+            "apt-base",
+            "dnf-base",
+            "aur-apps",
+            "cargo-tools",
+            "sdkman-tools",
+            "pacman-base",
+            "zypper-base",
+            "desktop-apps");
+    assertPlanItem(plan, 0, "curl", PackageManagerKind.APT);
+    assertPlanItem(plan, 1, "ripgrep", PackageManagerKind.DNF);
+    assertAurPlanItem(plan, 2, "visual-studio-code-bin");
+    assertCargoPlanItem(plan, 3, "cargo-binstall");
+    assertSdkmanPlanItem(plan, 4, "java@25.0.1-tem", "java", "25.0.1-tem");
+    assertPlanItem(plan, 5, "fd", PackageManagerKind.PACMAN);
+    assertPlanItem(plan, 6, "htop", PackageManagerKind.ZYPPER);
+    assertFlatpakPlanItem(plan, 7, "org.mozilla.firefox");
+  }
+
+  @Test
+  void build_whenWorkstationProfilePackageActionsPresent_ordersActionsBeforePackages(
+      @TempDir Path tmpDir) throws IOException {
+    Path configFile = tmpDir.resolve("config.yaml");
+    Files.writeString(configFile, workstationProfileWithPackageActions());
+    BootstrapConfig config = new YamlConfigLoader().load(configFile);
+    var builder = new ExecutionPlanBuilder(new PackageManagerExecutorRegistry(List.of(dnf())));
+
+    ExecutionPlan plan = builder.build(config);
+
+    ExecutionPlan.Module module = plan.phases().getFirst().modules().getFirst();
+    assertThat(module.items())
+        .extracting(item -> item.item().key())
+        .containsExactly("action[0]", "git");
+    assertThat(module.items().get(0).commandPreview().orElseThrow())
+        .containsExactly("sudo", "dnf", "check-update");
+    assertThat(module.items().get(1).commandPreview().orElseThrow())
+        .containsExactly("sudo", "dnf", "install", "-y", "git");
+  }
+
+  @Test
+  void build_whenSourceSetupsPresent_placesPreludeBeforePackagePlan() {
+    var builder = new ExecutionPlanBuilder(new PackageManagerExecutorRegistry(List.of(dnf())));
+    var phase =
+        new Phase(
+            new PhaseName("base"),
+            "",
+            List.of(
+                new PackageModule(
+                    new ModuleName("tools"),
+                    PackageManagerKind.DNF,
+                    List.of(new PackageName("git")),
+                    true)),
+            List.of(),
+            new RestartPolicy.None(),
+            false);
+    BootstrapConfig config =
+        BootstrapConfig.builder()
+            .profileName(new ProfileName("test"))
+            .target(new OsTarget.FedoraTarget("44"))
+            .sourceSetups(List.of(dnfSourceSetup()))
+            .addPhase(phase)
+            .build();
+
+    ExecutionPlan plan = builder.build(config);
+
+    assertThat(plan.sourceSetups()).hasSize(1);
+    assertThat(plan.sourceSetups().getFirst().items().getFirst().item().key())
+        .isEqualTo("/etc/yum.repos.d/docker.repo");
+    assertThat(plan.phases().getFirst().modules().getFirst().items().getFirst().item().key())
+        .isEqualTo("git");
+  }
+
+  @Test
+  void build_whenWorkstationProfilePlanEntriesSkipped_includesSkipReasons(@TempDir Path tmpDir)
+      throws IOException {
+    Path configFile = tmpDir.resolve("config.yaml");
+    Files.writeString(configFile, workstationProfileWithSkippedPlan());
+    BootstrapConfig config = new YamlConfigLoader().load(configFile);
+    var builder = new ExecutionPlanBuilder(new PackageManagerExecutorRegistry(packageExecutors()));
+
+    ExecutionPlan plan = builder.build(config);
+
+    assertThat(plan.phases().getFirst().modules())
+        .extracting(ExecutionPlan.Module::name)
+        .containsExactly("selected");
+    assertThat(plan.skippedEntries())
+        .extracting(SkippedPlanEntry::name, SkippedPlanEntry::kind)
+        .containsExactly(org.assertj.core.groups.Tuple.tuple("skipped", "dnf-packages"));
+    assertThat(plan.skippedEntries().getFirst().reason())
+        .startsWith("when.distribution expected one of [no-such-os] but was");
   }
 
   @Test
@@ -275,11 +387,218 @@ class ExecutionPlanBuilderTest {
     return builder.build();
   }
 
+  private static void assertPlanItem(
+      ExecutionPlan plan, int moduleIndex, String key, PackageManagerKind kind) {
+    ExecutionPlan.Item item =
+        plan.phases().getFirst().modules().get(moduleIndex).items().getFirst();
+    assertThat(item.item().key()).isEqualTo(key);
+    assertThat(item.item().packageManager()).contains(kind);
+    assertThat(item.commandPreview().orElseThrow())
+        .containsExactly("sudo", kind.name().toLowerCase(), "install", "-y", key);
+  }
+
+  private static void assertAurPlanItem(ExecutionPlan plan, int moduleIndex, String key) {
+    ExecutionPlan.Item item =
+        plan.phases().getFirst().modules().get(moduleIndex).items().getFirst();
+    assertThat(item.item().key()).isEqualTo(key);
+    assertThat(item.item().packageManager()).contains(PackageManagerKind.PARU);
+    assertThat(item.commandPreview().orElseThrow())
+        .containsExactly("paru", "-S", "--noconfirm", key);
+  }
+
+  private static void assertCargoPlanItem(ExecutionPlan plan, int moduleIndex, String key) {
+    ExecutionPlan.Item item =
+        plan.phases().getFirst().modules().get(moduleIndex).items().getFirst();
+    assertThat(item.item().key()).isEqualTo(key);
+    assertThat(item.item().packageManager()).contains(PackageManagerKind.CARGO);
+    assertThat(item.commandPreview().orElseThrow()).containsExactly("cargo", "install", key);
+  }
+
+  private static void assertSdkmanPlanItem(
+      ExecutionPlan plan, int moduleIndex, String key, String candidate, String version) {
+    ExecutionPlan.Item item =
+        plan.phases().getFirst().modules().get(moduleIndex).items().getFirst();
+    assertThat(item.item().key()).isEqualTo(key);
+    assertThat(item.item().itemType()).isEqualTo(ItemType.SDKMAN_PACKAGE);
+    assertThat(item.commandPreview().orElseThrow())
+        .containsExactly(
+            "/bin/bash",
+            "-lc",
+            "source \"$HOME/.sdkman/bin/sdkman-init.sh\" && sdk install "
+                + candidate
+                + " "
+                + version);
+  }
+
+  private static void assertFlatpakPlanItem(ExecutionPlan plan, int moduleIndex, String key) {
+    ExecutionPlan.Module module = plan.phases().getFirst().modules().get(moduleIndex);
+    ExecutionPlan.Item item = module.items().getFirst();
+    assertThat(module.type()).isEqualTo("flatpak");
+    assertThat(item.item().key()).isEqualTo(key);
+    assertThat(item.item().itemType()).isEqualTo(ItemType.FLATPAK);
+    assertThat(item.commandPreview().orElseThrow())
+        .containsExactly("flatpak", "install", "-y", "fedora", key);
+  }
+
+  private static List<PackageManagerExecutor> packageExecutors() {
+    return List.of(
+        packageExecutor(PackageManagerKind.APT),
+        new ParuPackageInstaller(
+            (command, environment, timeout) ->
+                new dev.sysboot.core.ProcessResult(0, "", "", Duration.ZERO),
+            prompt -> Optional.empty()),
+        new CargoPackageInstaller(
+            (command, environment, timeout) ->
+                new dev.sysboot.core.ProcessResult(0, "", "", Duration.ZERO),
+            prompt -> Optional.empty()),
+        dnf(),
+        packageExecutor(PackageManagerKind.PACMAN),
+        packageExecutor(PackageManagerKind.ZYPPER));
+  }
+
+  private static RpmRepositorySourceSetup dnfSourceSetup() {
+    return new RpmRepositorySourceSetup(
+        new ModuleName("docker"),
+        "docker",
+        URI.create("https://download.docker.com/linux/fedora/$releasever/stable"),
+        Path.of("/etc/yum.repos.d/docker.repo"),
+        Optional.empty(),
+        true,
+        false);
+  }
+
+  private static PackageManagerExecutor packageExecutor(PackageManagerKind kind) {
+    return new PackageManagerExecutor() {
+      @Override
+      public boolean supports(PackageManagerKind candidate) {
+        return candidate == kind;
+      }
+
+      @Override
+      public List<String> actionCommand(PackageManagerAction action) {
+        return List.of("sudo", kind.name().toLowerCase(), action.action());
+      }
+
+      @Override
+      public List<String> installCommand(PackageName packageName) {
+        return List.of("sudo", kind.name().toLowerCase(), "install", "-y", packageName.value());
+      }
+
+      @Override
+      public StepResult install(PackageName packageName) {
+        return new StepResult.Success(packageName.value(), Duration.ZERO);
+      }
+    };
+  }
+
+  private static String workstationProfileWithAllPackageKinds() {
+    return """
+    apiVersion: initkit.io/v1alpha1
+    kind: WorkstationProfile
+    metadata:
+      name: package-plan-test
+    spec:
+      target:
+        os:
+          distribution: fedora
+          release: "44"
+      plan:
+        - name: apt-base
+          kind: apt-packages
+          spec:
+            packages: [curl, git]
+        - name: dnf-base
+          kind: dnf-packages
+          spec:
+            packages: [ripgrep]
+        - name: aur-apps
+          kind: aur-packages
+          spec:
+            packageManager: paru
+            packages: [visual-studio-code-bin]
+        - name: cargo-tools
+          kind: cargo-packages
+          spec:
+            packages: [cargo-binstall]
+        - name: sdkman-tools
+          kind: sdkman-packages
+          spec:
+            packages:
+              - candidate: java
+                version: 25.0.1-tem
+              - gradle
+        - name: pacman-base
+          kind: pacman-packages
+          spec:
+            packages: [fd]
+        - name: zypper-base
+          kind: zypper-packages
+          spec:
+            packages: [htop]
+        - name: desktop-apps
+          kind: flatpak-packages
+          spec:
+            remote: fedora
+            apps: [org.mozilla.firefox]
+            appIds: [com.slack.Slack]
+    """;
+  }
+
+  private static String workstationProfileWithSkippedPlan() {
+    return """
+    apiVersion: initkit.io/v1alpha1
+    kind: WorkstationProfile
+    metadata:
+      name: skipped-plan-test
+    spec:
+      target:
+        os:
+          distribution: fedora
+          release: "44"
+      plan:
+        - name: selected
+          kind: dnf-packages
+          spec:
+            packages: [git]
+        - name: skipped
+          kind: dnf-packages
+          when:
+            distribution: no-such-os
+          spec:
+            packages: [curl]
+    """;
+  }
+
+  private static String workstationProfileWithPackageActions() {
+    return """
+    apiVersion: initkit.io/v1alpha1
+    kind: WorkstationProfile
+    metadata:
+      name: package-action-test
+    spec:
+      target:
+        os:
+          distribution: fedora
+          release: "44"
+      plan:
+        - name: dnf-base
+          kind: dnf-packages
+          spec:
+            actions: [check-update]
+            packages: [git]
+    """;
+  }
+
   private static PackageManagerExecutor dnf() {
     return new PackageManagerExecutor() {
       @Override
       public boolean supports(PackageManagerKind kind) {
         return kind == PackageManagerKind.DNF;
+      }
+
+      @Override
+      public List<String> actionCommand(PackageManagerAction action) {
+        return List.of("sudo", "dnf", action.action());
       }
 
       @Override

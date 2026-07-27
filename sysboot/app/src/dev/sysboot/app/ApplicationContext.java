@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import dev.sysboot.config.YamlConfigLoader;
 import dev.sysboot.core.BootstrapOrchestrator;
 import dev.sysboot.core.ConfigLoader;
+import dev.sysboot.core.HostFactsProvider;
 import dev.sysboot.core.ShellRunner;
 import dev.sysboot.core.SudoPasswordProvider;
 import dev.sysboot.executor.AptPackageInstaller;
@@ -11,6 +12,7 @@ import dev.sysboot.executor.AptPackageProbe;
 import dev.sysboot.executor.AptRepositoryInstaller;
 import dev.sysboot.executor.AptRepositoryProbe;
 import dev.sysboot.executor.BootstrapOrchestratorImpl;
+import dev.sysboot.executor.CargoPackageInstaller;
 import dev.sysboot.executor.CompiledBinaryInstaller;
 import dev.sysboot.executor.CompiledBinaryProbe;
 import dev.sysboot.executor.DefaultShellExecutor;
@@ -21,12 +23,14 @@ import dev.sysboot.executor.DnfPackageProbe;
 import dev.sysboot.executor.DotbotExecutor;
 import dev.sysboot.executor.DotbotProbe;
 import dev.sysboot.executor.ExecutionPlanBuilder;
+import dev.sysboot.executor.FileWriteExecutor;
 import dev.sysboot.executor.FlatpakInstaller;
 import dev.sysboot.executor.FlatpakProbe;
 import dev.sysboot.executor.FlatpakRemoteInstaller;
 import dev.sysboot.executor.FlatpakRemoteProbe;
 import dev.sysboot.executor.InstalledProbeRegistry;
 import dev.sysboot.executor.JsonStateRepository;
+import dev.sysboot.executor.LinuxHostFactsProvider;
 import dev.sysboot.executor.NerdFontExecutor;
 import dev.sysboot.executor.NerdFontProbe;
 import dev.sysboot.executor.OhMyZshExecutor;
@@ -44,6 +48,7 @@ import dev.sysboot.executor.ShellReloadExecutor;
 import dev.sysboot.executor.ShellScriptExecutor;
 import dev.sysboot.executor.ShellScriptProbe;
 import dev.sysboot.executor.SkipEvaluator;
+import dev.sysboot.executor.SudoSession;
 import dev.sysboot.executor.ToolchainExecutor;
 import dev.sysboot.executor.YayPackageInstaller;
 import dev.sysboot.executor.ZypperPackageInstaller;
@@ -55,25 +60,43 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 
-public final class ApplicationContext {
+public final class ApplicationContext implements AutoCloseable {
 
   private final BootstrapOrchestrator orchestrator;
   private final ConfigLoader configLoader;
   private final Optional<SysbootTuiApp> tuiApp;
   private final ParallelProbeRunner parallelProbeRunner;
   private final ExecutionPlanBuilder executionPlanBuilder;
+  private final HostFactsProvider hostFactsProvider;
+  private final Optional<SudoSession> sudoSession;
 
   private ApplicationContext(
       BootstrapOrchestrator orchestrator,
       ConfigLoader configLoader,
       Optional<SysbootTuiApp> tuiApp,
       ParallelProbeRunner parallelProbeRunner,
-      ExecutionPlanBuilder executionPlanBuilder) {
+      ExecutionPlanBuilder executionPlanBuilder,
+      HostFactsProvider hostFactsProvider,
+      Optional<SudoSession> sudoSession) {
     this.orchestrator = orchestrator;
     this.configLoader = configLoader;
     this.tuiApp = tuiApp;
     this.parallelProbeRunner = parallelProbeRunner;
     this.executionPlanBuilder = executionPlanBuilder;
+    this.hostFactsProvider = hostFactsProvider;
+    this.sudoSession = sudoSession;
+  }
+
+  /**
+   * Releases resources held for the run.
+   *
+   * <p>Currently that means zeroing the cached sudo password and stopping its keepalive thread.
+   * Without an explicit call the password stayed on the heap for the life of the process and the
+   * keepalive kept sudo's timestamp valid long after Fluxion had finished.
+   */
+  @Override
+  public void close() {
+    sudoSession.ifPresent(SudoSession::close);
   }
 
   public BootstrapOrchestrator orchestrator() {
@@ -96,6 +119,10 @@ public final class ApplicationContext {
     return executionPlanBuilder;
   }
 
+  public HostFactsProvider hostFactsProvider() {
+    return hostFactsProvider;
+  }
+
   public static ApplicationContext create(
       boolean noTui, String profile, boolean skipAlreadyInstalled, boolean reProbe) {
     if (noTui) {
@@ -110,12 +137,16 @@ public final class ApplicationContext {
 
   public static ApplicationContext forTui(
       String profile, boolean skipAlreadyInstalled, boolean reProbe) {
-    var sudoProvider = new TuiSudoPasswordProvider();
+    // The TUI drives the prompt; the session sits between the prompt and the shell runners so a
+    // run asks for the sudo password once instead of once per privileged command.
+    var sudoPrompt = new TuiSudoPasswordProvider();
+    var sudoProvider = new SudoSession(sudoPrompt);
     var eventListener = new TuiExecutionEventListener();
     var ptyRunner = new PtyShellRunner(sudoProvider);
     var baseRunner = new DefaultShellRunner();
     var mapper = new ObjectMapper();
     var stateRepo = new JsonStateRepository(mapper);
+    var hostFactsProvider = new LinuxHostFactsProvider();
 
     var probeRegistry = buildProbeRegistry(baseRunner);
     var skipEvaluator =
@@ -124,14 +155,16 @@ public final class ApplicationContext {
     var orchestrator =
         buildOrchestrator(
             registry, ptyRunner, baseRunner, skipEvaluator, Optional.of(stateRepo), profile);
-    var tuiApp = new SysbootTuiApp(orchestrator, eventListener, sudoProvider, List.of());
+    var tuiApp = new SysbootTuiApp(orchestrator, eventListener, sudoPrompt, List.of());
 
     return new ApplicationContext(
         orchestrator,
-        new YamlConfigLoader(),
+        new YamlConfigLoader(hostFactsProvider),
         Optional.of(tuiApp),
         new ParallelProbeRunner(probeRegistry),
-        new ExecutionPlanBuilder(registry));
+        new ExecutionPlanBuilder(registry),
+        hostFactsProvider,
+        Optional.of(sudoProvider));
   }
 
   public static ApplicationContext forCli(
@@ -140,6 +173,7 @@ public final class ApplicationContext {
     var shellRunner = new DefaultShellRunner();
     var mapper = new ObjectMapper();
     var stateRepo = new JsonStateRepository(mapper);
+    var hostFactsProvider = new LinuxHostFactsProvider();
 
     var probeRegistry = buildProbeRegistry(shellRunner);
     var skipEvaluator =
@@ -151,10 +185,12 @@ public final class ApplicationContext {
 
     return new ApplicationContext(
         orchestrator,
-        new YamlConfigLoader(),
+        new YamlConfigLoader(hostFactsProvider),
         Optional.empty(),
         new ParallelProbeRunner(probeRegistry),
-        new ExecutionPlanBuilder(registry));
+        new ExecutionPlanBuilder(registry),
+        hostFactsProvider,
+        Optional.empty());
   }
 
   private static BootstrapOrchestratorImpl buildOrchestrator(
@@ -171,6 +207,7 @@ public final class ApplicationContext {
         new AptRepositoryInstaller(baseRunner),
         new RpmRepositoryInstaller(baseRunner),
         new PacmanRepositoryInstaller(baseRunner),
+        new FileWriteExecutor(primaryRunner),
         new FlatpakInstaller(baseRunner),
         new FlatpakRemoteInstaller(baseRunner),
         new DotbotExecutor(baseRunner),
@@ -225,6 +262,7 @@ public final class ApplicationContext {
             new ParuPackageInstaller(runner, sudo),
             new YayPackageInstaller(runner, sudo),
             new AptPackageInstaller(runner, sudo),
-            new ZypperPackageInstaller(runner, sudo)));
+            new ZypperPackageInstaller(runner, sudo),
+            new CargoPackageInstaller(runner, sudo)));
   }
 }

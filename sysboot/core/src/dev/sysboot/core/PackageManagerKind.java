@@ -7,5 +7,6 @@ public enum PackageManagerKind {
   YAY,
   APT,
   FLATPAK,
-  ZYPPER
+  ZYPPER,
+  CARGO
 }

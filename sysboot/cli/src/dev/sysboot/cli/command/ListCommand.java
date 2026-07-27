@@ -6,24 +6,37 @@ import dev.sysboot.cli.output.JsonOutput;
 import dev.sysboot.cli.output.OutputFormat;
 import dev.sysboot.core.AptRepositoryModule;
 import dev.sysboot.core.AssertModule;
+import dev.sysboot.core.BinstallerModule;
 import dev.sysboot.core.BootstrapConfig;
 import dev.sysboot.core.BootstrapModule;
 import dev.sysboot.core.CompiledBinaryModule;
 import dev.sysboot.core.DefaultShellModule;
 import dev.sysboot.core.DotbotModule;
+import dev.sysboot.core.FileWriteModule;
 import dev.sysboot.core.FlatpakModule;
 import dev.sysboot.core.FlatpakRemoteModule;
+import dev.sysboot.core.GitConfigModule;
+import dev.sysboot.core.GitRepoModule;
+import dev.sysboot.core.GpgKeyModule;
+import dev.sysboot.core.InterruptModule;
 import dev.sysboot.core.ManualModule;
 import dev.sysboot.core.NerdFontModule;
 import dev.sysboot.core.OhMyZshModule;
 import dev.sysboot.core.PackageModule;
 import dev.sysboot.core.PacmanRepositoryModule;
 import dev.sysboot.core.RpmRepositoryModule;
+import dev.sysboot.core.SdkmanModule;
 import dev.sysboot.core.ShellCommandModule;
 import dev.sysboot.core.ShellReloadModule;
 import dev.sysboot.core.ShellScriptModule;
+import dev.sysboot.core.SystemSettingModule;
+import dev.sysboot.core.SystemUpdateModule;
+import dev.sysboot.core.SystemdUnitModule;
+import dev.sysboot.core.ToolPackagesModule;
 import dev.sysboot.core.ToolchainModule;
+import dev.sysboot.core.UserGroupsModule;
 import dev.sysboot.core.ZypperModule;
+import dev.sysboot.core.ZypperRepositoryModule;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import picocli.CommandLine.Command;
@@ -89,6 +102,7 @@ public final class ListCommand implements Runnable {
       case AptRepositoryModule ignored -> "📦 apt repo";
       case RpmRepositoryModule ignored -> "📦 rpm repo";
       case PacmanRepositoryModule ignored -> "📦 pacman repo";
+      case FileWriteModule ignored -> "file write";
       case FlatpakModule ignored -> "🗃 flatpak";
       case FlatpakRemoteModule ignored -> "🗃 remote";
       case ShellScriptModule ignored -> "📜 script";
@@ -103,6 +117,18 @@ public final class ListCommand implements Runnable {
       case ShellCommandModule ignored -> "📜 command";
       case AssertModule ignored -> "✓ assert";
       case ManualModule ignored -> "☐ manual";
+      case InterruptModule ignored -> "⏸ interrupt";
+      case SdkmanModule ignored -> "🧰 sdkman";
+      case BinstallerModule ignored -> "📥 binstaller";
+      case UserGroupsModule ignored -> "👤 groups";
+      case ZypperRepositoryModule ignored -> "📦 zypper-repo";
+      case GitConfigModule ignored -> "🔧 git-config";
+      case GitRepoModule ignored -> "🌿 git-repo";
+      case SystemdUnitModule ignored -> "⚙️ systemd";
+      case SystemSettingModule ignored -> "🖥️ setting";
+      case SystemUpdateModule ignored -> "⬆️ update";
+      case GpgKeyModule ignored -> "🔑 gpg-key";
+      case ToolPackagesModule ignored -> "🧰 tool-pkgs";
     };
   }
 
@@ -112,6 +138,7 @@ public final class ListCommand implements Runnable {
       case AptRepositoryModule ignored -> "apt-repository";
       case RpmRepositoryModule ignored -> "rpm-repository";
       case PacmanRepositoryModule ignored -> "pacman-repository";
+      case FileWriteModule ignored -> "file-writes";
       case FlatpakModule ignored -> "flatpak";
       case FlatpakRemoteModule ignored -> "flatpak-remote";
       case ShellScriptModule ignored -> "shell-script";
@@ -126,6 +153,18 @@ public final class ListCommand implements Runnable {
       case ShellCommandModule ignored -> "shell-command";
       case AssertModule ignored -> "assert";
       case ManualModule ignored -> "manual";
+      case InterruptModule ignored -> "interrupt";
+      case SdkmanModule ignored -> "sdkman-packages";
+      case BinstallerModule ignored -> "binstaller-profile";
+      case UserGroupsModule ignored -> "user-groups";
+      case ZypperRepositoryModule ignored -> "zypper-repository";
+      case GitConfigModule ignored -> "git-config";
+      case GitRepoModule ignored -> "git-repo";
+      case SystemdUnitModule ignored -> "systemd-unit";
+      case SystemSettingModule ignored -> "system-setting";
+      case SystemUpdateModule ignored -> "system-update";
+      case GpgKeyModule ignored -> "gpg-key";
+      case ToolPackagesModule tpm -> tpm.backend().id() + "-packages";
     };
   }
 
@@ -135,9 +174,10 @@ public final class ListCommand implements Runnable {
       case AptRepositoryModule arm -> arm.sourceListPath() + " <- " + arm.sourceEntry();
       case RpmRepositoryModule rrm -> rrm.repoFilePath() + " <- " + rrm.baseUrl();
       case PacmanRepositoryModule prm -> prm.repositoryName() + " <- " + prm.server();
+      case FileWriteModule fwm -> fwm.items().getFirst().destination().toString();
       case FlatpakModule fm -> fm.appIds().size() + " apps from " + fm.remote();
       case FlatpakRemoteModule frm -> frm.remote() + " -> " + frm.url();
-      case ShellScriptModule sm -> sm.script().toString();
+      case ShellScriptModule sm -> sm.items().getFirst().key();
       case CompiledBinaryModule bm -> bm.binaryName() + " from " + bm.url();
       case ZypperModule zm -> zm.packages().size() + " packages (zypper)";
       case DotbotModule dm -> dm.config().toString();
@@ -146,18 +186,39 @@ public final class ListCommand implements Runnable {
       case ToolchainModule tm -> tm.kind().name().toLowerCase();
       case NerdFontModule nfm -> nfm.config().families().size() + " families";
       case ShellReloadModule srm -> srm.shell().binaryName();
-      case ShellCommandModule sc -> sc.commands().size() + " commands";
+      case ShellCommandModule sc -> sc.items().size() + " commands";
       case AssertModule am -> am.command();
       case ManualModule mm -> mm.message();
+      case InterruptModule im -> im.message();
+      case SdkmanModule sm -> sm.packages().size() + " SDKMAN packages";
+      case BinstallerModule bsm -> binstallerDescription(bsm);
+      case UserGroupsModule ugm -> String.join(", ", ugm.groups());
+      case ZypperRepositoryModule zrm -> zrm.repoFilePath() + " <- " + zrm.baseUrl();
+      case GitConfigModule gcm -> gcm.entries().size() + " git config entries";
+      case GitRepoModule grm -> grm.repos().size() + " repositories";
+      case SystemdUnitModule sum -> sum.units().size() + " units (" + sum.scope() + ")";
+      case SystemSettingModule ignored -> "host settings";
+      case SystemUpdateModule sup -> "full update (" + sup.packageManager() + ")";
+      case GpgKeyModule gkm -> gkm.keys().size() + " signing keys";
+      case ToolPackagesModule tpm ->
+          tpm.packages().size() + " packages (" + tpm.backend().id() + ")";
     };
+  }
+
+  private String binstallerDescription(BinstallerModule module) {
+    String selection =
+        module.only().isEmpty() ? "" : " (only " + String.join(", ", module.only()) + ")";
+    return module.config() + selection;
   }
 
   private int itemCount(BootstrapModule module) {
     return switch (module) {
       case PackageModule pm -> pm.packages().size();
       case FlatpakModule fm -> fm.appIds().size();
-      case ShellCommandModule sc -> sc.commands().size();
+      case FileWriteModule fwm -> fwm.items().size();
+      case ShellCommandModule sc -> sc.items().size();
       case NerdFontModule nfm -> nfm.config().families().size();
+      case SdkmanModule sm -> sm.packages().size();
       default -> 1;
     };
   }

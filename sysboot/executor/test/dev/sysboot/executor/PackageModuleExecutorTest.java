@@ -10,6 +10,7 @@ import dev.sysboot.core.BootstrapState;
 import dev.sysboot.core.EventKind;
 import dev.sysboot.core.ExecutionEvent;
 import dev.sysboot.core.ModuleName;
+import dev.sysboot.core.PackageManagerAction;
 import dev.sysboot.core.PackageManagerExecutor;
 import dev.sysboot.core.PackageManagerKind;
 import dev.sysboot.core.PackageModule;
@@ -60,6 +61,97 @@ class PackageModuleExecutorTest {
   }
 
   @Test
+  void execute_runsActionsBeforePackageInstalls() {
+    var action = new PackageManagerAction("upgrade", List.of());
+    when(dnf.supports(PackageManagerKind.DNF)).thenReturn(true);
+    when(dnf.runAction(action)).thenReturn(new StepResult.Success("upgrade", Duration.ZERO));
+    when(dnf.install(any())).thenReturn(new StepResult.Success("git", Duration.ZERO));
+    var executor = new PackageModuleExecutor(new PackageManagerExecutorRegistry(List.of(dnf)));
+    List<ExecutionEvent> events = new ArrayList<>();
+
+    boolean failed =
+        executor.execute(
+            module(List.of(action), "git"),
+            events::add,
+            new ModuleExecutionContext(
+                SkipEvaluator.alwaysRun(), (moduleName, itemKey, itemType, result) -> {}));
+
+    assertThat(failed).isFalse();
+    assertThat(completedItems(events)).containsExactly("action[0]", "git");
+    verify(dnf, times(1)).runAction(action);
+    verify(dnf, times(1)).install(any());
+  }
+
+  @Test
+  void execute_whenMiddlePackageFails_attemptsLaterPackagesBeforeReportingFailure() {
+    when(dnf.supports(PackageManagerKind.DNF)).thenReturn(true);
+    when(dnf.install(new PackageName("git")))
+        .thenReturn(new StepResult.Success("git", Duration.ZERO));
+    when(dnf.install(new PackageName("broken")))
+        .thenReturn(new StepResult.Failure("broken", "not found", 1, Duration.ZERO));
+    when(dnf.install(new PackageName("curl")))
+        .thenReturn(new StepResult.Success("curl", Duration.ZERO));
+    var executor = new PackageModuleExecutor(new PackageManagerExecutorRegistry(List.of(dnf)));
+    List<ExecutionEvent> events = new ArrayList<>();
+
+    boolean failed =
+        executor.execute(
+            module(false, "git", "broken", "curl"),
+            events::add,
+            new ModuleExecutionContext(
+                SkipEvaluator.alwaysRun(), (moduleName, itemKey, itemType, result) -> {}));
+
+    assertThat(failed).isTrue();
+    assertThat(completedItems(events)).containsExactly("git", "broken", "curl");
+    verify(dnf).install(new PackageName("git"));
+    verify(dnf).install(new PackageName("broken"));
+    verify(dnf).install(new PackageName("curl"));
+  }
+
+  @Test
+  void execute_whenActionFails_attemptsLaterPackagesBeforeReportingFailure() {
+    var action = new PackageManagerAction("upgrade", List.of());
+    when(dnf.supports(PackageManagerKind.DNF)).thenReturn(true);
+    when(dnf.runAction(action))
+        .thenReturn(new StepResult.Failure("upgrade", "failed", 1, Duration.ZERO));
+    when(dnf.install(any())).thenReturn(new StepResult.Success("git", Duration.ZERO));
+    var executor = new PackageModuleExecutor(new PackageManagerExecutorRegistry(List.of(dnf)));
+    List<ExecutionEvent> events = new ArrayList<>();
+
+    boolean failed =
+        executor.execute(
+            module(List.of(action), false, "git"),
+            events::add,
+            new ModuleExecutionContext(
+                SkipEvaluator.alwaysRun(), (moduleName, itemKey, itemType, result) -> {}));
+
+    assertThat(failed).isTrue();
+    assertThat(completedItems(events)).containsExactly("action[0]", "git");
+    verify(dnf).runAction(action);
+    verify(dnf).install(new PackageName("git"));
+  }
+
+  @Test
+  void execute_whenContinueOnErrorTrue_suppressesAggregateFailureAfterAttemptingItems() {
+    when(dnf.supports(PackageManagerKind.DNF)).thenReturn(true);
+    when(dnf.install(any()))
+        .thenReturn(new StepResult.Success("git", Duration.ZERO))
+        .thenReturn(new StepResult.Failure("broken", "not found", 1, Duration.ZERO))
+        .thenReturn(new StepResult.Success("curl", Duration.ZERO));
+    var executor = new PackageModuleExecutor(new PackageManagerExecutorRegistry(List.of(dnf)));
+
+    boolean failed =
+        executor.execute(
+            module(true, "git", "broken", "curl"),
+            ignored -> {},
+            new ModuleExecutionContext(
+                SkipEvaluator.alwaysRun(), (moduleName, itemKey, itemType, result) -> {}));
+
+    assertThat(failed).isFalse();
+    verify(dnf, times(3)).install(any());
+  }
+
+  @Test
   void execute_whenSkipEvaluatorSkips_doesNotInstall() {
     when(dnf.supports(PackageManagerKind.DNF)).thenReturn(true);
     var executor = new PackageModuleExecutor(new PackageManagerExecutorRegistry(List.of(dnf)));
@@ -106,11 +198,83 @@ class PackageModuleExecutorTest {
         .containsExactly("sudo", "dnf", "install", "-y", "git");
   }
 
+  @Test
+  void dryRun_whenCargoPackageModule_rendersCargoInstallCommands() {
+    var cargo =
+        new CargoPackageInstaller(
+            (command, environment, timeout) ->
+                new dev.sysboot.core.ProcessResult(0, "", "", Duration.ZERO),
+            prompt -> Optional.empty());
+    var executor = new PackageModuleExecutor(new PackageManagerExecutorRegistry(List.of(cargo)));
+    List<ExecutionEvent> events = new ArrayList<>();
+
+    executor.dryRun(module(PackageManagerKind.CARGO, "cargo-binstall", "eza"), events::add);
+
+    assertThat(completedItems(events)).containsExactly("cargo-binstall", "eza");
+    assertDryRun(events, 1, "cargo", "install", "cargo-binstall");
+    assertDryRun(events, 3, "cargo", "install", "eza");
+  }
+
+  @Test
+  void dryRun_emitsActionCommandsBeforePackageCommands() {
+    var action = new PackageManagerAction("upgrade", List.of());
+    when(dnf.supports(PackageManagerKind.DNF)).thenReturn(true);
+    when(dnf.actionCommand(action)).thenReturn(List.of("sudo", "dnf", "upgrade", "-y"));
+    when(dnf.installCommand(any())).thenReturn(List.of("sudo", "dnf", "install", "-y", "git"));
+    var executor = new PackageModuleExecutor(new PackageManagerExecutorRegistry(List.of(dnf)));
+    List<ExecutionEvent> events = new ArrayList<>();
+
+    executor.dryRun(module(List.of(action), "git"), events::add);
+
+    assertThat(completedItems(events)).containsExactly("action[0]", "git");
+    assertDryRun(events, 1, "sudo", "dnf", "upgrade", "-y");
+    assertDryRun(events, 3, "sudo", "dnf", "install", "-y", "git");
+  }
+
   private static PackageModule module(String packageName) {
+    return module(List.of(), true, packageName);
+  }
+
+  private static PackageModule module(List<PackageManagerAction> actions, String packageName) {
+    return module(actions, true, packageName);
+  }
+
+  private static PackageModule module(boolean continueOnError, String... packageNames) {
+    return module(List.of(), continueOnError, packageNames);
+  }
+
+  private static PackageModule module(
+      List<PackageManagerAction> actions, boolean continueOnError, String... packageNames) {
+    return module(PackageManagerKind.DNF, actions, continueOnError, packageNames);
+  }
+
+  private static PackageModule module(PackageManagerKind kind, String... packageNames) {
+    return module(kind, List.of(), true, packageNames);
+  }
+
+  private static PackageModule module(
+      PackageManagerKind kind,
+      List<PackageManagerAction> actions,
+      boolean continueOnError,
+      String... packageNames) {
     return new PackageModule(
         new ModuleName("tools"),
-        PackageManagerKind.DNF,
-        List.of(new PackageName(packageName)),
-        true);
+        kind,
+        java.util.Arrays.stream(packageNames).map(PackageName::new).toList(),
+        actions,
+        continueOnError);
+  }
+
+  private static List<String> completedItems(List<ExecutionEvent> events) {
+    return events.stream()
+        .filter(event -> event.kind() == EventKind.ITEM_COMPLETED)
+        .map(ExecutionEvent::item)
+        .toList();
+  }
+
+  private static void assertDryRun(List<ExecutionEvent> events, int index, String... command) {
+    StepResult result = events.get(index).result().orElseThrow();
+    assertThat(result).isInstanceOf(StepResult.DryRun.class);
+    assertThat(((StepResult.DryRun) result).wouldExecute()).containsExactly(command);
   }
 }

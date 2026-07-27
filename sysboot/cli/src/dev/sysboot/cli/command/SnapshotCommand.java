@@ -103,7 +103,7 @@ public final class SnapshotCommand implements Runnable {
 
   private Map<String, Boolean> packageManagers() {
     var managers = new LinkedHashMap<String, Boolean>();
-    List.of("dnf", "pacman", "paru", "yay", "apt-get", "zypper", "flatpak")
+    List.of("dnf", "pacman", "paru", "yay", "apt-get", "zypper", "flatpak", "cargo")
         .forEach(command -> managers.put(command, commandExists(command)));
     return managers;
   }

@@ -4,6 +4,7 @@ import dev.sysboot.core.ExecutionEvent;
 import dev.sysboot.core.ExecutionEventListener;
 import dev.sysboot.core.StepResult;
 import java.time.Duration;
+import java.util.Optional;
 import java.util.concurrent.LinkedBlockingQueue;
 
 public final class TuiExecutionEventListener implements ExecutionEventListener {
@@ -11,6 +12,14 @@ public final class TuiExecutionEventListener implements ExecutionEventListener {
   private static final int MAX_DRAIN_PER_TICK = 50;
 
   private final LinkedBlockingQueue<ExecutionEvent> eventQueue = new LinkedBlockingQueue<>();
+  private final dev.sysboot.core.SecretRedactor redactor = new dev.sysboot.core.SecretRedactor();
+  private volatile boolean showCommandOutput;
+
+  /** Enables the live command-output log pane, off by default. */
+  public TuiExecutionEventListener showCommandOutput(boolean enabled) {
+    this.showCommandOutput = enabled;
+    return this;
+  }
 
   @Override
   public void onEvent(ExecutionEvent event) {
@@ -28,6 +37,18 @@ public final class TuiExecutionEventListener implements ExecutionEventListener {
     return current;
   }
 
+  public Optional<ExecutionScreenState> drainOneInto(ExecutionScreenState state) {
+    ExecutionEvent event = eventQueue.poll();
+    if (event == null) {
+      return Optional.empty();
+    }
+    return Optional.of(applyEvent(state, event));
+  }
+
+  public boolean hasPendingEvents() {
+    return !eventQueue.isEmpty();
+  }
+
   private ExecutionScreenState applyEvent(ExecutionScreenState state, ExecutionEvent event) {
     return switch (event.kind()) {
       case PHASE_STARTED -> state.withLogLine("[PHASE] " + event.moduleName().value());
@@ -38,17 +59,45 @@ public final class TuiExecutionEventListener implements ExecutionEventListener {
       case MODULE_STARTED ->
           state
               .withModule(event.moduleName().value())
+              .withItemIfPlanEntry(
+                  ItemStatus.running(event.moduleName().value(), event.moduleName().value()))
               .withLogLine("[START] Module: " + event.moduleName().value());
       case MODULE_COMPLETED ->
-          state.withModuleCompleted().withLogLine("[DONE]  Module: " + event.moduleName().value());
-      case ITEM_STARTED ->
-          state
-              .withItem(ItemStatus.running(event.item(), event.moduleName().value()))
-              .withLogLine("[RUN]   " + event.item());
+          completeModule(state, event.moduleName().value())
+              .withLogLine("[DONE]  Module: " + event.moduleName().value());
+      case ITEM_STARTED -> startItem(state, event).withLogLine("[RUN]   " + event.item());
+      case ITEM_OUTPUT -> applyItemOutput(state, event);
       case ITEM_COMPLETED -> applyItemCompleted(state, event);
+      case CANCELLED -> state.withLogLine(cancellationMessage(event));
       case ERROR ->
           state.withLogLine("[ERROR] " + event.item() + " in " + event.moduleName().value());
     };
+  }
+
+  /**
+   * Streamed command output is off by default.
+   *
+   * <p>The TUI repaints the whole screen per drained event, so a chatty command turned the log pane
+   * into a flicker storm and starved the rest of the render loop. Output is also redacted here: the
+   * plain CLI path masked these same lines, so without this a secret echoed by a command reached
+   * the screen in TUI mode only.
+   */
+  private ExecutionScreenState applyItemOutput(ExecutionScreenState state, ExecutionEvent event) {
+    if (!showCommandOutput) {
+      return state;
+    }
+    return event
+        .outputLine()
+        .filter(line -> !line.isBlank())
+        .map(redactor::redact)
+        .map(state::withLogLine)
+        .orElse(state);
+  }
+
+  private String cancellationMessage(ExecutionEvent event) {
+    return event.item().isBlank()
+        ? "[CANCELLED] stopped before " + event.moduleName().value()
+        : "[CANCELLED] stopped before " + event.item();
   }
 
   private ExecutionScreenState applyItemCompleted(
@@ -59,11 +108,110 @@ public final class TuiExecutionEventListener implements ExecutionEventListener {
     StepResult result = event.result().get();
     ItemResult itemResult = toItemResult(result);
     Duration elapsed = extractElapsed(result);
+    if (state.hasPlanEntry(event.moduleName().value())) {
+      return updatePlanEntry(state, event, itemResult, elapsed, result);
+    }
     return state
         .withItem(
             ItemStatus.running(event.item(), event.moduleName().value())
                 .withResult(itemResult, elapsed))
         .withLogLine(formatLogLine(event.item(), result));
+  }
+
+  private ExecutionScreenState startItem(ExecutionScreenState state, ExecutionEvent event) {
+    if (state.hasPlanEntry(event.moduleName().value())) {
+      if (hasHardTerminalResult(state, event.moduleName().value())) {
+        return state;
+      }
+      return state.withItem(
+          ItemStatus.running(event.moduleName().value(), event.moduleName().value()));
+    }
+    return state.withItem(ItemStatus.running(event.item(), event.moduleName().value()));
+  }
+
+  private ExecutionScreenState completeModule(ExecutionScreenState state, String moduleName) {
+    if (!state.hasPlanEntry(moduleName)) {
+      return state.withModuleCompleted();
+    }
+    if (hasTerminalResult(state, moduleName)) {
+      return state.withModuleCompleted();
+    }
+    ItemStatus completed =
+        ItemStatus.running(moduleName, moduleName).withResult(ItemResult.SUCCESS, Duration.ZERO);
+    return state.withItem(completed).withModuleCompleted();
+  }
+
+  private boolean hasTerminalResult(ExecutionScreenState state, String moduleName) {
+    return state.items().stream()
+        .filter(item -> item.name().equals(moduleName) && item.module().equals(moduleName))
+        .map(ItemStatus::result)
+        .anyMatch(this::isTerminal);
+  }
+
+  private boolean hasHardTerminalResult(ExecutionScreenState state, String moduleName) {
+    return state.items().stream()
+        .filter(item -> item.name().equals(moduleName) && item.module().equals(moduleName))
+        .map(ItemStatus::result)
+        .anyMatch(this::isHardTerminal);
+  }
+
+  private boolean isTerminal(ItemResult result) {
+    return result == ItemResult.SUCCESS
+        || result == ItemResult.FAILED
+        || result == ItemResult.INTERRUPTED
+        || result == ItemResult.SKIPPED
+        || result == ItemResult.DRY_RUN;
+  }
+
+  private boolean isHardTerminal(ItemResult result) {
+    return result == ItemResult.FAILED || result == ItemResult.INTERRUPTED;
+  }
+
+  private ExecutionScreenState updatePlanEntry(
+      ExecutionScreenState state,
+      ExecutionEvent event,
+      ItemResult itemResult,
+      Duration elapsed,
+      StepResult result) {
+    ItemStatus status =
+        ItemStatus.running(event.moduleName().value(), event.moduleName().value())
+            .withResult(mergedResult(state, event.moduleName().value(), itemResult), elapsed)
+            .withDetail(detail(result));
+    return state.withItem(status).withLogLine(formatLogLine(event.item(), result));
+  }
+
+  private ItemResult mergedResult(
+      ExecutionScreenState state, String moduleName, ItemResult incomingResult) {
+    return state.items().stream()
+        .filter(item -> item.name().equals(moduleName) && item.module().equals(moduleName))
+        .findFirst()
+        .map(item -> mergeResult(item.result(), incomingResult))
+        .orElse(incomingResult);
+  }
+
+  private ItemResult mergeResult(ItemResult existing, ItemResult incoming) {
+    if (existing == ItemResult.FAILED || incoming == ItemResult.FAILED) {
+      return ItemResult.FAILED;
+    }
+    if (existing == ItemResult.INTERRUPTED || incoming == ItemResult.INTERRUPTED) {
+      return ItemResult.INTERRUPTED;
+    }
+    if (existing == ItemResult.DRY_RUN || incoming == ItemResult.DRY_RUN) {
+      return ItemResult.DRY_RUN;
+    }
+    if (existing == ItemResult.SKIPPED || incoming == ItemResult.SKIPPED) {
+      return ItemResult.SKIPPED;
+    }
+    return incoming;
+  }
+
+  private Optional<String> detail(StepResult result) {
+    return switch (result) {
+      case StepResult.Failure f -> Optional.of(f.errorMessage());
+      case StepResult.Skipped s -> Optional.of(s.reason());
+      case StepResult.Paused p -> Optional.of(p.message());
+      default -> Optional.empty();
+    };
   }
 
   private ItemResult toItemResult(StepResult result) {
@@ -72,6 +220,7 @@ public final class TuiExecutionEventListener implements ExecutionEventListener {
       case StepResult.Failure ignored -> ItemResult.FAILED;
       case StepResult.Skipped ignored -> ItemResult.SKIPPED;
       case StepResult.DryRun ignored -> ItemResult.DRY_RUN;
+      case StepResult.Paused ignored -> ItemResult.INTERRUPTED;
     };
   }
 
@@ -81,6 +230,7 @@ public final class TuiExecutionEventListener implements ExecutionEventListener {
       case StepResult.Failure f -> f.elapsed();
       case StepResult.Skipped ignored -> Duration.ZERO;
       case StepResult.DryRun ignored -> Duration.ZERO;
+      case StepResult.Paused ignored -> Duration.ZERO;
     };
   }
 
@@ -93,6 +243,7 @@ public final class TuiExecutionEventListener implements ExecutionEventListener {
       case StepResult.Skipped s -> String.format("[SKIP]  %s: %s", item, s.reason());
       case StepResult.DryRun d ->
           String.format("[DRY]   %s: %s", item, String.join(" ", d.wouldExecute()));
+      case StepResult.Paused p -> String.format("[PAUSE] %s: %s", item, p.message());
     };
   }
 }

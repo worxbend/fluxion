@@ -33,7 +33,7 @@ jobs:
           java-version: "25"
 
       - name: Set up just
-        uses: extractions/setup-just@v3
+        uses: extractions/setup-just@v4
 
       - name: Cache build dependencies
         uses: actions/cache@v4

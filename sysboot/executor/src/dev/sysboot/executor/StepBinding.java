@@ -1,0 +1,193 @@
+package dev.sysboot.executor;
+
+import dev.sysboot.core.BinstallerModule;
+import dev.sysboot.core.BootstrapModule;
+import dev.sysboot.core.DefaultShellModule;
+import dev.sysboot.core.DotbotModule;
+import dev.sysboot.core.GitConfigModule;
+import dev.sysboot.core.GitRepoModule;
+import dev.sysboot.core.GpgKeyModule;
+import dev.sysboot.core.ItemType;
+import dev.sysboot.core.NerdFontModule;
+import dev.sysboot.core.OhMyZshModule;
+import dev.sysboot.core.ShellReloadModule;
+import dev.sysboot.core.StepResult;
+import dev.sysboot.core.SystemSettingModule;
+import dev.sysboot.core.SystemUpdateModule;
+import dev.sysboot.core.SystemdUnitModule;
+import dev.sysboot.core.ToolPackagesModule;
+import dev.sysboot.core.ToolchainModule;
+import dev.sysboot.core.ZypperRepositoryModule;
+import java.util.List;
+import java.util.Map;
+import java.util.Optional;
+import java.util.function.BiFunction;
+import java.util.function.Function;
+import java.util.stream.Collectors;
+
+/**
+ * Table of the step kinds that are just "run one item and report it".
+ *
+ * <p>Most kinds share exactly that shape, and each one used to cost two hand-written switch arms:
+ * one in the execute switch and a mirrored one in dry-run. Adding step kinds grew {@code
+ * BootstrapOrchestratorImpl} past a thousand lines and sixty arms, which is the god object
+ * PLAN-i.md §11.1 set out to remove. A lookup table replaces both arms with one row, so a new kind
+ * is a line here rather than an edit in two switches that can silently diverge.
+ *
+ * <p>Kinds with genuinely different shapes stay in the orchestrator: multi-item loops (packages,
+ * Flatpak apps, file writes), items with bespoke skip keys (shell scripts), items that record extra
+ * state (compiled binaries), and control flow (interrupt, assert, manual, user groups).
+ */
+final class StepBinding {
+
+  private final Class<? extends BootstrapModule> moduleType;
+  private final ItemType itemType;
+  private final Function<BootstrapModule, String> itemKey;
+  private final BiFunction<BootstrapModule, PhaseExecutors, StepResult> execute;
+  private final BiFunction<BootstrapModule, PhaseExecutors, List<String>> preview;
+
+  private StepBinding(
+      Class<? extends BootstrapModule> moduleType,
+      ItemType itemType,
+      Function<BootstrapModule, String> itemKey,
+      BiFunction<BootstrapModule, PhaseExecutors, StepResult> execute,
+      BiFunction<BootstrapModule, PhaseExecutors, List<String>> preview) {
+    this.moduleType = moduleType;
+    this.itemType = itemType;
+    this.itemKey = itemKey;
+    this.execute = execute;
+    this.preview = preview;
+  }
+
+  ItemType itemType() {
+    return itemType;
+  }
+
+  String itemKey(BootstrapModule module) {
+    return itemKey.apply(module);
+  }
+
+  StepResult execute(BootstrapModule module, PhaseExecutors executors) {
+    return execute.apply(module, executors);
+  }
+
+  List<String> commandPreview(BootstrapModule module, PhaseExecutors executors) {
+    return preview.apply(module, executors);
+  }
+
+  /** Casts are confined here, so every row below stays fully typed. */
+  private static <M extends BootstrapModule> StepBinding bind(
+      Class<M> type,
+      ItemType itemType,
+      Function<M, String> itemKey,
+      BiFunction<M, PhaseExecutors, StepResult> execute,
+      BiFunction<M, PhaseExecutors, List<String>> preview) {
+    return new StepBinding(
+        type,
+        itemType,
+        module -> itemKey.apply(type.cast(module)),
+        (module, executors) -> execute.apply(type.cast(module), executors),
+        (module, executors) -> preview.apply(type.cast(module), executors));
+  }
+
+  private static final Map<Class<? extends BootstrapModule>, StepBinding> BINDINGS =
+      List.of(
+              bind(
+                  DotbotModule.class,
+                  ItemType.DOTBOT,
+                  module -> module.name().value(),
+                  (module, executors) -> executors.dotbot().execute(module),
+                  (module, executors) -> executors.dotbot().commandPreview(module)),
+              bind(
+                  DefaultShellModule.class,
+                  ItemType.DEFAULT_SHELL,
+                  module -> module.name().value(),
+                  (module, executors) -> executors.defaultShell().execute(module),
+                  (module, executors) -> List.of("chsh", "-s", module.shellPath().toString())),
+              bind(
+                  OhMyZshModule.class,
+                  ItemType.OH_MY_ZSH,
+                  module -> module.name().value(),
+                  (module, executors) -> executors.ohMyZsh().execute(module),
+                  (module, executors) -> List.of("sh", "<omz-installer>")),
+              bind(
+                  ToolchainModule.class,
+                  ItemType.TOOLCHAIN,
+                  module -> module.name().value(),
+                  (module, executors) -> executors.toolchain().execute(module),
+                  (module, executors) -> List.of("sh", "<installer>")),
+              bind(
+                  NerdFontModule.class,
+                  ItemType.NERD_FONT,
+                  module -> module.name().value(),
+                  (module, executors) -> executors.nerdFont().execute(module),
+                  (module, executors) -> executors.nerdFont().commandPreview(module)),
+              bind(
+                  ShellReloadModule.class,
+                  ItemType.SHELL_RELOAD,
+                  module -> module.name().value(),
+                  (module, executors) -> executors.shellReload().execute(module),
+                  (module, executors) ->
+                      List.of(module.shell().binaryName(), "--login", "-i", "-c", "exit")),
+              bind(
+                  BinstallerModule.class,
+                  ItemType.BINSTALLER_PROFILE,
+                  BinstallerModule::itemKey,
+                  (module, executors) -> executors.binstaller().execute(module),
+                  (module, executors) -> executors.binstaller().commandPreview(module)),
+              bind(
+                  GitConfigModule.class,
+                  ItemType.GIT_CONFIG,
+                  module -> module.name().value(),
+                  (module, executors) -> executors.gitConfig().execute(module),
+                  (module, executors) -> executors.gitConfig().commandPreview(module)),
+              bind(
+                  GitRepoModule.class,
+                  ItemType.GIT_REPO,
+                  module -> module.name().value(),
+                  (module, executors) -> executors.gitRepo().execute(module),
+                  (module, executors) -> executors.gitRepo().commandPreview(module)),
+              bind(
+                  SystemdUnitModule.class,
+                  ItemType.SYSTEMD_UNIT,
+                  module -> module.name().value(),
+                  (module, executors) -> executors.systemdUnit().execute(module),
+                  (module, executors) -> executors.systemdUnit().commandPreview(module)),
+              bind(
+                  SystemSettingModule.class,
+                  ItemType.SYSTEM_SETTING,
+                  module -> module.name().value(),
+                  (module, executors) -> executors.systemSetting().execute(module),
+                  (module, executors) -> executors.systemSetting().commandPreview(module)),
+              bind(
+                  SystemUpdateModule.class,
+                  ItemType.SYSTEM_UPDATE,
+                  SystemUpdateModule::itemKey,
+                  (module, executors) -> executors.systemUpdate().execute(module),
+                  (module, executors) -> executors.systemUpdate().commandPreview(module)),
+              bind(
+                  GpgKeyModule.class,
+                  ItemType.GPG_KEY,
+                  module -> module.name().value(),
+                  (module, executors) -> executors.gpgKey().execute(module),
+                  (module, executors) -> executors.gpgKey().commandPreview(module)),
+              bind(
+                  ZypperRepositoryModule.class,
+                  ItemType.ZYPPER_REPOSITORY,
+                  module -> module.repoFilePath().toString(),
+                  (module, executors) -> executors.zypperRepository().add(module.asSourceSetup()),
+                  (module, executors) ->
+                      executors.zypperRepository().addCommand(module.asSourceSetup())),
+              bind(
+                  ToolPackagesModule.class,
+                  ItemType.TOOL_PACKAGE,
+                  module -> module.name().value(),
+                  (module, executors) -> executors.toolPackages().execute(module),
+                  (module, executors) -> executors.toolPackages().commandPreview(module)))
+          .stream()
+          .collect(Collectors.toUnmodifiableMap(binding -> binding.moduleType, binding -> binding));
+
+  static Optional<StepBinding> find(BootstrapModule module) {
+    return Optional.ofNullable(BINDINGS.get(module.getClass()));
+  }
+}

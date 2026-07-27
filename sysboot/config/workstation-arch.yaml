@@ -1,0 +1,142 @@
+apiVersion: initkit.io/v1alpha1
+kind: WorkstationProfile
+metadata:
+  name: arch-workstation-profile
+  labels:
+    distro: arch
+    example: workstation-profile
+spec:
+  target:
+    os:
+      distribution: arch
+      release: rolling
+  policy:
+    dryRun: false
+    continueOnError: true
+    requireSudo: true
+  vars:
+    configDir: ${HOME}/.config/fluxion/examples
+    binDir: ${HOME}/.local/bin
+  sources:
+    flatpak:
+      - name: flathub
+        kind: flatpak-remote
+        spec:
+          remote: flathub
+          url: https://flathub.org/repo/flathub.flatpakrepo
+          system: true
+  plan:
+    - name: pacman-foundation
+      kind: pacman-packages
+      when:
+        distribution:
+          oneOf:
+            - arch
+            - endeavouros
+        commandExists: pacman
+      execution:
+        continueOnError: false
+      spec:
+        actions:
+          - sync-upgrade
+        packages:
+          - base-devel
+          - ca-certificates
+          - curl
+          - git
+          - ripgrep
+          - fd
+          - bat
+          - zsh
+          - podman
+
+    - name: aur-desktop-tools
+      kind: aur-packages
+      when:
+        distribution:
+          oneOf:
+            - arch
+            - endeavouros
+        commandExists: paru
+      spec:
+        packageManager: paru
+        packages:
+          - visual-studio-code-bin
+          - google-chrome
+
+    - name: skipped-optional-packages
+      kind: pacman-packages
+      when:
+        commandExists: fluxion-example-skipped-command
+      spec:
+        packages:
+          - shellcheck
+
+    - name: desktop-flatpaks
+      kind: flatpak-packages
+      when:
+        distribution:
+          oneOf:
+            - arch
+            - endeavouros
+      spec:
+        remote: flathub
+        apps:
+          - com.github.tchx84.Flatseal
+          - org.mozilla.firefox
+
+    - name: local-bin-download
+      kind: binary-downloads
+      spec:
+        binaryName: fluxion-demo-helper
+        url: https://example.invalid/fluxion-demo-helper-x86_64.tgz
+        checksum:
+          algorithm: SHA-256
+          value: "0000000000000000000000000000000000000000000000000000000000000000"
+        installPath: ${binDir}/fluxion-demo-helper
+        archivePath: bin/fluxion-demo-helper
+        stripComponents: 1
+        mode: "0755"
+
+    - name: shell-hooks
+      kind: shell-scripts
+      spec:
+        scripts:
+          - name: arch-post-install
+            script: ./scripts/arch-post-install.sh
+            args:
+              - --config-dir
+              - ${configDir}
+            cwd: /tmp
+            allowedExitCodes:
+              - 0
+            timeout: 5m
+
+    - name: user-config-files
+      kind: file-writes
+      spec:
+        files:
+          - name: starship-example
+            destination: ${configDir}/starship.toml
+            content: |
+              add_newline = false
+              command_timeout = 1000
+            mode: "0644"
+
+    - name: post-install-commands
+      kind: commands
+      spec:
+        commands:
+          - name: create-local-bin
+            argv:
+              - mkdir
+              - -p
+              - ${binDir}
+          - name: git-pull-policy
+            run:
+              - git
+              - config
+              - --global
+              - pull.rebase
+              - "false"
+        timeoutSeconds: 60

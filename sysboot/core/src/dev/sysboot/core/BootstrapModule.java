@@ -5,6 +5,7 @@ public sealed interface BootstrapModule
         AptRepositoryModule,
         RpmRepositoryModule,
         PacmanRepositoryModule,
+        FileWriteModule,
         FlatpakModule,
         FlatpakRemoteModule,
         ShellScriptModule,
@@ -18,7 +19,19 @@ public sealed interface BootstrapModule
         ShellReloadModule,
         ShellCommandModule,
         AssertModule,
-        ManualModule {
+        ManualModule,
+        InterruptModule,
+        SdkmanModule,
+        BinstallerModule,
+        UserGroupsModule,
+        GitConfigModule,
+        GitRepoModule,
+        SystemdUnitModule,
+        SystemSettingModule,
+        SystemUpdateModule,
+        GpgKeyModule,
+        ToolPackagesModule,
+        ZypperRepositoryModule {
 
   ModuleName name();
 }

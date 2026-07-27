@@ -4,7 +4,10 @@ All config files are YAML. Place them in `~/.config/fluxion/` or pass with `-c`.
 
 ---
 
-## Top-level fields
+## Stable jobs/steps schema
+
+The stable Fluxion config schema is the `profile`/`os`/`jobs` form with `steps` inside each job.
+Use this schema when you want an explicit job DAG with `dependsOn` ordering.
 
 | Field | Type | Required | Description |
 |---|---|---|---|
@@ -17,6 +20,51 @@ All config files are YAML. Place them in `~/.config/fluxion/` or pass with `-c`.
 At least one job, phase, or legacy module is required. When `jobs` is present and non-empty,
 `phases` and top-level `modules` are ignored. When `phases` is present and non-empty, top-level
 `modules` is ignored.
+
+---
+
+## Schema compatibility
+
+Fluxion supports two config frontends:
+
+- Stable jobs/steps: `profile`, `os`, and `jobs[].steps[]`. This remains the stable DAG-oriented
+  schema and is documented on this page.
+- WorkstationProfile manifests: `apiVersion`, `kind: WorkstationProfile`, `metadata`, and `spec`.
+  This is the newer manifest frontend for ordered workstation plans. See
+  [workstation-profile.md](workstation-profile.md).
+
+Legacy `phases` and flat top-level `modules` configs also remain supported for compatibility:
+`phases` is treated as an alias for `jobs`, and top-level `modules` is used only when neither
+`jobs` nor `phases` is present.
+
+The currently accepted WorkstationProfile `apiVersion` string is `initkit.io/v1alpha1` as a
+compatibility identifier. Fluxion is the product and command name; use `fluxion validate`,
+`fluxion plan`, `fluxion dry-run`, and `fluxion apply` for both schemas.
+
+Minimal WorkstationProfile manifest:
+
+```yaml
+apiVersion: initkit.io/v1alpha1
+kind: WorkstationProfile
+metadata:
+  name: workstation
+spec:
+  target:
+    os:
+      distribution: fedora
+      release: "44"
+  plan:
+    - name: core-cli
+      kind: dnf-packages
+      when:
+        distribution: fedora
+      spec:
+        packages: [git, curl]
+```
+
+For manifests, `spec.target.os` is informational metadata used to map the manifest into Fluxion's
+core target model and validation reports. It does not decide which plan entries run. Host facts and
+per-entry `when` rules drive selected and skipped WorkstationProfile work.
 
 ---
 
@@ -228,6 +276,10 @@ The interpreter is detected from the shebang line; falls back to `/bin/bash`. Th
   checksumUrl: https://github.com/.../checksums.txt # optional alternative to checksum
   signatureUrl: https://github.com/.../nvim.tar.gz.asc # optional detached signature
   installPath: /usr/local/bin/nvim  # required — absolute path
+  archivePath: nvim-linux64/bin/nvim # optional — selected path inside .tar.gz/.tgz
+  stripComponents: 1          # optional — path components stripped before matching archivePath
+  mode: "0755"                # optional — POSIX install mode; default: "0755"
+  symlinkPath: /usr/local/bin/vim # optional — symlink pointing to installPath
   continueOnError: false        # default: false
 ```
 
@@ -237,9 +289,14 @@ file containing either a bare SHA-256 digest or common `sha256sum` output such a
 with `gpg --batch --verify <signature> <downloaded-artifact>`.
 
 Supported artifact formats: `.tar.gz`, `.tgz`, or plain binary URLs. Other archive formats such as
-`.zip` and `.tar.xz` are rejected by validation because the installer cannot extract them yet.
+`.zip` and `.tar.xz` are rejected by validation because the installer cannot extract them yet. For
+archives, Fluxion copies `archivePath` when provided; otherwise it selects an entry whose stripped
+file name matches `binaryName`. `stripComponents` defaults to `0`.
 
-The binary is copied to `installPath`. If the parent directory is root-owned, `sudo cp` is used.
+The binary is copied to `installPath`, the configured `mode` is applied, and `symlinkPath` is
+created when present. If the parent directory is root-owned, Fluxion uses `sudo cp`, `sudo chmod`,
+or `sudo ln -sfn` for the privileged write. Dry-run previews the download URL, archive extraction
+selection, destination path, mode, and symlink without downloading or writing files.
 When `checksum`, `checksumUrl`, and `signatureUrl` are all omitted, Fluxion logs an explicit warning
 and installs from the HTTPS source without integrity verification. Use SHA-256 checksums or detached
 signatures for downloaded binaries whenever possible. `fluxion validate --strict` treats missing
@@ -307,13 +364,52 @@ extracts the configured binary entry, and runs it with `--config`.
 
 ---
 
+### `binstaller-profile` — install portable binaries with binstaller
+
+Delegates binary tool distribution to
+[`binstaller`](https://github.com/worxbend/binstaller). Fluxion does not re-declare your tool list:
+it points at the `BinaryDistributionProfile` you already maintain and maps its own verbs onto
+binstaller's.
+
+| Fluxion | binstaller |
+| --- | --- |
+| `plan`, `dry-run` | `plan` |
+| `apply` | `apply` |
+| `status`, `diff` | `versions` |
+
+`dry-run` never invokes `apply`, so a preview cannot touch the machine.
+
+```yaml
+- type: binstaller-profile
+  name: developer-binaries
+  config: "~/.config/binstaller/config.yaml"
+  only: [yazi, neovim]        # optional; empty means every tool in the profile
+  skip: [zig]                 # optional
+  locked: true                # optional; requires lockFile
+  lockFile: "~/binstaller.lock.json"
+  installerVersion: "v0.2.0"  # binstaller release Fluxion installs if it is not on PATH
+  continueOnError: false
+```
+
+Tool resolution order is: an installation already on `PATH`, then Fluxion's cache under
+`~/.cache/fluxion/tools`, then a fresh download whose SHA-256 is verified against the release's
+`.sha256` sidecar. Fluxion never shadows a `binstaller` you manage yourself.
+
+`config` must be a path. An inline profile object is rejected — binstaller owns that schema.
+
+---
+
 ### `nerd-fonts` — install Nerd Font families
+
+Delegates to [`nerd-fonts-installer`](https://github.com/worxbend/nerd-fonts-installer). Fluxion
+resolves the tool from `PATH`, then from its cache under `~/.cache/fluxion/tools`, then downloads
+and checksum-verifies the release asset for the host platform.
 
 ```yaml
 - type: nerd-fonts
   name: nerd-fonts-install
-  installerVersion: "v1.0.5"
-  nerdfontBinary: "nerdfont-install"
+  installerVersion: "v1.0.7"
+  nerdfontBinary: "nerd-fonts-installer"
   config:
     release: "latest"
     destination: "~/.local/share/fonts/NerdFonts"
@@ -323,6 +419,19 @@ extracts the configured binary entry, and runs it with `--config`.
       - Hack
   probeCommand: "fc-list | grep -qi JetBrains"
 ```
+
+Instead of declaring `config` inline, point at an installer config you already maintain. This keeps
+one source of truth for your font set:
+
+```yaml
+- type: nerd-fonts
+  name: nerd-fonts-install
+  configPath: "~/.config/nerd-fonts-installer/config.yaml"
+```
+
+The project renamed its binary and release assets at `v1.0.7`. Pinning `v1.0.6` or older still
+works — Fluxion tries the current asset name first and the pre-rename name second — but set
+`nerdfontBinary: nerdfont-install` as well, since that is what those archives contain.
 
 ---
 
@@ -466,3 +575,202 @@ jobs:
           - com.spotify.Client
           - org.telegram.desktop
 ```
+
+---
+
+### `user-groups` — add a user to supplementary groups
+
+```yaml
+- type: user-groups
+  name: container-groups
+  groups: [docker, libvirt]
+  user: bob                 # optional; default is the user running fluxion
+  createMissing: false      # optional; groupadd -f before usermod
+  logoutCheckpoint: true    # optional; see below
+  continueOnError: false
+```
+
+`usermod -aG` exits 0 while the *running session* still lacks the group — `docker ps` keeps saying
+permission denied until the user logs out. Fluxion detects that by comparing `id -nG` (this
+process's own credentials, fixed at login) against `id -nG <user>` (re-read from the group database),
+and raises a restart checkpoint when they disagree. Set `logoutCheckpoint: false` for containers and
+image builds, where there is no session to log out of.
+
+Membership is append-only. There is no removal syntax, and `-docker` or `!docker` are rejected rather
+than ignored: silently dropping a user out of a group they depend on is a worse failure than having
+to run `gpasswd -d` by hand.
+
+`createMissing` is off by default. The groups people want here (`docker`, `libvirt`, `kvm`) are
+created by their own package, so a missing one usually means a typo or a package that was not
+installed — and quietly creating a real but useless group hides that.
+
+When Fluxion itself is run under `sudo`, `SUDO_USER` is used rather than `root`.
+
+---
+
+### `git-config` — set git configuration
+
+```yaml
+- type: git-config
+  name: git-identity
+  scope: global            # global | system | local
+  entries:
+    user.email: you@example.com
+    user.name: your-name
+    pull.rebase: "true"
+```
+
+Each key is set individually and probed with `git config --get`, so a key that already holds the
+desired value is left alone and `fluxion diff` can report drift per key. `system` scope writes
+`/etc/gitconfig` and uses sudo.
+
+---
+
+### `git-repo` — clone repositories that are not packaged
+
+```yaml
+- type: git-repo
+  name: zsh-plugins
+  repos:
+    - url: https://github.com/tmux-plugins/tpm
+      dest: ~/.tmux/plugins/tpm
+    - url: https://github.com/zsh-users/zsh-autosuggestions
+      dest: "${ZSH_CUSTOM:-~/.oh-my-zsh/custom}/plugins/zsh-autosuggestions"
+      depth: 1
+      ref: master
+      submodules: false
+      update: pull         # none (default) | pull | reset-hard
+```
+
+Destinations support shell-style `${VAR:-default}` and `~`, so paths can be copied straight from an
+existing shell script. `update: pull` uses `--ff-only` — a bootstrapper should never create a merge
+commit in a repository you may have edited. `reset-hard` discards local changes, so it is never the
+default.
+
+---
+
+### `systemd-unit` — enable, start, stop, or mask units
+
+```yaml
+- type: systemd-unit
+  name: services
+  scope: system            # system (default) | user
+  units:
+    - { name: docker, enabled: true, state: started }
+    - { name: sshd, enabled: false, state: stopped, mask: true }
+```
+
+A bare name is treated as a `.service`. `scope: user` acts on your own manager and uses no sudo.
+
+`systemctl is-enabled` is read by its output word rather than its exit code, because several
+non-zero codes mean different things. `static`, `indirect`, `generated` and `alias` units are never
+passed to `enable` — that is an error for a unit with no `[Install]` section, and it is already
+reachable as a dependency.
+
+When `systemctl` is absent (containers, image builds) the step is skipped rather than failed, so the
+same profile stays usable in CI.
+
+---
+
+### `system-setting` — timedatectl / hostnamectl / localectl
+
+```yaml
+- type: system-setting
+  name: clock
+  localRtc: false
+  ntp: true
+  timezone: Europe/Warsaw
+  hostname: workstation
+  locale:
+    LANG: en_US.UTF-8
+```
+
+Every setting is probed with the matching `show --property` first, so only settings that actually
+differ are applied and a rerun is a no-op.
+
+---
+
+### `system-update` — full system update
+
+```yaml
+- type: system-update
+  name: full-update
+  packageManager: zypper   # dnf | zypper | pacman | apt
+  distUpgrade: true        # zypper dup / apt full-upgrade
+  refreshOnly: false       # metadata only
+  timeout: PT2H            # ISO-8601; default 2 hours
+```
+
+`distUpgrade` is required on rolling releases such as openSUSE Tumbleweed, where a plain `update` is
+the wrong verb.
+
+`dnf check-update` exits **100** when updates are available. That is a successful outcome, not a
+failure, and is treated as one — otherwise a refresh step would fail on exactly the machines that
+had something to install.
+
+---
+
+### `gpg-key` — import repository signing keys
+
+```yaml
+- type: gpg-key
+  name: vscode-key
+  keys:
+    - url: https://packages.microsoft.com/keys/microsoft.asc     # rpm --import
+    - url: https://download.docker.com/linux/debian/gpg          # apt keyring
+      keyring: /etc/apt/keyrings/docker.gpg
+      fingerprint: 9DC858229FC7DD38854AE2D88D81803C0EBFCD88
+```
+
+Omit `keyring` to import into the RPM database; supply it to write a dearmoured key for an
+apt `signed-by` source.
+
+Importing a key decides what the machine will trust to install software as root, so URLs must be
+`https` or `file`, and a declared `fingerprint` is verified against the key that actually arrived.
+On mismatch the key is **removed** and the step fails — leaving a key the profile did not vouch for
+would be worse than failing.
+
+---
+
+### `tool-packages` — ecosystem package installers
+
+```yaml
+- type: tool-packages
+  name: rust-tools
+  backend: cargo-binstall  # cargo-binstall | cargo | snap | pipx | uv-tool | npm-global | go-install
+  packages:
+    - eza
+    - ripgrep
+    - "bottom@0.10.2"      # name@version pins
+  continueOnError: true    # default: true
+```
+
+Prefer `cargo-binstall` over `cargo`: it fetches prebuilt binaries instead of compiling from source.
+
+Each package installs in its own process, so one yanked crate does not block the other nineteen —
+the same isolation `packages` already provides. The backend must be on `PATH`; the step fails with
+an actionable message rather than a confusing command-not-found if it is missing.
+
+---
+
+### `zypper-repository` — add an openSUSE repository
+
+```yaml
+- type: zypper-repository
+  name: vscode
+  id: vscode                                            # default: the step name
+  baseUrl: "https://packages.microsoft.com/yumrepos/vscode"
+  repoFile: /etc/zypp/repos.d/vscode.repo               # default: /etc/zypp/repos.d/<name>.repo
+  gpgKeyUrl: "https://packages.microsoft.com/keys/microsoft.asc"
+  enabled: true
+  gpgCheck: true
+  autoRefresh: true
+```
+
+apt, dnf and pacman each had a repository step kind; zypper repositories could previously only be
+declared under `spec.sources`. That asymmetry mattered on openSUSE, where adding a repository next to
+the packages that need it is the ordinary case.
+
+Writes an auditable `.repo` file with `sudo tee`. Pair it with `gpg-key` when the key must be
+imported into the RPM database first. Validation requires HTTPS and refuses `gpgCheck: true` without
+a `gpgKeyUrl`, since a repository decides what the machine will install.

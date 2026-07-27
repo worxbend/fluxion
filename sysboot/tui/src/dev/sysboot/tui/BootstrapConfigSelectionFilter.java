@@ -2,13 +2,19 @@ package dev.sysboot.tui;
 
 import dev.sysboot.core.AptRepositoryModule;
 import dev.sysboot.core.AssertModule;
+import dev.sysboot.core.BinstallerModule;
 import dev.sysboot.core.BootstrapConfig;
 import dev.sysboot.core.BootstrapModule;
 import dev.sysboot.core.CompiledBinaryModule;
 import dev.sysboot.core.DefaultShellModule;
 import dev.sysboot.core.DotbotModule;
+import dev.sysboot.core.FileWriteModule;
 import dev.sysboot.core.FlatpakModule;
 import dev.sysboot.core.FlatpakRemoteModule;
+import dev.sysboot.core.GitConfigModule;
+import dev.sysboot.core.GitRepoModule;
+import dev.sysboot.core.GpgKeyModule;
+import dev.sysboot.core.InterruptModule;
 import dev.sysboot.core.ManualModule;
 import dev.sysboot.core.NerdFontConfig;
 import dev.sysboot.core.NerdFontModule;
@@ -18,11 +24,18 @@ import dev.sysboot.core.PacmanRepositoryModule;
 import dev.sysboot.core.Phase;
 import dev.sysboot.core.PhaseName;
 import dev.sysboot.core.RpmRepositoryModule;
+import dev.sysboot.core.SdkmanModule;
 import dev.sysboot.core.ShellCommandModule;
 import dev.sysboot.core.ShellReloadModule;
 import dev.sysboot.core.ShellScriptModule;
+import dev.sysboot.core.SystemSettingModule;
+import dev.sysboot.core.SystemUpdateModule;
+import dev.sysboot.core.SystemdUnitModule;
+import dev.sysboot.core.ToolPackagesModule;
 import dev.sysboot.core.ToolchainModule;
+import dev.sysboot.core.UserGroupsModule;
 import dev.sysboot.core.ZypperModule;
+import dev.sysboot.core.ZypperRepositoryModule;
 import java.util.List;
 import java.util.Optional;
 import java.util.Set;
@@ -35,7 +48,11 @@ final class BootstrapConfigSelectionFilter {
       throw new IllegalArgumentException("Select at least one job before running.");
     }
     var builder =
-        BootstrapConfig.builder().profileName(config.profileName()).target(config.target());
+        BootstrapConfig.builder()
+            .profileName(config.profileName())
+            .target(config.target())
+            .policy(config.policy())
+            .skippedPlanEntries(config.skippedPlanEntries());
     phases.forEach(builder::addPhase);
     return builder.build();
   }
@@ -83,6 +100,7 @@ final class BootstrapConfigSelectionFilter {
       case AptRepositoryModule aptRepositoryModule -> Optional.of(aptRepositoryModule);
       case RpmRepositoryModule rpmRepositoryModule -> Optional.of(rpmRepositoryModule);
       case PacmanRepositoryModule pacmanRepositoryModule -> Optional.of(pacmanRepositoryModule);
+      case FileWriteModule fileWriteModule -> filterFileWriteModule(fileWriteModule, entries);
       case FlatpakModule flatpakModule -> filterFlatpakModule(flatpakModule, entries);
       case FlatpakRemoteModule flatpakRemoteModule -> Optional.of(flatpakRemoteModule);
       case ShellCommandModule shellCommandModule ->
@@ -97,7 +115,36 @@ final class BootstrapConfigSelectionFilter {
       case ShellReloadModule shellReloadModule -> Optional.of(shellReloadModule);
       case AssertModule assertModule -> Optional.of(assertModule);
       case ManualModule manualModule -> Optional.of(manualModule);
+      case InterruptModule interruptModule -> Optional.of(interruptModule);
+      case SdkmanModule sdkmanModule -> filterSdkmanModule(sdkmanModule, entries);
+      case BinstallerModule binstallerModule -> Optional.of(binstallerModule);
+      case UserGroupsModule userGroupsModule -> Optional.of(userGroupsModule);
+      case ZypperRepositoryModule zypperRepositoryModule -> Optional.of(zypperRepositoryModule);
+      case GitConfigModule gitConfigModule -> Optional.of(gitConfigModule);
+      case GitRepoModule gitRepoModule -> Optional.of(gitRepoModule);
+      case SystemdUnitModule systemdUnitModule -> Optional.of(systemdUnitModule);
+      case SystemSettingModule systemSettingModule -> Optional.of(systemSettingModule);
+      case SystemUpdateModule systemUpdateModule -> Optional.of(systemUpdateModule);
+      case GpgKeyModule gpgKeyModule -> Optional.of(gpgKeyModule);
+      case ToolPackagesModule toolPackagesModule -> Optional.of(toolPackagesModule);
     };
+  }
+
+  private Optional<BootstrapModule> filterSdkmanModule(SdkmanModule module, Set<String> entries) {
+    var packages =
+        module.packages().stream().filter(pkg -> entries.contains(pkg.itemKey())).toList();
+    if (packages.isEmpty()) {
+      return Optional.empty();
+    }
+    return Optional.of(new SdkmanModule(module.name(), packages, module.continueOnError()));
+  }
+
+  private Optional<BootstrapModule> filterFileWriteModule(
+      FileWriteModule module, Set<String> entries) {
+    var items = module.items().stream().filter(item -> entries.contains(item.itemKey())).toList();
+    return items.isEmpty()
+        ? Optional.empty()
+        : Optional.of(new FileWriteModule(module.name(), items, module.continueOnError()));
   }
 
   private Optional<BootstrapModule> filterPackageModule(PackageModule module, Set<String> entries) {
@@ -125,13 +172,13 @@ final class BootstrapConfigSelectionFilter {
 
   private Optional<BootstrapModule> filterShellCommandModule(
       ShellCommandModule module, Set<String> entries) {
-    var commands = module.commands().stream().filter(entries::contains).toList();
-    return commands.isEmpty()
+    var items = module.items().stream().filter(item -> entries.contains(item.name())).toList();
+    return items.isEmpty()
         ? Optional.empty()
         : Optional.of(
             new ShellCommandModule(
                 module.name(),
-                commands,
+                items,
                 module.shell(),
                 module.workingDir(),
                 module.continueOnError(),

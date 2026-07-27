@@ -76,3 +76,6 @@ sysboot/out/
 
 ### Editor workspace files
 .vscode/
+
+# Agent Loop runtime
+.agent-loop/

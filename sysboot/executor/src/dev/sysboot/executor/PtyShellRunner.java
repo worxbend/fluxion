@@ -3,19 +3,25 @@ package dev.sysboot.executor;
 import dev.sysboot.core.ProcessResult;
 import dev.sysboot.core.ShellRunner;
 import dev.sysboot.core.SudoPasswordProvider;
-import java.io.IOException;
+import java.nio.ByteBuffer;
+import java.nio.CharBuffer;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
-import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
-import java.util.concurrent.TimeUnit;
+import java.util.function.Consumer;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+/**
+ * Shell runner that can answer a {@code sudo} password prompt on the child's stdin.
+ *
+ * <p>The password never becomes a {@code String}: it is encoded straight from the caller's {@code
+ * char[]} into a byte array that {@link ProcessExecution} zeroes after writing.
+ */
 public final class PtyShellRunner implements ShellRunner {
 
   private static final Logger log = LoggerFactory.getLogger(PtyShellRunner.class);
@@ -28,35 +34,28 @@ public final class PtyShellRunner implements ShellRunner {
 
   @Override
   public ProcessResult run(List<String> command, Map<String, String> env, Duration timeout) {
-    log.debug("Interactive executing: {}", command.getFirst());
-    Instant start = Instant.now();
-    try {
-      List<String> effectiveCommand = commandWithSudoStdin(command);
-      ProcessBuilder builder = new ProcessBuilder(effectiveCommand);
-      builder.redirectErrorStream(true);
-      builder.environment().putAll(env);
-      Process process = builder.start();
-      writeSudoPasswordIfNeeded(command, process);
-      boolean finished = process.waitFor(timeout.toSeconds(), TimeUnit.SECONDS);
-      String output = new String(process.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
-      if (!finished) {
-        process.destroyForcibly();
-        return new ProcessResult(
-            124, output, "Process timed out", Duration.between(start, Instant.now()));
-      }
-      return new ProcessResult(
-          process.exitValue(), output, "", Duration.between(start, Instant.now()));
-    } catch (IOException e) {
-      throw new ShellExecutionException(
-          "Interactive process failed to start: " + command.getFirst(), e);
-    } catch (InterruptedException e) {
-      Thread.currentThread().interrupt();
-      throw new ShellExecutionException("Interactive process interrupted", e);
-    }
+    return run(command, env, timeout, ExecutionOutput.sink());
+  }
+
+  @Override
+  public ProcessResult run(
+      List<String> command,
+      Map<String, String> env,
+      Duration timeout,
+      Consumer<String> outputSink) {
+    log.debug("Interactive executing: {}", firstArgument(command));
+    ProcessExecution.Request request =
+        ProcessExecution.Request.of(commandWithSudoStdin(command), env, timeout)
+            .withOutputSink(outputSink);
+    return ProcessExecution.run(requiresSudo(command) ? request.withStdin(sudoStdin()) : request);
+  }
+
+  private boolean requiresSudo(List<String> command) {
+    return !command.isEmpty() && "sudo".equals(command.getFirst());
   }
 
   private List<String> commandWithSudoStdin(List<String> command) {
-    if (command.isEmpty() || !"sudo".equals(command.getFirst())) {
+    if (!requiresSudo(command)) {
       return command;
     }
     List<String> updated = new ArrayList<>();
@@ -68,24 +67,34 @@ public final class PtyShellRunner implements ShellRunner {
     return List.copyOf(updated);
   }
 
-  private void writeSudoPasswordIfNeeded(List<String> command, Process process) throws IOException {
-    if (command.isEmpty() || !"sudo".equals(command.getFirst())) {
-      return;
-    }
+  private byte[] sudoStdin() {
     Optional<char[]> password = sudoPasswordProvider.requestPassword("[sudo] password");
     if (password.isEmpty()) {
-      process.getOutputStream().write('\n');
-      process.getOutputStream().flush();
-      return;
+      return new byte[] {'\n'};
     }
-    char[] pwd = password.get();
+    char[] characters = password.orElseThrow();
     try {
-      byte[] bytes = new String(pwd).getBytes(StandardCharsets.UTF_8);
-      process.getOutputStream().write(bytes);
-      process.getOutputStream().write('\n');
-      process.getOutputStream().flush();
+      return encodeWithNewline(characters);
     } finally {
-      Arrays.fill(pwd, '\0');
+      Arrays.fill(characters, '\0');
     }
+  }
+
+  private byte[] encodeWithNewline(char[] characters) {
+    ByteBuffer encoded = StandardCharsets.UTF_8.encode(CharBuffer.wrap(characters));
+    try {
+      byte[] bytes = new byte[encoded.remaining() + 1];
+      encoded.get(bytes, 0, bytes.length - 1);
+      bytes[bytes.length - 1] = '\n';
+      return bytes;
+    } finally {
+      if (encoded.hasArray()) {
+        Arrays.fill(encoded.array(), (byte) 0);
+      }
+    }
+  }
+
+  private String firstArgument(List<String> command) {
+    return command.isEmpty() ? "<empty command>" : command.getFirst();
   }
 }

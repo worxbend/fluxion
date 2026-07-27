@@ -144,7 +144,12 @@ class CliExitCodeTest {
             "apply", "--no-tui", "--dry-run", "-c", config.toString(), "--yes");
 
     assertThat(result.exitCode()).isEqualTo(ExitCode.SUCCESS.value());
-    assertThat(result.stdout()).contains("DRY-RUN").contains("dnf install -y git");
+    assertThat(result.stdout())
+        .contains("Operation: apply")
+        .contains("Mode: dry-run")
+        .contains("DRY-RUN")
+        .contains("dnf install -y git")
+        .contains("Final counts: ok=0 failed=0 skipped=0 dry_run=1 paused=0");
     assertThat(result.stdout()).doesNotContain("OK (");
     assertThat(result.stderr()).isEmpty();
   }
@@ -316,6 +321,19 @@ class CliExitCodeTest {
   }
 
   @Test
+  void plan_whenWorkstationProfileHasSources_showsSourceCommandsBeforePackages() throws Exception {
+    Path config = writeWorkstationProfileWithDnfSource();
+
+    CliResult result = execute("plan", "--show-commands", "-c", config.toString());
+
+    assertThat(result.exitCode()).isEqualTo(ExitCode.SUCCESS.value());
+    assertThat(result.stdout()).contains("Source setup:");
+    assertThat(result.stdout())
+        .containsSubsequence("$ /bin/bash -lc printf %s '[docker]", "$ sudo dnf install -y git");
+    assertThat(result.stderr()).isEmpty();
+  }
+
+  @Test
   void plan_whenFormatTable_outputsRows() throws Exception {
     Path config = writeConfig();
 
@@ -344,6 +362,159 @@ class CliExitCodeTest {
         .contains("tools (packages)")
         .contains("$ sudo dnf install -y git");
     assertThat(result.stderr()).isEmpty();
+  }
+
+  @Test
+  void plan_whenWorkstationProfileEntriesSkipped_outputsReasons() throws Exception {
+    Path config = writeWorkstationProfileWithSkippedPlan();
+
+    CliResult result = execute("plan", "--no-tui", "-c", config.toString());
+
+    assertThat(result.exitCode()).isEqualTo(ExitCode.SUCCESS.value());
+    assertThat(result.stdout())
+        .contains("Execution plan for: workstation-skip-test")
+        .contains("git")
+        .contains("Skipped WorkstationProfile entries:")
+        .contains("arch-only")
+        .contains("when.distribution expected one of [no-such-os]");
+    assertThat(result.stderr()).isEmpty();
+  }
+
+  @Test
+  void dryRunAndApplyNoTuiDryRun_reportSameWorkstationProfileSelection() throws Exception {
+    Path config = writeWorkstationProfileWithSkippedPlan();
+
+    CliResult plan = execute("plan", "--no-tui", "-c", config.toString());
+    CliResult dryRun = executeCapturingSystemOut("dry-run", "--no-tui", "-c", config.toString());
+    CliResult apply =
+        executeCapturingSystemOut(
+            "apply", "--no-tui", "--dry-run", "-c", config.toString(), "--yes");
+
+    assertThat(plan.exitCode()).isEqualTo(ExitCode.SUCCESS.value());
+    assertThat(dryRun.exitCode()).isEqualTo(ExitCode.SUCCESS.value());
+    assertThat(apply.exitCode()).isEqualTo(ExitCode.SUCCESS.value());
+    assertWorkstationSelection(plan.stdout(), "plan");
+    assertWorkstationSelection(dryRun.stdout(), "dry-run");
+    assertWorkstationSelection(apply.stdout(), "apply");
+    assertThat(dryRun.stdout())
+        .contains("SKIPPED")
+        .contains("arch-only")
+        .contains("when.distribution expected one of [no-such-os]")
+        .contains("DRY-RUN")
+        .contains("git");
+    assertThat(apply.stdout())
+        .contains("SKIPPED")
+        .contains("arch-only")
+        .contains("when.distribution expected one of [no-such-os]")
+        .contains("DRY-RUN")
+        .contains("git");
+    assertThat(plan.stderr()).isEmpty();
+    assertThat(dryRun.stderr()).isEmpty();
+    assertThat(apply.stderr()).isEmpty();
+  }
+
+  @Test
+  void plainReporting_redactsSensitiveCommandAndFailureText() throws Exception {
+    Path config = writeWorkstationProfileWithSensitiveCommand();
+    String originalHome = System.getProperty("user.home");
+    System.setProperty("user.home", tempDir.toString());
+    try {
+      CliResult plan = execute("plan", "--show-commands", "--no-tui", "-c", config.toString());
+      CliResult apply = executeCapturingSystemOut("apply", "--no-tui", "-c", config.toString());
+
+      assertThat(plan.exitCode()).isEqualTo(ExitCode.SUCCESS.value());
+      assertThat(plan.stdout()).contains("token=<redacted>").doesNotContain("super-secret-token");
+      assertThat(apply.exitCode()).isEqualTo(ExitCode.SUCCESS.value());
+      assertThat(apply.stdout())
+          .contains("FAILED")
+          .contains("token=<redacted>")
+          .contains("Final counts: ok=0 failed=1 skipped=0 dry_run=0 paused=0")
+          .doesNotContain("super-secret-token");
+      assertThat(plan.stderr()).isEmpty();
+      assertThat(apply.stderr()).isEmpty();
+    } finally {
+      System.setProperty("user.home", originalHome);
+    }
+  }
+
+  @Test
+  void dryRun_whenWorkstationProfileInterrupt_doesNotCreateStateFile() throws Exception {
+    Path config = writeWorkstationProfileWithInterrupt("next");
+    String originalHome = System.getProperty("user.home");
+    System.setProperty("user.home", tempDir.toString());
+    try {
+      CliResult result = executeCapturingSystemOut("dry-run", "--no-tui", "-c", config.toString());
+
+      assertThat(result.exitCode()).isEqualTo(ExitCode.SUCCESS.value());
+      assertThat(result.stdout())
+          .contains("DRY-RUN")
+          .contains("state-write")
+          .contains("nextPlanEntry=after-pause");
+      assertThat(result.stderr()).isEmpty();
+      assertThat(new JsonStateRepository(new ObjectMapper()).path("default")).doesNotExist();
+    } finally {
+      System.setProperty("user.home", originalHome);
+    }
+  }
+
+  @Test
+  void apply_whenWorkstationProfileInterrupt_writesStateAndReturnsPauseCode() throws Exception {
+    Path config = writeWorkstationProfileWithInterrupt("next");
+    String originalHome = System.getProperty("user.home");
+    System.setProperty("user.home", tempDir.toString());
+    try {
+      CliResult result =
+          executeCapturingSystemOut("apply", "--no-tui", "-c", config.toString(), "--yes");
+
+      assertThat(result.exitCode()).isEqualTo(ExitCode.PAUSED.value());
+      assertThat(result.stdout())
+          .contains("PAUSED")
+          .contains("Log out before continuing.")
+          .contains("Run fluxion apply again.")
+          .contains(".local/share/fluxion/default.state.json")
+          .contains("Next plan entry: after-pause")
+          .contains("Resume with: fluxion apply --no-tui")
+          .contains("--from-phase manifest-plan");
+      assertThat(result.stderr()).contains("Error: Log out before continuing.");
+      BootstrapState state =
+          new JsonStateRepository(new ObjectMapper()).load("default").orElseThrow();
+      assertThat(state.nextPlanEntry()).contains("after-pause");
+      assertThat(state.manifestIdentity()).contains("workstation-interrupt-test");
+      assertThat(state.manifestFingerprint()).isPresent();
+      assertThat(state.planEntryEntries())
+          .extracting(entry -> entry.entryName() + ":" + entry.status())
+          .containsExactly("pause-login:COMPLETED");
+    } finally {
+      System.setProperty("user.home", originalHome);
+    }
+  }
+
+  @Test
+  void apply_whenStateManifestFingerprintDiffers_rejectsUntilResetRequested() throws Exception {
+    Path firstConfig = writeWorkstationProfileWithInterrupt("next");
+    Path changedConfig = writeWorkstationProfileWithInterrupt("current");
+    String originalHome = System.getProperty("user.home");
+    System.setProperty("user.home", tempDir.toString());
+    try {
+      CliResult first =
+          executeCapturingSystemOut("apply", "--no-tui", "-c", firstConfig.toString(), "--yes");
+      CliResult stale =
+          executeCapturingSystemOut("apply", "--no-tui", "-c", changedConfig.toString(), "--yes");
+      CliResult reset =
+          executeCapturingSystemOut(
+              "apply", "--no-tui", "--reset-state", "-c", changedConfig.toString(), "--yes");
+
+      assertThat(first.exitCode()).isEqualTo(ExitCode.PAUSED.value());
+      assertThat(stale.exitCode()).isEqualTo(ExitCode.INVALID_INPUT.value());
+      assertThat(stale.stderr())
+          .contains("Saved state is stale")
+          .contains("manifest fingerprint")
+          .contains("--reset-state");
+      assertThat(reset.exitCode()).isEqualTo(ExitCode.PAUSED.value());
+      assertThat(reset.stdout()).contains("Next plan entry: pause-login");
+    } finally {
+      System.setProperty("user.home", originalHome);
+    }
   }
 
   @Test
@@ -812,7 +983,7 @@ class CliExitCodeTest {
     CliResult result = execute("doctor", "--skip-network", "-c", config.toString());
 
     assertThat(result.exitCode()).isEqualTo(ExitCode.EXTERNAL_DEPENDENCY_ERROR.value());
-    assertThat(result.stdout()).contains("[fail] binary artifact").contains("rg.zip");
+    assertThat(result.stdout()).contains("[fail] binary artifact").contains("rg.7z");
     assertThat(result.stderr()).contains("Doctor found");
   }
 
@@ -879,6 +1050,19 @@ class CliExitCodeTest {
     } finally {
       System.setOut(originalOut);
     }
+  }
+
+  private void assertWorkstationSelection(String output, String operation) {
+    assertThat(output)
+        .contains("Operation: " + operation)
+        .contains("Manifest/Profile: workstation-skip-test")
+        .contains("Host: os=linux")
+        .contains("State: ")
+        .contains("Selected WorkstationProfile entries:")
+        .contains("selected type=packages items=git")
+        .contains("Skipped WorkstationProfile entries:")
+        .contains("arch-only type=dnf-packages")
+        .contains("Planned counts: source_setups=0 selected=1 skipped=1 items=1");
   }
 
   private Path writeConfig() throws IOException {
@@ -950,6 +1134,121 @@ class CliExitCodeTest {
     return config;
   }
 
+  private Path writeWorkstationProfileWithSkippedPlan() throws IOException {
+    Path config = tempDir.resolve("workstation-skipped.yaml");
+    Files.writeString(
+        config,
+        """
+        apiVersion: initkit.io/v1alpha1
+        kind: WorkstationProfile
+        metadata:
+          name: workstation-skip-test
+        spec:
+          target:
+            os:
+              distribution: fedora
+              release: "44"
+          plan:
+            - name: selected
+              kind: dnf-packages
+              spec:
+                packages: [git]
+            - name: arch-only
+              kind: dnf-packages
+              when:
+                distribution: no-such-os
+              spec:
+                packages: [curl]
+        """);
+    return config;
+  }
+
+  private Path writeWorkstationProfileWithSensitiveCommand() throws IOException {
+    Path config = tempDir.resolve("workstation-sensitive.yaml");
+    Files.writeString(
+        config,
+        """
+        apiVersion: initkit.io/v1alpha1
+        kind: WorkstationProfile
+        metadata:
+          name: workstation-sensitive-test
+        spec:
+          target:
+            os:
+              distribution: fedora
+              release: "44"
+          plan:
+            - name: sensitive-command
+              kind: commands
+              spec:
+                commands:
+                  - ["/bin/bash", "-lc", "printf 'token=super-secret-token' >&2; exit 7"]
+        """);
+    return config;
+  }
+
+  private Path writeWorkstationProfileWithDnfSource() throws IOException {
+    Path config = tempDir.resolve("workstation-source.yaml");
+    Files.writeString(
+        config,
+        """
+        apiVersion: initkit.io/v1alpha1
+        kind: WorkstationProfile
+        metadata:
+          name: workstation-source-test
+        spec:
+          target:
+            os:
+              distribution: fedora
+              release: "44"
+          sources:
+            dnf:
+              - name: docker
+                spec:
+                  id: docker
+                  baseUrl: https://download.docker.com/linux/fedora/$releasever/stable
+                  gpgCheck: false
+          plan:
+            - name: tools
+              kind: dnf-packages
+              spec:
+                packages: [git]
+        """);
+    return config;
+  }
+
+  private Path writeWorkstationProfileWithInterrupt(String resumeFrom) throws IOException {
+    Path config = tempDir.resolve("workstation-interrupt-" + resumeFrom + ".yaml");
+    Files.writeString(
+        config,
+        """
+        apiVersion: initkit.io/v1alpha1
+        kind: WorkstationProfile
+        metadata:
+          name: workstation-interrupt-test
+        spec:
+          target:
+            os:
+              distribution: fedora
+              release: "44"
+          plan:
+            - name: pause-login
+              kind: interrupt
+              spec:
+                message: Log out before continuing.
+                instructions:
+                  - Run fluxion apply again.
+                resumeFrom: %s
+            - name: after-pause
+              kind: commands
+              spec:
+                commands:
+                  - ["echo", "after"]
+        """
+            .formatted(resumeFrom));
+    return config;
+  }
+
   private Path writeBinaryWithoutChecksumConfig() throws IOException {
     Path config = tempDir.resolve("binary-profile.yaml");
     Files.writeString(
@@ -1010,7 +1309,7 @@ class CliExitCodeTest {
               - type: compiled-binary
                 name: ripgrep
                 binaryName: rg
-                url: https://example.test/rg.zip
+                url: https://example.test/rg.7z
                 installPath: /usr/local/bin/rg
         """);
     return config;

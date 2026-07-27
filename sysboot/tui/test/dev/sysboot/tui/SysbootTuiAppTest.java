@@ -43,7 +43,7 @@ class SysbootTuiAppTest {
         .contains("git")
         .contains("RUNNING")
         .contains("Bootstrap Complete")
-        .contains("Succeeded: 1");
+        .contains("Completed: 1");
   }
 
   private BootstrapConfig config() {
