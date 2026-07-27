@@ -2,31 +2,23 @@ package dev.sysboot.executor;
 
 import dev.sysboot.core.AptRepositoryModule;
 import dev.sysboot.core.AssertModule;
-import dev.sysboot.core.BinstallerModule;
 import dev.sysboot.core.BootstrapConfig;
 import dev.sysboot.core.BootstrapModule;
 import dev.sysboot.core.BootstrapOrchestrator;
 import dev.sysboot.core.BootstrapState;
 import dev.sysboot.core.CancellationSignal;
 import dev.sysboot.core.CompiledBinaryModule;
-import dev.sysboot.core.DefaultShellModule;
-import dev.sysboot.core.DotbotModule;
 import dev.sysboot.core.ExecutionEvent;
 import dev.sysboot.core.ExecutionEventListener;
 import dev.sysboot.core.ExecutionPausedException;
 import dev.sysboot.core.FileWriteModule;
 import dev.sysboot.core.FlatpakModule;
 import dev.sysboot.core.FlatpakRemoteModule;
-import dev.sysboot.core.GitConfigModule;
-import dev.sysboot.core.GitRepoModule;
-import dev.sysboot.core.GpgKeyModule;
 import dev.sysboot.core.InterruptModule;
 import dev.sysboot.core.InterruptResumeMode;
 import dev.sysboot.core.ItemType;
 import dev.sysboot.core.ManualModule;
 import dev.sysboot.core.ModuleName;
-import dev.sysboot.core.NerdFontModule;
-import dev.sysboot.core.OhMyZshModule;
 import dev.sysboot.core.PackageModule;
 import dev.sysboot.core.PacmanRepositoryModule;
 import dev.sysboot.core.Phase;
@@ -40,7 +32,6 @@ import dev.sysboot.core.RestartPolicy;
 import dev.sysboot.core.RpmRepositoryModule;
 import dev.sysboot.core.SdkmanModule;
 import dev.sysboot.core.ShellCommandModule;
-import dev.sysboot.core.ShellReloadModule;
 import dev.sysboot.core.ShellRunner;
 import dev.sysboot.core.ShellScriptModule;
 import dev.sysboot.core.SkipDecision;
@@ -49,11 +40,6 @@ import dev.sysboot.core.SourceSetup;
 import dev.sysboot.core.StateEntry;
 import dev.sysboot.core.StateRepository;
 import dev.sysboot.core.StepResult;
-import dev.sysboot.core.SystemSettingModule;
-import dev.sysboot.core.SystemUpdateModule;
-import dev.sysboot.core.SystemdUnitModule;
-import dev.sysboot.core.ToolPackagesModule;
-import dev.sysboot.core.ToolchainModule;
 import dev.sysboot.core.UserGroupsModule;
 import dev.sysboot.core.ZypperModule;
 import java.time.Duration;
@@ -362,6 +348,16 @@ public final class BootstrapOrchestratorImpl implements BootstrapOrchestrator {
               module, listener, new ModuleExecutionContext(skipEvaluator, this::recordSuccess));
     }
     PhaseExecutors executors = phaseExecutors.forRunner(phaseRunner);
+    Optional<StepBinding> binding = StepBinding.find(module);
+    if (binding.isPresent()) {
+      StepBinding step = binding.orElseThrow();
+      return executeItem(
+          module.name(),
+          step.itemKey(module),
+          step.itemType(),
+          () -> step.execute(module, executors),
+          listener);
+    }
     return switch (module) {
       case AptRepositoryModule arm -> executeAptRepositoryModule(arm, listener);
       case RpmRepositoryModule rrm -> executeRpmRepositoryModule(rrm, listener);
@@ -371,48 +367,6 @@ public final class BootstrapOrchestratorImpl implements BootstrapOrchestrator {
       case FlatpakRemoteModule frm -> executeFlatpakRemoteModule(frm, listener);
       case ShellScriptModule sm -> executeShellScript(sm, listener, executors);
       case CompiledBinaryModule bm -> executeBinaryInstall(bm, listener);
-      case DotbotModule dm ->
-          executeItem(
-              dm.name(),
-              dm.name().value(),
-              ItemType.DOTBOT,
-              () -> executors.dotbot().execute(dm),
-              listener);
-      case DefaultShellModule dsm ->
-          executeItem(
-              dsm.name(),
-              dsm.name().value(),
-              ItemType.DEFAULT_SHELL,
-              () -> executors.defaultShell().execute(dsm),
-              listener);
-      case OhMyZshModule omz ->
-          executeItem(
-              omz.name(),
-              omz.name().value(),
-              ItemType.OH_MY_ZSH,
-              () -> executors.ohMyZsh().execute(omz),
-              listener);
-      case ToolchainModule tm ->
-          executeItem(
-              tm.name(),
-              tm.name().value(),
-              ItemType.TOOLCHAIN,
-              () -> executors.toolchain().execute(tm),
-              listener);
-      case NerdFontModule nfm ->
-          executeItem(
-              nfm.name(),
-              nfm.name().value(),
-              ItemType.NERD_FONT,
-              () -> executors.nerdFont().execute(nfm),
-              listener);
-      case ShellReloadModule srm ->
-          executeItem(
-              srm.name(),
-              srm.name().value(),
-              ItemType.SHELL_RELOAD,
-              () -> executors.shellReload().execute(srm),
-              listener);
       case ShellCommandModule sc ->
           executeItem(
               sc.name(),
@@ -420,69 +374,16 @@ public final class BootstrapOrchestratorImpl implements BootstrapOrchestrator {
               ItemType.SHELL_COMMAND,
               () -> executors.shellCommand().execute(sc),
               listener);
-      case BinstallerModule bsm ->
-          executeItem(
-              bsm.name(),
-              bsm.itemKey(),
-              ItemType.BINSTALLER_PROFILE,
-              () -> executors.binstaller().execute(bsm),
-              listener);
       case UserGroupsModule ugm -> executeUserGroups(ugm, listener, executors);
-      case GitConfigModule gcm ->
-          executeItem(
-              gcm.name(),
-              gcm.name().value(),
-              ItemType.GIT_CONFIG,
-              () -> executors.gitConfig().execute(gcm),
-              listener);
-      case GitRepoModule grm ->
-          executeItem(
-              grm.name(),
-              grm.name().value(),
-              ItemType.GIT_REPO,
-              () -> executors.gitRepo().execute(grm),
-              listener);
-      case SystemdUnitModule sum ->
-          executeItem(
-              sum.name(),
-              sum.name().value(),
-              ItemType.SYSTEMD_UNIT,
-              () -> executors.systemdUnit().execute(sum),
-              listener);
-      case SystemSettingModule ssm ->
-          executeItem(
-              ssm.name(),
-              ssm.name().value(),
-              ItemType.SYSTEM_SETTING,
-              () -> executors.systemSetting().execute(ssm),
-              listener);
-      case SystemUpdateModule sup ->
-          executeItem(
-              sup.name(),
-              sup.itemKey(),
-              ItemType.SYSTEM_UPDATE,
-              () -> executors.systemUpdate().execute(sup),
-              listener);
-      case GpgKeyModule gkm ->
-          executeItem(
-              gkm.name(),
-              gkm.name().value(),
-              ItemType.GPG_KEY,
-              () -> executors.gpgKey().execute(gkm),
-              listener);
-      case ToolPackagesModule tpm ->
-          executeItem(
-              tpm.name(),
-              tpm.name().value(),
-              ItemType.TOOL_PACKAGE,
-              () -> executors.toolPackages().execute(tpm),
-              listener);
       case AssertModule am -> executeAssert(am, listener, phaseRunner);
       case ManualModule mm -> executeManual(mm, listener, phaseRunner);
       case InterruptModule ignored -> throw new IllegalStateException("Interrupt handled by phase");
       case SdkmanModule ignored -> throw new IllegalStateException("SDKMAN executor missing");
       case PackageModule ignored -> throw new IllegalStateException("Package executor missing");
       case ZypperModule ignored -> throw new IllegalStateException("Zypper executor missing");
+      // Everything else is a StepBinding row, handled above.
+      default ->
+          throw new IllegalStateException("No executor for " + module.getClass().getSimpleName());
     };
   }
 
@@ -745,6 +646,16 @@ public final class BootstrapOrchestratorImpl implements BootstrapOrchestrator {
       moduleExecutor.orElseThrow().dryRun(module, listener);
       return;
     }
+    Optional<StepBinding> binding = StepBinding.find(module);
+    if (binding.isPresent()) {
+      StepBinding step = binding.orElseThrow();
+      emitDryRun(
+          module.name(),
+          step.itemKey(module),
+          step.commandPreview(module, primaryExecutors()),
+          listener);
+      return;
+    }
     switch (module) {
       case AptRepositoryModule arm ->
           emitDryRun(
@@ -795,35 +706,6 @@ public final class BootstrapOrchestratorImpl implements BootstrapOrchestrator {
                           listener));
       case CompiledBinaryModule bm ->
           emitDryRun(bm.name(), bm.binaryName(), binaryInstaller.dryRunCommand(bm), listener);
-      case DotbotModule dm ->
-          emitDryRun(
-              dm.name(),
-              dm.config().toString(),
-              primaryExecutors().dotbot().commandPreview(dm),
-              listener);
-      case DefaultShellModule dsm ->
-          emitDryRun(
-              dsm.name(),
-              dsm.shellPath().toString(),
-              List.of("chsh", "-s", dsm.shellPath().toString()),
-              listener);
-      case OhMyZshModule omz ->
-          emitDryRun(omz.name(), "oh-my-zsh", List.of("sh", "<omz-installer>"), listener);
-      case ToolchainModule tm ->
-          emitDryRun(
-              tm.name(), tm.kind().name().toLowerCase(), List.of("sh", "<installer>"), listener);
-      case NerdFontModule nfm ->
-          emitDryRun(
-              nfm.name(),
-              "nerd-fonts",
-              primaryExecutors().nerdFont().commandPreview(nfm),
-              listener);
-      case ShellReloadModule srm ->
-          emitDryRun(
-              srm.name(),
-              "shell-reload",
-              List.of(srm.shell().binaryName(), "--login", "-i", "-c", "exit"),
-              listener);
       case ShellCommandModule sc ->
           sc.items()
               .forEach(
@@ -833,59 +715,11 @@ public final class BootstrapOrchestratorImpl implements BootstrapOrchestrator {
                           item.name(),
                           primaryExecutors().shellCommand().commandPreview(item),
                           listener));
-      case BinstallerModule bsm ->
-          emitDryRun(
-              bsm.name(),
-              bsm.itemKey(),
-              primaryExecutors().binstaller().commandPreview(bsm),
-              listener);
       case UserGroupsModule ugm ->
           emitDryRun(
               ugm.name(),
               ugm.itemKey(ugm.groups().getFirst()),
               primaryExecutors().userGroups().commandPreview(ugm),
-              listener);
-      case GitConfigModule gcm ->
-          emitDryRun(
-              gcm.name(),
-              gcm.name().value(),
-              primaryExecutors().gitConfig().commandPreview(gcm),
-              listener);
-      case GitRepoModule grm ->
-          emitDryRun(
-              grm.name(),
-              grm.name().value(),
-              primaryExecutors().gitRepo().commandPreview(grm),
-              listener);
-      case SystemdUnitModule sum ->
-          emitDryRun(
-              sum.name(),
-              sum.name().value(),
-              primaryExecutors().systemdUnit().commandPreview(sum),
-              listener);
-      case SystemSettingModule ssm ->
-          emitDryRun(
-              ssm.name(),
-              ssm.name().value(),
-              primaryExecutors().systemSetting().commandPreview(ssm),
-              listener);
-      case SystemUpdateModule sup ->
-          emitDryRun(
-              sup.name(),
-              sup.itemKey(),
-              primaryExecutors().systemUpdate().commandPreview(sup),
-              listener);
-      case GpgKeyModule gkm ->
-          emitDryRun(
-              gkm.name(),
-              gkm.name().value(),
-              primaryExecutors().gpgKey().commandPreview(gkm),
-              listener);
-      case ToolPackagesModule tpm ->
-          emitDryRun(
-              tpm.name(),
-              tpm.name().value(),
-              primaryExecutors().toolPackages().commandPreview(tpm),
               listener);
       case AssertModule am ->
           emitDryRun(
@@ -896,6 +730,9 @@ public final class BootstrapOrchestratorImpl implements BootstrapOrchestrator {
       case SdkmanModule ignored -> throw new IllegalStateException("SDKMAN executor missing");
       case PackageModule ignored -> throw new IllegalStateException("Package executor missing");
       case ZypperModule ignored -> throw new IllegalStateException("Zypper executor missing");
+      // Everything else is a StepBinding row, handled above.
+      default ->
+          throw new IllegalStateException("No preview for " + module.getClass().getSimpleName());
     }
   }
 
