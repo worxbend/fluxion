@@ -145,7 +145,10 @@ class SudoSessionTest {
   }
 
   @Test
-  void aDeclinedPromptIsNotRetried() {
+  void aDeclinedPromptGivesUpOnThisStepButNotOnTheWholeRun() {
+    // The provider returns empty for an explicit cancel, a prompt timeout, and a closed console
+    // alike. Latching on the first made every later privileged step fail without ever asking again,
+    // which is indistinguishable from Fluxion being broken.
     var prompts = new AtomicInteger();
     SudoPasswordProvider declining =
         prompt -> {
@@ -158,7 +161,7 @@ class SudoSessionTest {
       assertThat(session.requestPassword("p")).isEmpty();
     }
 
-    assertThat(prompts).hasValue(1);
+    assertThat(prompts).as("a later step gets its own chance to ask").hasValue(2);
   }
 
   @Test

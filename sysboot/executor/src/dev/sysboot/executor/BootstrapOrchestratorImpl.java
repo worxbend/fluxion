@@ -290,9 +290,12 @@ public final class BootstrapOrchestratorImpl implements BootstrapOrchestrator {
           // exactly the set of long-running steps the feature exists for. executeItem rebinds a
           // narrower sink for the paths that know their item key.
           moduleFailed =
-              ExecutionOutput.withSink(
-                  outputSink(module.name(), module.name().value(), listener),
-                  () -> executeModule(module, listener, phaseRunner));
+              ExecutionCancellation.with(
+                  cancellation,
+                  () ->
+                      ExecutionOutput.withSink(
+                          outputSink(module.name(), module.name().value(), listener),
+                          () -> executeModule(module, listener, phaseRunner)));
         }
       } finally {
         listener.onEvent(ExecutionEvent.moduleCompleted(module.name()));
@@ -497,6 +500,9 @@ public final class BootstrapOrchestratorImpl implements BootstrapOrchestrator {
   private boolean executeFlatpakModule(FlatpakModule module, ExecutionEventListener listener) {
     boolean anyFailed = false;
     for (String appId : module.appIds()) {
+      if (ExecutionCancellation.isCancelled()) {
+        break;
+      }
       listener.onEvent(ExecutionEvent.itemStarted(module.name(), appId));
       SkipDecision decision = skipEvaluator.evaluate(appId, ItemType.FLATPAK);
       if (decision instanceof SkipDecision.Skip skip) {
@@ -546,6 +552,9 @@ public final class BootstrapOrchestratorImpl implements BootstrapOrchestrator {
   private boolean executeFileWriteModule(FileWriteModule module, ExecutionEventListener listener) {
     boolean anyFailed = false;
     for (var item : module.items()) {
+      if (ExecutionCancellation.isCancelled()) {
+        break;
+      }
       boolean failed =
           executeItem(
               module.name(),
@@ -1046,13 +1055,23 @@ public final class BootstrapOrchestratorImpl implements BootstrapOrchestrator {
     return module.message() + resumeTarget + " " + String.join(" ", module.instructions());
   }
 
+  /**
+   * Cancellation landed exactly on a phase boundary.
+   *
+   * <p>Recording BLOCKED here made `status` and `doctor` report a dependency failure that never
+   * happened. The phase simply has not started, so the only thing worth writing is where to resume.
+   */
   private void recordCancellation(Phase phase, ExecutionEventListener listener) {
-    recordPhaseState(
-        phase.name(),
-        PhaseStatus.BLOCKED,
-        fingerprintCalculator.fingerprint(phase),
-        Optional.of("Cancelled before this phase started"));
-    listener.onEvent(ExecutionEvent.cancelled(phase.name(), Optional.empty()));
+    Optional<String> firstEntry =
+        phase.modules().stream().findFirst().map(module -> module.name().value());
+    stateRepository.ifPresent(
+        repo -> {
+          var current = repo.load(profileName).orElse(BootstrapState.empty(profileName, "1.0.0"));
+          var updated = current.withNextPlanEntry(firstEntry);
+          repo.save(updated);
+          skipEvaluator.refreshState(updated);
+        });
+    listener.onEvent(ExecutionEvent.cancelled(phase.name(), firstEntry));
   }
 
   private void recordCancellation(

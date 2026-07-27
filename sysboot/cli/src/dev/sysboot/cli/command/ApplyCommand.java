@@ -277,6 +277,13 @@ public final class ApplyCommand implements Runnable {
   }
 
   private Optional<String> resumeCommandFor(ExecutionEvent event, BootstrapConfig config) {
+    // A cancelled run stopped *inside* its phase, so resuming must re-enter that same phase.
+    // Falling through to nextPhaseAfter silently skipped every remaining module of it.
+    if (event.kind() == dev.sysboot.core.EventKind.CANCELLED) {
+      return Optional.of(
+          ResumeCommandFormatter.command(
+              options.resolvedConfigFile(), profile, event.phaseContext()));
+    }
     Optional<String> phase =
         event
             .result()

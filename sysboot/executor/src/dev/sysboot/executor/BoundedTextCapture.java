@@ -38,6 +38,13 @@ final class BoundedTextCapture {
     int headRoom = headLimit - head.length();
     if (headRoom > 0) {
       int copied = Math.min(headRoom, remaining);
+      // Never split a surrogate pair across the head/tail boundary: half a pair is not a character
+      // and turns valid output into replacement glyphs.
+      if (copied > 0
+          && copied < remaining
+          && Character.isHighSurrogate(buffer[index + copied - 1])) {
+        copied--;
+      }
       head.append(buffer, index, copied);
       index += copied;
       remaining -= copied;
@@ -53,8 +60,18 @@ final class BoundedTextCapture {
       tailLength++;
       return;
     }
-    tail[tailStart] = value;
+    evictOne();
+    // Evicting a high surrogate would leave its low half orphaned at the front of the tail.
+    if (tailLength > 0 && Character.isLowSurrogate(tail[tailStart])) {
+      evictOne();
+    }
+    tail[(tailStart + tailLength) % tail.length] = value;
+    tailLength++;
+  }
+
+  private void evictOne() {
     tailStart = (tailStart + 1) % tail.length;
+    tailLength--;
     omitted++;
   }
 

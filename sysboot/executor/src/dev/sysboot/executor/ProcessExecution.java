@@ -75,9 +75,12 @@ final class ProcessExecution {
     Process process = start(request);
     var capture = new BoundedTextCapture();
     Thread pump = startOutputPump(process, capture, request.outputSink());
-    writeStdin(process, request.stdin());
+    // Written on its own thread: a payload larger than the pipe buffer would otherwise block here,
+    // before awaitExit has armed the timeout, and hang forever.
+    Thread stdin = startStdinWriter(process, request.stdin());
     try {
       boolean exited = awaitExit(process, request.timeout());
+      joinFor(stdin, DRAIN_GRACE);
       joinPump(pump, process);
       Duration elapsed = Duration.between(start, Instant.now());
       if (!exited) {
@@ -90,14 +93,43 @@ final class ProcessExecution {
       return new ProcessResult(process.exitValue(), capture.toString(), "", elapsed);
     } catch (InterruptedException e) {
       terminate(process);
+      joinFor(stdin, DRAIN_GRACE);
       joinPump(pump, process);
       Thread.currentThread().interrupt();
       throw new ShellExecutionException("Process interrupted: " + firstArgument(request), e);
     }
   }
 
+  /**
+   * Path to {@code setsid}, when it is available.
+   *
+   * <p>Children started with it get their own session, so a Ctrl-C at the terminal -- which signals
+   * the whole foreground process group -- reaches Fluxion but not the package manager it is
+   * driving. Without this, "the item in flight is allowed to finish" only holds for a signal sent
+   * to the JVM alone, and an interrupted `dnf upgrade` would take the SIGINT directly.
+   */
+  private static final Optional<String> SETSID = locateSetsid();
+
+  private static Optional<String> locateSetsid() {
+    return java.util.stream.Stream.of("/usr/bin/setsid", "/bin/setsid")
+        .filter(path -> java.nio.file.Files.isExecutable(Path.of(path)))
+        .findFirst();
+  }
+
+  private static List<String> detached(List<String> command) {
+    if (SETSID.isEmpty() || command.isEmpty() || command.getFirst().endsWith("setsid")) {
+      return command;
+    }
+    // -w propagates the child's exit status in the rare case setsid has to fork rather than exec.
+    var detached = new java.util.ArrayList<String>(command.size() + 2);
+    detached.add(SETSID.orElseThrow());
+    detached.add("-w");
+    detached.addAll(command);
+    return List.copyOf(detached);
+  }
+
   private static Process start(Request request) {
-    var builder = new ProcessBuilder(request.command());
+    var builder = new ProcessBuilder(detached(request.command()));
     builder.redirectErrorStream(true);
     builder.environment().putAll(request.environment());
     request.workingDirectory().ifPresent(dir -> builder.directory(dir.toFile()));
@@ -164,6 +196,10 @@ final class ProcessExecution {
     }
   }
 
+  private static Thread startStdinWriter(Process process, Optional<byte[]> stdin) {
+    return Thread.ofVirtual().name("fluxion-process-stdin").start(() -> writeStdin(process, stdin));
+  }
+
   private static void writeStdin(Process process, Optional<byte[]> stdin) {
     try (OutputStream out = process.getOutputStream()) {
       if (stdin.isPresent()) {
@@ -188,7 +224,11 @@ final class ProcessExecution {
       terminate(process);
       return false;
     } catch (ExecutionException e) {
-      return !process.isAlive();
+      if (process.isAlive()) {
+        terminate(process);
+        return false;
+      }
+      return true;
     }
   }
 

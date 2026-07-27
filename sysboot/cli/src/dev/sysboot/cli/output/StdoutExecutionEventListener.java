@@ -15,7 +15,7 @@ public final class StdoutExecutionEventListener implements ExecutionEventListene
   private final Supplier<Optional<Path>> statePathProvider;
   private final CommandTextRedactor redactor;
   private boolean streamOutput;
-  private boolean itemLineOpen;
+  private volatile boolean itemLineOpen;
   private int succeeded;
   private int failed;
   private int skipped;
@@ -51,7 +51,7 @@ public final class StdoutExecutionEventListener implements ExecutionEventListene
   }
 
   @Override
-  public void onEvent(ExecutionEvent event) {
+  public synchronized void onEvent(ExecutionEvent event) {
     switch (event.kind()) {
       case PHASE_STARTED ->
           System.out.println(

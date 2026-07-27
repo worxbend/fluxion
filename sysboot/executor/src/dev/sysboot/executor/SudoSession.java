@@ -90,7 +90,9 @@ public final class SudoSession implements SudoPasswordProvider, AutoCloseable {
     for (int attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
       Optional<char[]> supplied = delegate.requestPassword(promptFor(prompt, attempt));
       if (supplied.isEmpty()) {
-        declined = true;
+        // The provider returns empty for an explicit cancel, a prompt timeout, and a closed
+        // console alike. Latching on the first of those made every later privileged step fail
+        // without ever asking again, so give up on this step but let the next one try.
         return null;
       }
       char[] candidate = supplied.orElseThrow();
