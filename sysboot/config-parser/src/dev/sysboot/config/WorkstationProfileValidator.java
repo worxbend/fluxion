@@ -27,68 +27,6 @@ final class WorkstationProfileValidator {
   private static final Pattern SHA_256_HEX = Pattern.compile("[0-9a-fA-F]{64}");
   private static final Pattern FILE_MODE = Pattern.compile("[0-7]{3,4}");
   private static final Pattern SDKMAN_VALUE = Pattern.compile("[A-Za-z0-9._+-]+");
-  private static final Set<String> PACKAGE_PLAN_KINDS =
-      Set.of(
-          "apt-packages",
-          "aur-packages",
-          "cargo-packages",
-          "dnf-packages",
-          "pacman-packages",
-          "zypper-packages");
-  private static final Set<String> APP_PLAN_KINDS = Set.of("flatpak-packages");
-  private static final Set<String> INSTALLER_PLAN_KINDS =
-      Set.of(
-          "binary-downloads",
-          "shell-scripts",
-          "commands",
-          "file-writes",
-          "nerd-fonts",
-          "dotfiles-apply",
-          "binstaller-profile",
-          "user-groups",
-          "git-config",
-          "git-repo",
-          "systemd-unit",
-          "system-setting",
-          "system-update",
-          "gpg-key",
-          "tool-packages",
-          "zypper-repository");
-  private static final Map<String, Set<String>> SUPPORTED_PACKAGE_ACTIONS =
-      Map.of(
-          "apt-packages", Set.of("update", "upgrade", "dist-upgrade"),
-          "dnf-packages", Set.of("check-update", "upgrade", "swap", "groupupdate", "group-update"),
-          "aur-packages", Set.of(),
-          "cargo-packages", Set.of(),
-          "pacman-packages", Set.of("sync-upgrade", "syu", "upgrade"),
-          "zypper-packages", Set.of("refresh", "update", "dup", "dup-from"));
-  private static final Set<String> SUPPORTED_PLAN_KINDS =
-      Set.of(
-          "apt-packages",
-          "aur-packages",
-          "cargo-packages",
-          "dnf-packages",
-          "pacman-packages",
-          "sdkman-packages",
-          "zypper-packages",
-          "flatpak-packages",
-          "binary-downloads",
-          "shell-scripts",
-          "file-writes",
-          "nerd-fonts",
-          "dotfiles-apply",
-          "binstaller-profile",
-          "user-groups",
-          "git-config",
-          "git-repo",
-          "systemd-unit",
-          "system-setting",
-          "system-update",
-          "gpg-key",
-          "tool-packages",
-          "zypper-repository",
-          "commands",
-          "interrupt");
 
   private final WorkstationProfileSourceValidator sourceValidator =
       new WorkstationProfileSourceValidator();
@@ -185,32 +123,46 @@ final class WorkstationProfileValidator {
       errors.add(path + ".kind must not be blank");
       return;
     }
-    String kind = rawKind.strip().toLowerCase(Locale.ROOT);
-    if (!SUPPORTED_PLAN_KINDS.contains(kind)) {
+    Optional<PlanKinds.PlanKind> planKind =
+        PlanKinds.find(rawKind.strip().toLowerCase(Locale.ROOT));
+    if (planKind.isEmpty()) {
       errors.add(path + ".kind unsupported plan kind '" + rawKind + "'");
       return;
     }
-    validateInstallList(kind, path, entryName, spec, errors);
-    validateAurPackageManager(kind, path, spec, errors);
-    validateInstallerSpec(kind, path, entryName, spec, errors);
-    validateInterruptSpec(kind, path, spec, errors);
-    validatePackageActions(kind, path, entryName, spec, errors);
+    validateKindShape(planKind.orElseThrow(), path, entryName, spec, errors);
     if (spec != null) {
       validateChecksum(path + ".spec.checksum", spec.checksum().orElse(null), errors);
     }
   }
 
-  private void validateInstallList(
-      String kind, String path, String entryName, PlanSpecDocument spec, List<String> errors) {
-    if (PACKAGE_PLAN_KINDS.contains(kind)) {
-      List<String> packages = spec == null ? List.of() : spec.packages();
-      validateNonEmptyItems(path + ".spec.packages", packages, errors);
+  /**
+   * Runs the shape checks a kind's {@link PlanKinds.Category} implies, then the kind's own check.
+   * The category decides only what every kind in that family shares; anything specific to one kind
+   * lives behind its {@link PlanKinds.SpecCheck}.
+   */
+  private void validateKindShape(
+      PlanKinds.PlanKind kind,
+      String path,
+      String entryName,
+      PlanSpecDocument spec,
+      List<String> errors) {
+    switch (kind.category()) {
+      case PACKAGES ->
+          validateNonEmptyItems(
+              path + ".spec.packages", spec == null ? List.of() : spec.packages(), errors);
+      case APPS -> validateAppItems(path, spec, errors);
+      case SDKMAN -> validateSdkmanItems(path, spec, errors);
+      case INSTALLER -> {
+        if (spec == null) {
+          errors.add(path + ".spec is required for plan entry '" + entryName + "'");
+          return;
+        }
+      }
+      case CONTROL -> {}
     }
-    if (APP_PLAN_KINDS.contains(kind)) {
-      validateAppItems(path, spec, errors);
-    }
-    if ("sdkman-packages".equals(kind)) {
-      validateSdkmanItems(path, spec, errors);
+    kind.specCheck().check(this, path, entryName, spec, errors);
+    if (kind.category() == PlanKinds.Category.PACKAGES && spec != null) {
+      validatePackageActions(kind, path, entryName, spec, errors);
     }
   }
 
@@ -251,22 +203,24 @@ final class WorkstationProfileValidator {
   }
 
   private void validatePackageActions(
-      String kind, String path, String entryName, PlanSpecDocument spec, List<String> errors) {
-    if (!PACKAGE_PLAN_KINDS.contains(kind) || spec == null) {
-      return;
-    }
-    Set<String> supported = SUPPORTED_PACKAGE_ACTIONS.get(kind);
+      PlanKinds.PlanKind kind,
+      String path,
+      String entryName,
+      PlanSpecDocument spec,
+      List<String> errors) {
     for (int index = 0; index < spec.actions().size(); index++) {
       validatePackageAction(
-          kind, path, entryName, supported, spec.actions().get(index), index, errors);
+          kind.id(),
+          path,
+          entryName,
+          kind.packageActions(),
+          spec.actions().get(index),
+          index,
+          errors);
     }
   }
 
-  private void validateAurPackageManager(
-      String kind, String path, PlanSpecDocument spec, List<String> errors) {
-    if (!"aur-packages".equals(kind)) {
-      return;
-    }
+  void validateAurPackageManager(String path, PlanSpecDocument spec, List<String> errors) {
     String rawPackageManager = spec == null ? null : spec.packageManager().orElse(null);
     if (isBlank(rawPackageManager)) {
       errors.add(path + ".spec.packageManager must be one of paru, yay");
@@ -315,39 +269,8 @@ final class WorkstationProfileValidator {
     validatePresentItems(path + ".spec.appIds", spec.appIds(), errors);
   }
 
-  private void validateInstallerSpec(
-      String kind, String path, String entryName, PlanSpecDocument spec, List<String> errors) {
-    if (!INSTALLER_PLAN_KINDS.contains(kind)) {
-      return;
-    }
+  void validateInterruptSpec(String path, PlanSpecDocument spec, List<String> errors) {
     if (spec == null) {
-      errors.add(path + ".spec is required for plan entry '" + entryName + "'");
-      return;
-    }
-    switch (kind) {
-      case "binary-downloads" -> validateBinarySpec(path, entryName, spec, errors);
-      case "shell-scripts" -> validateScriptSpec(path, entryName, spec, errors);
-      case "commands" -> validateCommandSpec(path, spec, errors);
-      case "file-writes" -> validateFileWriteSpec(path, entryName, spec, errors);
-      case "nerd-fonts" -> validateNerdFontSpec(path, entryName, spec, errors);
-      case "dotfiles-apply" -> validateDotfilesSpec(path, entryName, spec, errors);
-      case "binstaller-profile" -> validateBinstallerSpec(path, entryName, spec, errors);
-      case "user-groups" -> validateUserGroupsSpec(path, entryName, spec, errors);
-      case "git-config" -> validateGitConfigSpec(path, entryName, spec, errors);
-      case "git-repo" -> validateGitRepoSpec(path, entryName, spec, errors);
-      case "systemd-unit" -> validateSystemdUnitSpec(path, entryName, spec, errors);
-      case "system-setting" -> validateSystemSettingSpec(path, entryName, spec, errors);
-      case "system-update" -> validateSystemUpdateSpec(path, entryName, spec, errors);
-      case "gpg-key" -> validateGpgKeySpec(path, entryName, spec, errors);
-      case "tool-packages" -> validateToolPackagesSpec(path, entryName, spec, errors);
-      case "zypper-repository" -> validateZypperRepositorySpec(path, entryName, spec, errors);
-      default -> {}
-    }
-  }
-
-  private void validateInterruptSpec(
-      String kind, String path, PlanSpecDocument spec, List<String> errors) {
-    if (!"interrupt".equals(kind) || spec == null) {
       return;
     }
     spec.message()
@@ -370,7 +293,7 @@ final class WorkstationProfileValidator {
     }
   }
 
-  private void validateBinarySpec(
+  void validateBinarySpec(
       String path, String entryName, PlanSpecDocument spec, List<String> errors) {
     requirePresent(path + ".spec.binaryName", spec.binaryName().orElse(null), entryName, errors);
     validateHttpsUrl(path + ".spec.url", spec.url().orElse(null), errors);
@@ -400,7 +323,7 @@ final class WorkstationProfileValidator {
     }
   }
 
-  private void validateScriptSpec(
+  void validateScriptSpec(
       String path, String entryName, PlanSpecDocument spec, List<String> errors) {
     if (spec.scriptItems().isEmpty()) {
       validateScriptItem(path + ".spec", entryName, null, spec, errors);
@@ -419,7 +342,7 @@ final class WorkstationProfileValidator {
     validateCommonStructuredFields(path + ".spec", spec, errors);
   }
 
-  private void validateCommandSpec(String path, PlanSpecDocument spec, List<String> errors) {
+  void validateCommandSpec(String path, PlanSpecDocument spec, List<String> errors) {
     List<JsonNode> commands = spec.commandItems();
     if (commands.isEmpty()) {
       errors.add(path + ".spec.commands must contain at least one item");
@@ -434,7 +357,7 @@ final class WorkstationProfileValidator {
     validateCommonStructuredFields(path + ".spec", spec, errors);
   }
 
-  private void validateFileWriteSpec(
+  void validateFileWriteSpec(
       String path, String entryName, PlanSpecDocument spec, List<String> errors) {
     List<JsonNode> items = spec.fileWriteItems();
     if (items.isEmpty()) {
@@ -642,7 +565,7 @@ final class WorkstationProfileValidator {
     }
   }
 
-  private void validateNerdFontSpec(
+  void validateNerdFontSpec(
       String path, String entryName, PlanSpecDocument spec, List<String> errors) {
     validateNerdFontConfigShape(path, spec, errors);
     requirePresent(
@@ -658,7 +581,7 @@ final class WorkstationProfileValidator {
     validateNonEmptyItems(nerdFontFamiliesPath(path, spec), nerdFontFamilies(spec), errors);
   }
 
-  private void validateDotfilesSpec(
+  void validateDotfilesSpec(
       String path, String entryName, PlanSpecDocument spec, List<String> errors) {
     if (spec.configIsObject()) {
       errors.add(path + ".spec.config for plan entry '" + entryName + "' must be a path string");
@@ -673,7 +596,7 @@ final class WorkstationProfileValidator {
         path + ".spec.dotbotBinary", spec.dotbotBinary().orElse("dotbot"), entryName, errors);
   }
 
-  private void validateBinstallerSpec(
+  void validateBinstallerSpec(
       String path, String entryName, PlanSpecDocument spec, List<String> errors) {
     if (spec.configIsObject()) {
       errors.add(
@@ -692,7 +615,7 @@ final class WorkstationProfileValidator {
     }
   }
 
-  private void validateUserGroupsSpec(
+  void validateUserGroupsSpec(
       String path, String entryName, PlanSpecDocument spec, List<String> errors) {
     if (spec.groups().isEmpty()) {
       errors.add(path + ".spec.groups is required for plan entry '" + entryName + "'");
@@ -714,7 +637,7 @@ final class WorkstationProfileValidator {
                         + " group. Use gpasswd -d by hand."));
   }
 
-  private void validateGitConfigSpec(
+  void validateGitConfigSpec(
       String path, String entryName, PlanSpecDocument spec, List<String> errors) {
     if (spec.entries().isEmpty()) {
       errors.add(path + ".spec.entries is required for plan entry '" + entryName + "'");
@@ -732,7 +655,7 @@ final class WorkstationProfileValidator {
                         + "'; git config keys are section.key, for example user.email"));
   }
 
-  private void validateGitRepoSpec(
+  void validateGitRepoSpec(
       String path, String entryName, PlanSpecDocument spec, List<String> errors) {
     if (spec.repos().isEmpty()) {
       errors.add(path + ".spec.repos is required for plan entry '" + entryName + "'");
@@ -745,7 +668,7 @@ final class WorkstationProfileValidator {
             });
   }
 
-  private void validateSystemdUnitSpec(
+  void validateSystemdUnitSpec(
       String path, String entryName, PlanSpecDocument spec, List<String> errors) {
     if (spec.units().isEmpty()) {
       errors.add(path + ".spec.units is required for plan entry '" + entryName + "'");
@@ -766,7 +689,7 @@ final class WorkstationProfileValidator {
             });
   }
 
-  private void validateSystemSettingSpec(
+  void validateSystemSettingSpec(
       String path, String entryName, PlanSpecDocument spec, List<String> errors) {
     boolean empty =
         spec.localRtc().isEmpty()
@@ -780,7 +703,7 @@ final class WorkstationProfileValidator {
     }
   }
 
-  private void validateSystemUpdateSpec(
+  void validateSystemUpdateSpec(
       String path, String entryName, PlanSpecDocument spec, List<String> errors) {
     requirePresent(
         path + ".spec.packageManager", spec.packageManager().orElse(null), entryName, errors);
@@ -793,7 +716,7 @@ final class WorkstationProfileValidator {
     }
   }
 
-  private void validateGpgKeySpec(
+  void validateGpgKeySpec(
       String path, String entryName, PlanSpecDocument spec, List<String> errors) {
     if (spec.keys().isEmpty()) {
       errors.add(path + ".spec.keys is required for plan entry '" + entryName + "'");
@@ -815,7 +738,7 @@ final class WorkstationProfileValidator {
             });
   }
 
-  private void validateToolPackagesSpec(
+  void validateToolPackagesSpec(
       String path, String entryName, PlanSpecDocument spec, List<String> errors) {
     requirePresent(path + ".spec.backend", spec.backend().orElse(null), entryName, errors);
     spec.backend()
@@ -833,7 +756,7 @@ final class WorkstationProfileValidator {
     }
   }
 
-  private void validateZypperRepositorySpec(
+  void validateZypperRepositorySpec(
       String path, String entryName, PlanSpecDocument spec, List<String> errors) {
     requirePresent(path + ".spec.baseUrl", spec.baseUrl().orElse(null), entryName, errors);
     spec.baseUrl()

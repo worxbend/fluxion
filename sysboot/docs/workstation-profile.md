@@ -371,7 +371,164 @@ Delegates to [`binstaller`](https://github.com/worxbend/binstaller): `plan`/`dry
 `config` must be a path — an inline `BinaryDistributionProfile` object is rejected, because
 binstaller owns that schema. Setting `locked: true` requires `lockFile`.
 
+### `tool-packages`
+
+```yaml
+- name: rust-tools
+  kind: tool-packages
+  spec:
+    backend: cargo-binstall
+    packages:
+      - name: ripgrep
+        version: "14.1.0"
+      - bat
+```
+
+Supported `backend` values are `cargo-binstall`, `cargo`, `snap`, `pipx`, `uv-tool`, `npm-global`,
+and `go-install`. Items are either a bare package name or an object with `name` and optional
+`version`. `backend` and a non-empty `packages` list are both required.
+
+## System kinds
+
+### `user-groups`
+
+```yaml
+- name: developer-groups
+  kind: user-groups
+  spec:
+    user: worxbend          # defaults to the invoking user
+    groups: [docker, libvirt]
+    createMissing: true
+    logoutCheckpoint: true
+    message: Log out so the new groups take effect.
+```
+
+Group membership is append-only: Fluxion never removes a user from a group, so a leading `-` or `!`
+on a group name is rejected rather than silently ignored. `createMissing` creates a group that does
+not exist yet. `logoutCheckpoint` records that the change only takes effect after a re-login.
+
+### `git-config`
+
+```yaml
+- name: git-identity
+  kind: git-config
+  spec:
+    scope: global           # global | system | local
+    entries:
+      user.email: dev@example.invalid
+      pull.rebase: "false"
+```
+
+Every key must be `section.key`; a bare key is rejected because `git config` would reject it too.
+
+### `git-repo`
+
+```yaml
+- name: dotfiles-checkout
+  kind: git-repo
+  spec:
+    repos:
+      - url: https://github.com/worxbend/dotfiles.git
+        dest: ~/.dotfiles
+        ref: main
+        depth: 1
+        submodules: true
+        update: none        # none | pull | reset-hard
+```
+
+`url` and `dest` are required per repo. `update` decides what happens when `dest` already holds a
+clone: `none` leaves it alone (the default, because a clone is provisioning rather than
+synchronisation), `pull` fast-forwards with `--ff-only` and fails rather than merging, and
+`reset-hard` discards local changes to match the remote.
+
+### `systemd-unit`
+
+```yaml
+- name: container-runtime
+  kind: systemd-unit
+  spec:
+    scope: system           # system | user
+    units:
+      - name: docker.service
+        enabled: true
+        state: started      # started | stopped | unchanged
+      - name: sshd.service
+        mask: true
+        enabled: false
+```
+
+`name` is required per unit. A unit cannot be both masked and enabled — masking is a refusal to
+start, so the pair is a contradiction rather than a precedence question.
+
+### `system-setting`
+
+```yaml
+- name: clock-and-locale
+  kind: system-setting
+  spec:
+    localRtc: false
+    ntp: true
+    timezone: Europe/Warsaw
+    hostname: workstation
+    locale:
+      LANG: en_US.UTF-8
+```
+
+At least one setting must be present; an entry that declares none is a configuration mistake, not a
+no-op.
+
+### `system-update`
+
+```yaml
+- name: refresh-metadata
+  kind: system-update
+  spec:
+    packageManager: dnf
+    distUpgrade: false
+    refreshOnly: true
+    timeout: 30m
+```
+
+`packageManager` is required. `distUpgrade` and `refreshOnly` are mutually exclusive: one asks for
+the largest possible upgrade and the other asks for no upgrade at all.
+
+### `gpg-key`
+
+```yaml
+- name: docker-signing-key
+  kind: gpg-key
+  spec:
+    keys:
+      - url: https://download.docker.com/linux/fedora/gpg
+        keyring: /etc/pki/rpm-gpg/RPM-GPG-KEY-docker
+        fingerprint: 060A61C51B558A7F742B77AAC52FEB6B621E9F35
+```
+
+`url` is required and must be `https:` or `file:` — a signing key decides what the machine trusts,
+so an unauthenticated transport is refused.
+
+### `zypper-repository`
+
+```yaml
+- name: packman
+  kind: zypper-repository
+  spec:
+    id: packman
+    baseUrl: https://ftp.gwdg.de/pub/linux/misc/packman/suse/openSUSE_Tumbleweed/
+    repoFile: /etc/zypp/repos.d/packman.repo
+    gpgKeyUrl: https://ftp.gwdg.de/pub/linux/misc/packman/suse/gpg-pubkey.asc
+    enabled: true
+    gpgCheck: true
+    autoRefresh: true
+```
+
+`baseUrl` is required and should use HTTPS, because a repository decides what the machine installs.
+`gpgKeyUrl` is required whenever `gpgCheck` is enabled. `id` defaults to the plan entry name and
+`repoFile` defaults to `/etc/zypp/repos.d/<name>.repo`.
+
 ## Interrupt and resume
+
+### `interrupt`
 
 Use `kind: interrupt` to write a resumable checkpoint and stop cleanly.
 

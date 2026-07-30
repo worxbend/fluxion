@@ -152,39 +152,10 @@ final class WorkstationProfileConfigMapper {
   }
 
   private Optional<BootstrapModule> mapPlanModule(PlanEntryDocument entry, BootstrapPolicy policy) {
-    return switch (planKind(entry)) {
-      case "apt-packages" -> Optional.of(packageModule(entry, PackageManagerKind.APT, policy));
-      case "aur-packages" -> Optional.of(packageModule(entry, aurPackageManager(entry), policy));
-      case "cargo-packages" -> Optional.of(packageModule(entry, PackageManagerKind.CARGO, policy));
-      case "dnf-packages" -> Optional.of(packageModule(entry, PackageManagerKind.DNF, policy));
-      case "pacman-packages" ->
-          Optional.of(packageModule(entry, PackageManagerKind.PACMAN, policy));
-      case "sdkman-packages" -> Optional.of(sdkmanModule(entry, policy));
-      case "zypper-packages" ->
-          Optional.of(packageModule(entry, PackageManagerKind.ZYPPER, policy));
-      case "flatpak-packages" -> Optional.of(flatpakModule(entry, policy));
-      case "binary-downloads" -> Optional.of(compiledBinaryModule(entry, policy));
-      case "shell-scripts" -> Optional.of(shellScriptModule(entry, policy));
-      case "commands" -> Optional.of(shellCommandModule(entry, policy));
-      case "file-writes" -> fileWriteModule(entry, policy);
-      case "nerd-fonts" -> Optional.of(nerdFontModule(entry));
-      case "dotfiles-apply" -> Optional.of(dotbotModule(entry));
-      case "binstaller-profile" -> Optional.of(binstallerModule(entry, policy));
-      case "user-groups" -> Optional.of(userGroupsModule(entry, policy));
-      case "git-config" -> Optional.of(gitConfigModule(entry, policy));
-      case "git-repo" -> Optional.of(gitRepoModule(entry, policy));
-      case "systemd-unit" -> Optional.of(systemdUnitModule(entry, policy));
-      case "system-setting" -> Optional.of(systemSettingModule(entry, policy));
-      case "system-update" -> Optional.of(systemUpdateModule(entry, policy));
-      case "gpg-key" -> Optional.of(gpgKeyModule(entry, policy));
-      case "tool-packages" -> Optional.of(toolPackagesModule(entry, policy));
-      case "zypper-repository" -> Optional.of(zypperRepositoryModule(entry));
-      case "interrupt" -> Optional.of(interruptModule(entry));
-      default -> Optional.empty();
-    };
+    return PlanKinds.find(planKind(entry)).flatMap(kind -> kind.mapper().map(this, entry, policy));
   }
 
-  private InterruptModule interruptModule(PlanEntryDocument entry) {
+  InterruptModule interruptModule(PlanEntryDocument entry) {
     PlanSpecDocument spec = entry.spec().orElse(null);
     String name = planName(entry);
     return new InterruptModule(
@@ -211,7 +182,7 @@ final class WorkstationProfileConfigMapper {
     };
   }
 
-  private PackageModule packageModule(
+  PackageModule packageModule(
       PlanEntryDocument entry, PackageManagerKind kind, BootstrapPolicy policy) {
     PlanSpecDocument spec = requireField(entry.spec().orElse(null), planName(entry) + ".spec");
     return new PackageModule(
@@ -222,7 +193,7 @@ final class WorkstationProfileConfigMapper {
         continueOnError(entry, policy));
   }
 
-  private PackageManagerKind aurPackageManager(PlanEntryDocument entry) {
+  PackageManagerKind aurPackageManager(PlanEntryDocument entry) {
     PlanSpecDocument spec = requireField(entry.spec().orElse(null), planName(entry) + ".spec");
     String packageManager = spec.packageManager().orElseThrow().strip().toLowerCase(Locale.ROOT);
     return switch (packageManager) {
@@ -253,7 +224,7 @@ final class WorkstationProfileConfigMapper {
         .toList();
   }
 
-  private SdkmanModule sdkmanModule(PlanEntryDocument entry, BootstrapPolicy policy) {
+  SdkmanModule sdkmanModule(PlanEntryDocument entry, BootstrapPolicy policy) {
     PlanSpecDocument spec = requireField(entry.spec().orElse(null), planName(entry) + ".spec");
     return new SdkmanModule(
         new ModuleName(planName(entry)), sdkmanPackages(spec), continueOnError(entry, policy));
@@ -270,7 +241,7 @@ final class WorkstationProfileConfigMapper {
     return new SdkmanPackage(text(node, "candidate").orElseThrow(), text(node, "version"));
   }
 
-  private FlatpakModule flatpakModule(PlanEntryDocument entry, BootstrapPolicy policy) {
+  FlatpakModule flatpakModule(PlanEntryDocument entry, BootstrapPolicy policy) {
     PlanSpecDocument spec = requireField(entry.spec().orElse(null), planName(entry) + ".spec");
     return new FlatpakModule(
         new ModuleName(planName(entry)),
@@ -286,8 +257,7 @@ final class WorkstationProfileConfigMapper {
     return List.copyOf(appIds);
   }
 
-  private CompiledBinaryModule compiledBinaryModule(
-      PlanEntryDocument entry, BootstrapPolicy policy) {
+  CompiledBinaryModule compiledBinaryModule(PlanEntryDocument entry, BootstrapPolicy policy) {
     PlanSpecDocument spec = requireField(entry.spec().orElse(null), planName(entry) + ".spec");
     return new CompiledBinaryModule(
         new ModuleName(planName(entry)),
@@ -307,7 +277,7 @@ final class WorkstationProfileConfigMapper {
         spec.expectedVersion());
   }
 
-  private ShellScriptModule shellScriptModule(PlanEntryDocument entry, BootstrapPolicy policy) {
+  ShellScriptModule shellScriptModule(PlanEntryDocument entry, BootstrapPolicy policy) {
     PlanSpecDocument spec = requireField(entry.spec().orElse(null), planName(entry) + ".spec");
     return new ShellScriptModule(
         new ModuleName(planName(entry)),
@@ -317,7 +287,7 @@ final class WorkstationProfileConfigMapper {
         spec.probeCommand());
   }
 
-  private ShellCommandModule shellCommandModule(PlanEntryDocument entry, BootstrapPolicy policy) {
+  ShellCommandModule shellCommandModule(PlanEntryDocument entry, BootstrapPolicy policy) {
     PlanSpecDocument spec = requireField(entry.spec().orElse(null), planName(entry) + ".spec");
     return new ShellCommandModule(
         new ModuleName(planName(entry)),
@@ -328,8 +298,7 @@ final class WorkstationProfileConfigMapper {
         spec.probeCommand());
   }
 
-  private Optional<BootstrapModule> fileWriteModule(
-      PlanEntryDocument entry, BootstrapPolicy policy) {
+  Optional<BootstrapModule> fileWriteModule(PlanEntryDocument entry, BootstrapPolicy policy) {
     PlanSpecDocument spec = requireField(entry.spec().orElse(null), planName(entry) + ".spec");
     List<FileWriteItem> items = fileWriteItems(entry, spec);
     if (items.isEmpty()) {
@@ -604,7 +573,7 @@ final class WorkstationProfileConfigMapper {
         .orElse(Duration.ofMinutes(30));
   }
 
-  private NerdFontModule nerdFontModule(PlanEntryDocument entry) {
+  NerdFontModule nerdFontModule(PlanEntryDocument entry) {
     PlanSpecDocument spec = requireField(entry.spec().orElse(null), planName(entry) + ".spec");
     return new NerdFontModule(
         new ModuleName(planName(entry)),
@@ -617,7 +586,7 @@ final class WorkstationProfileConfigMapper {
         spec.probeCommand());
   }
 
-  private BinstallerModule binstallerModule(PlanEntryDocument entry, BootstrapPolicy policy) {
+  BinstallerModule binstallerModule(PlanEntryDocument entry, BootstrapPolicy policy) {
     PlanSpecDocument spec = requireField(entry.spec().orElse(null), planName(entry) + ".spec");
     return new BinstallerModule(
         new ModuleName(planName(entry)),
@@ -635,7 +604,7 @@ final class WorkstationProfileConfigMapper {
         continueOnError(entry, policy));
   }
 
-  private UserGroupsModule userGroupsModule(PlanEntryDocument entry, BootstrapPolicy policy) {
+  UserGroupsModule userGroupsModule(PlanEntryDocument entry, BootstrapPolicy policy) {
     PlanSpecDocument spec = requireField(entry.spec().orElse(null), planName(entry) + ".spec");
     return new UserGroupsModule(
         new ModuleName(planName(entry)),
@@ -647,7 +616,7 @@ final class WorkstationProfileConfigMapper {
         continueOnError(entry, policy));
   }
 
-  private GitConfigModule gitConfigModule(PlanEntryDocument entry, BootstrapPolicy policy) {
+  GitConfigModule gitConfigModule(PlanEntryDocument entry, BootstrapPolicy policy) {
     PlanSpecDocument spec = requireField(entry.spec().orElse(null), planName(entry) + ".spec");
     return new GitConfigModule(
         new ModuleName(planName(entry)),
@@ -656,7 +625,7 @@ final class WorkstationProfileConfigMapper {
         continueOnError(entry, policy));
   }
 
-  private GitRepoModule gitRepoModule(PlanEntryDocument entry, BootstrapPolicy policy) {
+  GitRepoModule gitRepoModule(PlanEntryDocument entry, BootstrapPolicy policy) {
     PlanSpecDocument spec = requireField(entry.spec().orElse(null), planName(entry) + ".spec");
     var repos =
         spec.repos().stream()
@@ -674,7 +643,7 @@ final class WorkstationProfileConfigMapper {
         new ModuleName(planName(entry)), repos, continueOnError(entry, policy));
   }
 
-  private SystemdUnitModule systemdUnitModule(PlanEntryDocument entry, BootstrapPolicy policy) {
+  SystemdUnitModule systemdUnitModule(PlanEntryDocument entry, BootstrapPolicy policy) {
     PlanSpecDocument spec = requireField(entry.spec().orElse(null), planName(entry) + ".spec");
     var units =
         spec.units().stream()
@@ -693,7 +662,7 @@ final class WorkstationProfileConfigMapper {
         continueOnError(entry, policy));
   }
 
-  private SystemSettingModule systemSettingModule(PlanEntryDocument entry, BootstrapPolicy policy) {
+  SystemSettingModule systemSettingModule(PlanEntryDocument entry, BootstrapPolicy policy) {
     PlanSpecDocument spec = requireField(entry.spec().orElse(null), planName(entry) + ".spec");
     return new SystemSettingModule(
         new ModuleName(planName(entry)),
@@ -705,7 +674,7 @@ final class WorkstationProfileConfigMapper {
         continueOnError(entry, policy));
   }
 
-  private SystemUpdateModule systemUpdateModule(PlanEntryDocument entry, BootstrapPolicy policy) {
+  SystemUpdateModule systemUpdateModule(PlanEntryDocument entry, BootstrapPolicy policy) {
     PlanSpecDocument spec = requireField(entry.spec().orElse(null), planName(entry) + ".spec");
     return new SystemUpdateModule(
         new ModuleName(planName(entry)),
@@ -719,7 +688,7 @@ final class WorkstationProfileConfigMapper {
         continueOnError(entry, policy));
   }
 
-  private GpgKeyModule gpgKeyModule(PlanEntryDocument entry, BootstrapPolicy policy) {
+  GpgKeyModule gpgKeyModule(PlanEntryDocument entry, BootstrapPolicy policy) {
     PlanSpecDocument spec = requireField(entry.spec().orElse(null), planName(entry) + ".spec");
     var keys =
         spec.keys().stream()
@@ -733,7 +702,7 @@ final class WorkstationProfileConfigMapper {
     return new GpgKeyModule(new ModuleName(planName(entry)), keys, continueOnError(entry, policy));
   }
 
-  private ToolPackagesModule toolPackagesModule(PlanEntryDocument entry, BootstrapPolicy policy) {
+  ToolPackagesModule toolPackagesModule(PlanEntryDocument entry, BootstrapPolicy policy) {
     PlanSpecDocument spec = requireField(entry.spec().orElse(null), planName(entry) + ".spec");
     var backend =
         ToolPackageBackend.fromId(
@@ -747,7 +716,7 @@ final class WorkstationProfileConfigMapper {
         new ModuleName(planName(entry)), backend, packages, continueOnError(entry, policy));
   }
 
-  private ZypperRepositoryModule zypperRepositoryModule(PlanEntryDocument entry) {
+  ZypperRepositoryModule zypperRepositoryModule(PlanEntryDocument entry) {
     PlanSpecDocument spec = requireField(entry.spec().orElse(null), planName(entry) + ".spec");
     String name = planName(entry);
     return new ZypperRepositoryModule(
@@ -761,7 +730,7 @@ final class WorkstationProfileConfigMapper {
         spec.autoRefresh());
   }
 
-  private DotbotModule dotbotModule(PlanEntryDocument entry) {
+  DotbotModule dotbotModule(PlanEntryDocument entry) {
     PlanSpecDocument spec = requireField(entry.spec().orElse(null), planName(entry) + ".spec");
     return new DotbotModule(
         new ModuleName(planName(entry)),

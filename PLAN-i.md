@@ -26,7 +26,7 @@ Updated: 2026-07-26. Gate is green throughout (`just verify`, `just format-check
 | **M3.2 — `zypper-repository` step kind** | ✅ **done**. Correction: `ZypperRepositoryInstaller` was *not* unmodelled as previously stated here — it was reachable through `ZypperRepositorySourceSetup` under `spec.sources`. The real gap was narrower: zypper had no repository *step kind* while apt, dnf and pacman did. Closed by reusing the existing installer via `asSourceSetup()` rather than unifying the four kinds, which would have been a breaking change for no user-visible gain. |
 | **Delegation to binstaller** | ✅ **done**: `compiled-binary` translates to a `BinaryDistributionProfile`, gaining zip and tar.xz; built-in installer retained as fallback for what binstaller cannot express (detached GPG signatures, non-SHA-256 checksums, unmappable archives) and for hosts where binstaller cannot be obtained |
 | **§11.1 orchestrator dedup** | substantial: **1193 → 754 lines, 60 → 16 case arms** via `StepBinding`, `RunStateRecorder` and `DryRunPlanner`. Still above the §11 target of 200; what remains is genuinely orchestration (phase loop, dependency blocking, restart policy, source setups, cancellation, interrupts) plus the bespoke multi-item arms |
-| §11.2 unified IR / single validator | **partial**: leaf helpers shared via `MappingSupport` (−78 lines). The IR itself is untouched — the two mappers plus the manifest validator remain ~2460 lines with 27 and 19 per-kind methods, so a new step kind still costs four edits. This is the largest remaining item in the plan and needs a dedicated pass, not a session tail. |
+| §11.2 unified IR / single validator | **partial**: leaf helpers shared via `MappingSupport` (−78 lines), and the `PlanKind` registry of §11.2.3 now exists — `PlanKinds` is the single table of the 25 manifest kinds, replacing five hand-maintained string sets in `WorkstationProfileValidator` and the 26-arm dispatch switch in `WorkstationProfileConfigMapper`. Note this did **not** reduce line count (1863 → 1971 across the three files): the win is that the kind name is written once instead of up to four times, so a kind can no longer validate without running or run without being validated. Pinned by `PlanKindsTest`, which also fails the build when a supported kind has no reference entry in `workstation-profile.md` — that check immediately found ten undocumented kinds, now written up. The IR itself (§11.2.1–2) is still untouched: the two frontends remain separate `Document → BootstrapConfig` mappers, so semantics like `when`, interpolation and fingerprinting are still implemented per-frontend. That remains the largest item in the plan. |
 | M4–M10 | not started |
 
 ### A. Audit defects — all closed
@@ -949,11 +949,27 @@ Ordered so that each step is independently shippable and test-covered.
 1. Define the IR (`ResolvedPlan`, `ResolvedStep`, `StepSpec` sealed hierarchy) in `core`.
 2. Both frontends become `Document → IR` mappers. Everything downstream (validation of semantics,
    interpolation, `when`, DAG, fingerprint, plan rendering) moves behind the IR and is written once.
-3. Replace the duplicated string sets in `WorkstationProfileValidator` with a single
-   `PlanKind` sealed enum/registry carrying: id, aliases, category, supported actions, required
-   fields, and doc link. Adding a kind touches one file.
+3. ✅ **Done.** `PlanKinds` is the single registry. Each row carries the kind id, the shape
+   category that decides its shared checks (`PACKAGES`, `APPS`, `SDKMAN`, `INSTALLER`, `CONTROL`),
+   the package-manager actions it accepts, the check for its own spec, and the mapper that turns it
+   into a module. `WorkstationProfileValidator` looks kinds up instead of holding five string sets;
+   `WorkstationProfileConfigMapper` looks them up instead of a 26-arm switch.
+
+   Two honest caveats. First, this **did not shrink the code** — the table is verbose enough that
+   the three files went 1863 → 1971 lines. The defect it fixes is duplication, not size: before,
+   adding a kind meant editing `SUPPORTED_PLAN_KINDS`, one of the category sets, the validator
+   switch and the mapper switch, and forgetting any one of them produced a kind that validated but
+   never ran, or ran but was never checked. Second, "adding a kind touches one file" is still not
+   literally true — a kind also needs its core record, its executor, and its document contract.
+   One *frontend* file is what was achieved.
+
+   `PlanKindsTest` pins the supported set and requires every kind to have a reference entry in
+   `workstation-profile.md`; that check found ten kinds shipped without documentation (all of M3.1
+   plus `zypper-repository` and `interrupt`), now written up.
 4. Target: `WorkstationProfileValidator` 790 → ~150 lines; `WorkstationProfileConfigMapper`
-   679 → ~200.
+   679 → ~200. **Not met and not reachable through the registry alone** — those numbers assume the
+   IR of steps 1–2, which moves per-kind mapping and validation behind one shared pipeline. The
+   registry only removes the duplicate *dispatch*, not the per-kind bodies.
 
 ### 11.3 Purity and testability
 
