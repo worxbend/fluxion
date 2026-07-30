@@ -126,7 +126,12 @@ final class WorkstationProfileValidator {
     Optional<PlanKinds.PlanKind> planKind =
         PlanKinds.find(rawKind.strip().toLowerCase(Locale.ROOT));
     if (planKind.isEmpty()) {
-      errors.add(path + ".kind unsupported plan kind '" + rawKind + "'");
+      errors.add(
+          path
+              + ".kind unsupported plan kind '"
+              + rawKind
+              + "'"
+              + PlanKinds.closestId(rawKind).map(id -> ". Did you mean '" + id + "'?").orElse(""));
       return;
     }
     validateKindShape(planKind.orElseThrow(), path, entryName, spec, errors);

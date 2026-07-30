@@ -81,6 +81,22 @@ class PlanKindsTest {
   }
 
   @Test
+  void aNearMissSuggestsTheKindItAlmostSpelled() {
+    assertThat(PlanKinds.closestId("apt-package")).contains("apt-packages");
+    assertThat(PlanKinds.closestId("APT-Packages")).contains("apt-packages");
+    assertThat(PlanKinds.closestId("systemd-units")).contains("systemd-unit");
+    assertThat(PlanKinds.closestId("gitconfig")).contains("git-config");
+  }
+
+  @Test
+  void somethingThatIsNotAKindAtAllSuggestsNothing() {
+    assertThat(PlanKinds.closestId("helm")).isEmpty();
+    assertThat(PlanKinds.closestId("ansible-playbook")).isEmpty();
+    assertThat(PlanKinds.closestId("")).isEmpty();
+    assertThat(PlanKinds.closestId(null)).isEmpty();
+  }
+
+  @Test
   void everyKindHasAReferenceEntryInTheManifestDocs() throws IOException {
     String reference = Files.readString(manifestReference());
 

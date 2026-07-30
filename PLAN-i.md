@@ -27,7 +27,8 @@ Updated: 2026-07-26. Gate is green throughout (`just verify`, `just format-check
 | **Delegation to binstaller** | ✅ **done**: `compiled-binary` translates to a `BinaryDistributionProfile`, gaining zip and tar.xz; built-in installer retained as fallback for what binstaller cannot express (detached GPG signatures, non-SHA-256 checksums, unmappable archives) and for hosts where binstaller cannot be obtained |
 | **§11.1 orchestrator dedup** | substantial: **1193 → 754 lines, 60 → 16 case arms** via `StepBinding`, `RunStateRecorder` and `DryRunPlanner`. Still above the §11 target of 200; what remains is genuinely orchestration (phase loop, dependency blocking, restart policy, source setups, cancellation, interrupts) plus the bespoke multi-item arms |
 | §11.2 unified IR / single validator | **partial**: leaf helpers shared via `MappingSupport` (−78 lines), and the `PlanKind` registry of §11.2.3 now exists — `PlanKinds` is the single table of the 25 manifest kinds, replacing five hand-maintained string sets in `WorkstationProfileValidator` and the 26-arm dispatch switch in `WorkstationProfileConfigMapper`. Note this did **not** reduce line count (1863 → 1971 across the three files): the win is that the kind name is written once instead of up to four times, so a kind can no longer validate without running or run without being validated. Pinned by `PlanKindsTest`, which also fails the build when a supported kind has no reference entry in `workstation-profile.md` — that check immediately found ten undocumented kinds, now written up. The IR itself (§11.2.1–2) is still untouched: the two frontends remain separate `Document → BootstrapConfig` mappers, so semantics like `when`, interpolation and fingerprinting are still implemented per-frontend. That remains the largest item in the plan. |
-| M4–M10 | not started |
+| **`fluxion kinds` + kind suggestions** (§9.2, §9.4) | ✅ **done**, both riding on the new registry: `fluxion kinds` lists the 25 plan kinds with descriptions and package actions (`--format json` too), and an unknown kind now reports `Did you mean 'dnf-packages'?`. The rest of §9.2 — error codes, source spans, the rendered caret — still needs YAML line/column marks the Jackson parse currently discards. |
+| M4–M10 | not started apart from the two §9 items above |
 
 ### A. Audit defects — all closed
 
@@ -853,6 +854,13 @@ error[F0142]: unknown plan kind `dnf-package`
   = help: run `fluxion kinds` to list all 27 supported plan kinds
 ```
 
+**Partly landed.** The "did you mean" half now works — an unknown kind reports
+`spec.plan[0].kind unsupported plan kind 'dnf-package'. Did you mean 'dnf-packages'?`, using an edit
+distance whose budget scales with the length of what was typed, so a genuine non-kind such as `helm`
+suggests nothing rather than pointing at whichever id sorts closest. What is still missing is the
+*frame*: the error code, the source span, and the rendered caret, because those need YAML
+line/column marks the current Jackson parse discards.
+
 Requires: a `Diagnostic(code, severity, path, span, message, help, related)` record, YAML
 line/column marks (SnakeYAML Engine, or a position index built from the raw parse), applicative
 accumulation (§5.3), and one renderer shared by `validate`, `lint`, `plan`, and `apply`.
@@ -874,7 +882,10 @@ accumulation (§5.3), and one renderer shared by `validate`, `lint`, `plan`, and
 - **`fluxion init`** — guided first run: detect distro → `generate` → `doctor` → `plan` → confirm.
 - **`fluxion resume`** — resolve the next incomplete phase and continue.
 - **`fluxion retry --failed`** (needs §8.4 state).
-- **`fluxion kinds`** — list every supported step kind with a one-line example.
+- ✅ **`fluxion kinds`** — lists every supported plan kind with a one-line description and, for
+  package kinds, the pre-install actions they accept. `--format json` for editors and CI. Reads
+  `PlanKindCatalog`, which is the public view of the same registry `validate` checks against, so
+  the command cannot list a kind that would be rejected or omit one that would be accepted.
 - `plan --format table|tree|json|yaml|dot|mermaid`, `plan --diff-state`.
 - **`fluxion why <item>`** — "this will run because: not in state, probe says missing, `when` matched
   `distribution == opensuse`".

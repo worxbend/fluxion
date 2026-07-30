@@ -132,6 +132,12 @@
     "allDeclaredConstructors": true
   },
   {
+    "name": "dev.sysboot.cli.command.KindsCommand",
+    "allDeclaredFields": true,
+    "allDeclaredMethods": true,
+    "allDeclaredConstructors": true
+  },
+  {
     "name": "dev.sysboot.cli.command.StateCommand",
     "allDeclaredFields": true,
     "allDeclaredMethods": true,

@@ -87,6 +87,23 @@ Flatpak import reads installed app IDs with `flatpak list --app` and writes one 
 uses `flathub` when that remote exists, otherwise the first configured remote, and fails clearly
 when Flatpak is unavailable or no Flatpak apps are installed.
 
+## `kinds`
+
+Lists the plan kinds a WorkstationProfile manifest may use, with a one-line description and, for
+package kinds, the pre-install actions they accept.
+
+```bash
+fluxion kinds
+fluxion kinds --format json
+```
+
+Takes no config file — the answer is a property of the Fluxion build, not of any profile. The list
+comes from the same registry `validate` checks against, so it cannot drift from what is actually
+accepted. When `validate` rejects a kind it also suggests the closest supported one, so a
+`dnf-package` typo reports `Did you mean 'dnf-packages'?`.
+
+Full spec fields for each kind are in [workstation-profile.md](workstation-profile.md).
+
 ## `validate`
 
 Loads YAML, maps it into the domain model, checks the phase dependency graph, and reports
