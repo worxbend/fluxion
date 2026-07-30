@@ -36,7 +36,9 @@ public final class KindsCommand implements Runnable {
     PrintWriter out = spec.commandLine().getOut();
 
     if (format == OutputFormat.JSON) {
-      JsonOutput.write(out, Map.of("kinds", entries.stream().map(KindsCommand::json).toList()));
+      var document = new LinkedHashMap<String, Object>();
+      document.put("kinds", entries.stream().map(KindsCommand::json).toList());
+      JsonOutput.write(out, document);
       return;
     }
 

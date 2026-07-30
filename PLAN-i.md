@@ -21,7 +21,8 @@ Updated: 2026-07-26. Gate is green throughout (`just verify`, `just format-check
 | **M1 — Streaming, sudo-once, cancellation** | ✅ **done**, then audited and repaired (§A) |
 | **M2.1 — ToolBroker** | ✅ **done** |
 | **M2.2 — `binstaller-profile` step kind** | ✅ **done** |
-| M2.3–M2.5 — `fluxion tools`, worxbend preset library | not started |
+| **M2.3 — `fluxion tools`** | ✅ **done** for the two verbs that matter: `tools list` shows every delegated tool with its binary name, pinned tag, and where it would come from — already on `PATH`, in the cache, or a download whose exact asset URL is printed — and `tools install <tool>` fetches and verifies one into the cache, reporting and leaving alone anything already on `PATH`. `--format json` on `list`. Tools are selected by GitHub repository short name because `dotbot-go` and `dotbot-scala` both install a binary called `dotbot`. `status`, `update`, `which` and `pin` from §6.1 are not implemented: `status`/`which` are what `list` already prints, and `update`/`pin` need a version-resolution story (the catalog pins tags in source) rather than another CLI verb. |
+| M2.4–M2.5 — worxbend preset library | not started |
 | **M3.1 — parity step kinds** | ✅ **done**: `user-groups`, `git-config`, `git-repo`, `systemd-unit`, `system-setting`, `system-update`, `gpg-key`, `tool-packages` (cargo-binstall/cargo/snap/pipx/uv-tool/npm-global/go-install) |
 | **M3.2 — `zypper-repository` step kind** | ✅ **done**. Correction: `ZypperRepositoryInstaller` was *not* unmodelled as previously stated here — it was reachable through `ZypperRepositorySourceSetup` under `spec.sources`. The real gap was narrower: zypper had no repository *step kind* while apt, dnf and pacman did. Closed by reusing the existing installer via `asSourceSetup()` rather than unifying the four kinds, which would have been a breaking change for no user-visible gain. |
 | **Delegation to binstaller** | ✅ **done**: `compiled-binary` translates to a `BinaryDistributionProfile`, gaining zip and tar.xz; built-in installer retained as fallback for what binstaller cannot express (detached GPG signatures, non-SHA-256 checksums, unmappable archives) and for hosts where binstaller cannot be obtained |
@@ -504,8 +505,11 @@ Requirements:
   `nerd-fonts-installer` are downloaded and thrown away on *every run*.
 - **Prefer what the user already has.** If `binstaller` is on `PATH` and satisfies the version
   constraint, use it. Never silently shadow a user's installation.
-- **`fluxion tools`** command: `list`, `status`, `install <tool>`, `update <tool>`, `which <tool>`,
-  `pin <tool> <version>`.
+- ✅ **`fluxion tools`** command: `list` and `install <tool>` shipped. `status` and `which` were
+  dropped as separate verbs because `list` already answers both — it prints, per tool, whether it
+  resolves from `PATH`, from the cache, or would be downloaded, and the path in each case. `update`
+  and `pin` are deferred: the catalog pins release tags in source, so both need a version-resolution
+  story (query GitHub for the latest tag, persist an override) before they would mean anything.
 
 ### 6.2 `binstaller` — delegate binary distribution entirely
 

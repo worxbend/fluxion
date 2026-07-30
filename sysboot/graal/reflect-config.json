@@ -138,6 +138,24 @@
     "allDeclaredConstructors": true
   },
   {
+    "name": "dev.sysboot.cli.command.ToolsCommand",
+    "allDeclaredFields": true,
+    "allDeclaredMethods": true,
+    "allDeclaredConstructors": true
+  },
+  {
+    "name": "dev.sysboot.cli.command.ToolsCommand$ListSubcommand",
+    "allDeclaredFields": true,
+    "allDeclaredMethods": true,
+    "allDeclaredConstructors": true
+  },
+  {
+    "name": "dev.sysboot.cli.command.ToolsCommand$InstallSubcommand",
+    "allDeclaredFields": true,
+    "allDeclaredMethods": true,
+    "allDeclaredConstructors": true
+  },
+  {
     "name": "dev.sysboot.cli.command.StateCommand",
     "allDeclaredFields": true,
     "allDeclaredMethods": true,

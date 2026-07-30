@@ -87,6 +87,28 @@ Flatpak import reads installed app IDs with `flatpak list --app` and writes one 
 uses `flathub` when that remote exists, otherwise the first configured remote, and fails clearly
 when Flatpak is unavailable or no Flatpak apps are installed.
 
+## `tools`
+
+Reports on and obtains the external tools Fluxion delegates to — `dotbot` for dotfiles,
+`nerd-fonts-installer` for fonts, `binstaller` for binary distributions.
+
+```bash
+fluxion tools list
+fluxion tools list --format json
+fluxion tools install binstaller
+fluxion tools install nerd-fonts-installer --version v1.0.6
+```
+
+`list` shows, per tool, the binary name, the pinned release tag, and where it would come from: a
+copy already on `PATH`, the Fluxion tool cache, or a download whose exact asset URL is printed.
+Nothing is fetched.
+
+`install` downloads and verifies a tool into the cache. A tool already on `PATH` is reported and
+left alone — Fluxion uses what the host provides and never replaces it.
+
+Tools are selected by the short name of their GitHub repository rather than by binary name, because
+`dotbot-go` and `dotbot-scala` both install a binary called `dotbot`.
+
 ## `kinds`
 
 Lists the plan kinds a WorkstationProfile manifest may use, with a one-line description and, for
