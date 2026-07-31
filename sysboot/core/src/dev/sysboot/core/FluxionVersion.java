@@ -2,7 +2,7 @@ package dev.sysboot.core;
 
 public final class FluxionVersion {
 
-  public static final String CURRENT = "1.0.1";
+  public static final String CURRENT = "1.0.2";
 
   private FluxionVersion() {}
 
