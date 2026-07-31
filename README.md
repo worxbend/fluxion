@@ -145,7 +145,7 @@ files; if `~/.local/bin` is not on `PATH` it tells you the line to add.
 Pin a version, or install somewhere else:
 
 ```bash
-curl --proto '=https' --tlsv1.2 --proto-redir '=https' -sSfL https://worxbend.github.io/fluxion/install.sh | sh -s -- --version v1.0.2
+curl --proto '=https' --tlsv1.2 --proto-redir '=https' -sSfL https://worxbend.github.io/fluxion/install.sh | sh -s -- --version v1.0.3
 curl --proto '=https' --tlsv1.2 --proto-redir '=https' -sSfL https://worxbend.github.io/fluxion/install.sh | sh -s -- --bin-dir ~/bin
 ```
 
@@ -166,9 +166,9 @@ Native Linux builds are published from tags by GitHub Actions.
 Release archives are named like:
 
 ```text
-fluxion-v1.0.2-all.jar
-fluxion-v1.0.2-linux-amd64.tar.gz
-fluxion-v1.0.2-checksums.sha256
+fluxion-v1.0.3-all.jar
+fluxion-v1.0.3-linux-amd64.tar.gz
+fluxion-v1.0.3-checksums.sha256
 install.sh
 ```
 
