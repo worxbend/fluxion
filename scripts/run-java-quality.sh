@@ -22,6 +22,16 @@ run_tool() {
   if [[ ${rc} -ne 0 ]]; then
     echo "::group::${label} output"
     cat "${log_file}"
+    # Analysers that write a report file get it printed too. PMD in particular
+    # warns that reporting to stdout is unreliable and asks for -r, so its
+    # findings can be absent from the captured stream entirely.
+    local report_file="${report_dir}/${label}-report.txt"
+    if [[ -s ${report_file} ]]; then
+      echo "--- ${label} report ---"
+      cat "${report_file}"
+    else
+      echo "--- ${label} produced no report file ---"
+    fi
     echo "::endgroup::"
     echo "${label} failed with exit code ${rc}" >&2
     # An analyser killed by the kernel (128 + signal) has no findings to report,
@@ -77,6 +87,7 @@ run_tool pmd \
   -d cli/src \
   -R config/pmd-ruleset.xml \
   -f text \
+  -r "${report_dir}/pmd-report.txt" \
   --no-cache
 
 aux_classpath="$(
@@ -96,6 +107,7 @@ run_tool spotbugs \
   -medium \
   -exitcode \
   -exclude config/spotbugs-exclude.xml \
+  -output "${report_dir}/spotbugs-report.txt" \
   -auxclasspath "${aux_classpath}" \
   -onlyAnalyze 'dev.sysboot.-' \
   "${class_roots[@]}"
