@@ -82,3 +82,6 @@ sysboot/out/
 
 # Vendored third-party review prompts (not Fluxion source)
 prompts/
+
+# Python bytecode from the CI policy scripts
+__pycache__/
