@@ -116,7 +116,7 @@ jobs:
         run: |
           set -eu
           expected="$EXPECTED_VERSION"
-          actual="v$(sed -n 's/.*CURRENT = \"\\([^\"]*\\)\".*/\\1/p' sysboot/core/src/dev/sysboot/core/FluxionVersion.java)"
+          actual="v$(sed -n 's/.*CURRENT = "\([^"]*\)".*/\1/p' sysboot/core/src/dev/sysboot/core/FluxionVersion.java)"
           if [ "$actual" != "$expected" ]; then
             echo "Version metadata mismatch: expected ${expected}, found ${actual}" >&2
             exit 1
@@ -134,7 +134,16 @@ jobs:
 
       - name: Validate example configs
         working-directory: sysboot
-        run: for f in config/*.yaml; do ./mill cli.run validate --no-tui -c "$f"; done
+        run: |
+          set -u
+          for f in config/*.yaml; do
+            rc=0
+            ./mill cli.run validate --no-tui -c "$f" || rc=$?
+            if [ "$rc" -ne 0 ]; then
+              echo "::error file=sysboot/${f}::validate exited ${rc}"
+              exit "$rc"
+            fi
+          done
 
       - name: Build JVM assembly
         working-directory: sysboot
