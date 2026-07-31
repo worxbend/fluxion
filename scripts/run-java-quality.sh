@@ -4,6 +4,38 @@ set -euo pipefail
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "${repo_root}/sysboot"
 
+# Each analyser runs through run_tool so a failure prints the tool's own output
+# and its exit status. Without this the gate fails as a bare "Subprocess failed"
+# and the findings — the only thing that explains the failure — are lost.
+report_dir="${TMPDIR:-/tmp}/fluxion-quality.$$"
+mkdir -p "${report_dir}"
+trap 'rm -rf "${report_dir}"' EXIT
+
+run_tool() {
+  local label="$1"
+  shift
+  local log_file="${report_dir}/${label}.log"
+  local rc=0
+
+  "$@" >"${log_file}" 2>&1 || rc=$?
+
+  if [[ ${rc} -ne 0 ]]; then
+    echo "::group::${label} output"
+    cat "${log_file}"
+    echo "::endgroup::"
+    echo "${label} failed with exit code ${rc}" >&2
+    # An analyser killed by the kernel (128 + signal) has no findings to report,
+    # so say that outright instead of letting it read as a code violation.
+    if [[ ${rc} -gt 128 ]]; then
+      echo "${label} was terminated by signal $((rc - 128)) — this is a runner" \
+        "resource problem, not a finding." >&2
+    fi
+    exit "${rc}"
+  fi
+
+  echo "${label}: ok"
+}
+
 ./mill __.compile
 
 source_roots=(core/src config-parser/src executor/src tui/src app/src cli/src)
@@ -16,12 +48,14 @@ class_roots=(
   out/cli/compile.dest/classes
 )
 
-./mill quality.runMain com.puppycrawl.tools.checkstyle.Main \
+run_tool checkstyle-google \
+  ./mill quality.runMain com.puppycrawl.tools.checkstyle.Main \
   -c /google_checks.xml \
   -p config/checkstyle-google.properties \
   "${source_roots[@]}"
 
-./mill quality.runMain com.puppycrawl.tools.checkstyle.Main \
+run_tool checkstyle-repo \
+  ./mill quality.runMain com.puppycrawl.tools.checkstyle.Main \
   -c config/checkstyle.xml "${source_roots[@]}"
 
 if ./mill quality.runMain com.puppycrawl.tools.checkstyle.Main \
@@ -31,8 +65,10 @@ if ./mill quality.runMain com.puppycrawl.tools.checkstyle.Main \
   echo "Google Checkstyle self-test unexpectedly accepted an invalid field name" >&2
   exit 1
 fi
+echo "checkstyle-selftest: ok"
 
-./mill quality.runMain net.sourceforge.pmd.cli.PmdCli check \
+run_tool pmd \
+  ./mill quality.runMain net.sourceforge.pmd.cli.PmdCli check \
   -d core/src \
   -d config-parser/src \
   -d executor/src \
@@ -53,7 +89,8 @@ if [[ -z "${aux_classpath}" ]]; then
   exit 1
 fi
 
-./mill quality.runMain edu.umd.cs.findbugs.LaunchAppropriateUI \
+run_tool spotbugs \
+  ./mill quality.runMain edu.umd.cs.findbugs.LaunchAppropriateUI \
   -textui \
   -effort:max \
   -medium \
