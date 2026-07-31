@@ -136,9 +136,12 @@ jobs:
         working-directory: sysboot
         run: |
           set -u
+          # Run the CLI with java rather than `mill cli.run`; see ci.yml.
+          cli_cp="$(./mill show cli.runClasspath | sed -n 's#.*:\(/[^"[:space:]]*\)".*#\1#p' | paste -sd: -)"
+          test -n "$cli_cp"
           for f in config/*.yaml; do
             rc=0
-            ./mill cli.run validate --no-tui -c "$f" || rc=$?
+            java -cp "$cli_cp" dev.sysboot.cli.Main validate --no-tui -c "$f" || rc=$?
             if [ "$rc" -ne 0 ]; then
               echo "::error file=sysboot/${f}::validate exited ${rc}"
               exit "$rc"
