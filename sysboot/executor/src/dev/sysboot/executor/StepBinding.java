@@ -24,9 +24,9 @@ import java.util.stream.Collectors;
  *
  * <p>Most kinds share exactly that shape, and each one used to cost two hand-written switch arms:
  * one in the execute switch and a mirrored one in dry-run. Adding step kinds grew {@code
- * BootstrapOrchestratorImpl} past a thousand lines and sixty arms, which is the god object
- * PLAN-i.md §11.1 set out to remove. A lookup table replaces both arms with one row, so a new kind
- * is a line here rather than an edit in two switches that can silently diverge.
+ * BootstrapOrchestratorImpl} past a thousand lines and sixty arms. A lookup table replaces both
+ * arms with one row, so a new kind is a line here rather than an edit in two switches that can
+ * silently diverge.
  *
  * <p>Kinds with genuinely different shapes stay in the orchestrator: multi-item loops (packages,
  * Flatpak apps, file writes), items with bespoke skip keys (shell scripts), items that record extra

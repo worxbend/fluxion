@@ -33,7 +33,7 @@ import java.util.function.UnaryOperator;
  * a write, which is the sort of thing that only shows up as a step being run twice.
  *
  * <p>A {@link Clock} is injected so timestamps are testable — {@code Instant.now()} scattered
- * through the orchestrator was one of the things PLAN-i.md §3.8 flagged as untestable.
+ * through the orchestrator left those paths with no way to assert on the times they recorded.
  */
 final class RunStateRecorder {
 

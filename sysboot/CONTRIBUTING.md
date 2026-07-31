@@ -2,7 +2,7 @@
 
 ## Code Style
 
-All code must follow the constraints in `SKILL.md`:
+All code must follow these constraints:
 
 - **Java 25** — use records, sealed interfaces, pattern matching, text blocks freely.
 - Methods ≤ 20 lines, classes ≤ 300 lines (infrastructure), ≤ 200 lines (domain).

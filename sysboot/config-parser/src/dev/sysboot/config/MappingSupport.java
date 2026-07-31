@@ -14,7 +14,7 @@ import java.util.Optional;
  * enumValue}/{@code planEnum} were the same logic under different names; the two {@code expandHome}
  * bodies differed only in whether they used an {@code if} or a ternary.
  *
- * <p>That is the cheap half of PLAN-i.md §11.2. The expensive half — one intermediate
+ * <p>That is the cheap half of the deduplication. The expensive half — one intermediate
  * representation so per-kind mapping is written once — is untouched, and remains the real fix.
  */
 final class MappingSupport {
