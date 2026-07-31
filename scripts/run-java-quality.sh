@@ -48,6 +48,28 @@ run_tool() {
 
 ./mill __.compile
 
+# The analysers are launched with java directly rather than through
+# `mill quality.runMain`. Four different tools — Checkstyle, PMD, SpotBugs and
+# the CLI itself — have each completed their work on GitHub runners, printed no
+# findings, and still been reported as "Subprocess failed", while mill's own
+# compile and test tasks stayed green. Resolving the classpath once and forking
+# java ourselves removes that layer, so an exit code means what the tool meant.
+quality_classpath="$(
+  ./mill show quality.runClasspath |
+    sed -n 's#.*:\(/[^"[:space:]]*\)".*#\1#p' |
+    paste -sd: -
+)"
+if [[ -z ${quality_classpath} ]]; then
+  echo "Unable to resolve the quality tool classpath" >&2
+  exit 1
+fi
+
+java_tool() {
+  local label="$1"
+  shift
+  run_tool "${label}" java -cp "${quality_classpath}" "$@"
+}
+
 source_roots=(core/src config-parser/src executor/src tui/src app/src cli/src)
 class_roots=(
   out/core/compile.dest/classes
@@ -58,17 +80,17 @@ class_roots=(
   out/cli/compile.dest/classes
 )
 
-run_tool checkstyle-google \
-  ./mill quality.runMain com.puppycrawl.tools.checkstyle.Main \
+java_tool checkstyle-google \
+  com.puppycrawl.tools.checkstyle.Main \
   -c /google_checks.xml \
   -p config/checkstyle-google.properties \
   "${source_roots[@]}"
 
-run_tool checkstyle-repo \
-  ./mill quality.runMain com.puppycrawl.tools.checkstyle.Main \
+java_tool checkstyle-repo \
+  com.puppycrawl.tools.checkstyle.Main \
   -c config/checkstyle.xml "${source_roots[@]}"
 
-if ./mill quality.runMain com.puppycrawl.tools.checkstyle.Main \
+if java -cp "${quality_classpath}" com.puppycrawl.tools.checkstyle.Main \
   -c /google_checks.xml \
   -p config/checkstyle-google.properties \
   config/quality-fixtures/InvalidGoogleName.java >/dev/null 2>&1; then
@@ -77,8 +99,8 @@ if ./mill quality.runMain com.puppycrawl.tools.checkstyle.Main \
 fi
 echo "checkstyle-selftest: ok"
 
-run_tool pmd \
-  ./mill quality.runMain net.sourceforge.pmd.cli.PmdCli check \
+java_tool pmd \
+  net.sourceforge.pmd.cli.PmdCli check \
   -d core/src \
   -d config-parser/src \
   -d executor/src \
@@ -100,8 +122,8 @@ if [[ -z "${aux_classpath}" ]]; then
   exit 1
 fi
 
-run_tool spotbugs \
-  ./mill quality.runMain edu.umd.cs.findbugs.LaunchAppropriateUI \
+java_tool spotbugs \
+  edu.umd.cs.findbugs.LaunchAppropriateUI \
   -textui \
   -effort:max \
   -medium \
