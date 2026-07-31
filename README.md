@@ -21,7 +21,7 @@
 </p>
 
 ```bash
-curl --proto '=https' --tlsv1.2 -sSf https://worxbend.github.io/fluxion/install.sh | sh
+curl --proto '=https' --tlsv1.2 --proto-redir '=https' -sSfL https://worxbend.github.io/fluxion/install.sh | sh
 ```
 
 ---
@@ -134,7 +134,7 @@ rules decide which entries run or skip.
 ## Install
 
 ```bash
-curl --proto '=https' --tlsv1.2 -sSf https://worxbend.github.io/fluxion/install.sh | sh
+curl --proto '=https' --tlsv1.2 --proto-redir '=https' -sSfL https://worxbend.github.io/fluxion/install.sh | sh
 ```
 
 That always installs the newest release. The script resolves the latest tag, verifies the published
@@ -145,14 +145,14 @@ files; if `~/.local/bin` is not on `PATH` it tells you the line to add.
 Pin a version, or install somewhere else:
 
 ```bash
-curl --proto '=https' --tlsv1.2 -sSf https://worxbend.github.io/fluxion/install.sh | sh -s -- --version v1.0.2
-curl --proto '=https' --tlsv1.2 -sSf https://worxbend.github.io/fluxion/install.sh | sh -s -- --bin-dir ~/bin
+curl --proto '=https' --tlsv1.2 --proto-redir '=https' -sSfL https://worxbend.github.io/fluxion/install.sh | sh -s -- --version v1.0.2
+curl --proto '=https' --tlsv1.2 --proto-redir '=https' -sSfL https://worxbend.github.io/fluxion/install.sh | sh -s -- --bin-dir ~/bin
 ```
 
 Piping a script to a shell means trusting whatever served it. Read it first if you would rather:
 
 ```bash
-curl --proto '=https' --tlsv1.2 -sSf https://worxbend.github.io/fluxion/install.sh -o install.sh
+curl --proto '=https' --tlsv1.2 --proto-redir '=https' -sSfL https://worxbend.github.io/fluxion/install.sh -o install.sh
 less install.sh && sh install.sh
 ```
 

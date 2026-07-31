@@ -1,7 +1,8 @@
 #!/bin/sh
 # Fluxion installer.
 #
-#   curl --proto '=https' --tlsv1.2 -sSf https://worxbend.github.io/fluxion/install.sh | sh
+#   curl --proto '=https' --tlsv1.2 --proto-redir '=https' -sSfL \
+#     https://worxbend.github.io/fluxion/install.sh | sh
 #
 # Downloads the latest Fluxion release, verifies its SHA-256 checksum against the
 # published checksum file, and installs the binary into a user-writable directory.
@@ -14,7 +15,11 @@ REPO_URL="https://github.com/${REPO}"
 
 # Every download goes through these flags so a downgraded or plaintext connection
 # fails instead of silently fetching an installer from somewhere else.
-CURL_OPTS="--proto =https --tlsv1.2 -fsSL"
+#
+# Release downloads redirect to a CDN, so -L is required. --proto only constrains
+# the first request; without --proto-redir, curl would still follow a redirect to
+# plain http, which would defeat the point of pinning https here.
+CURL_OPTS="--proto =https --tlsv1.2 --proto-redir =https -fsSL"
 
 BIN_DIR="${FLUXION_BIN_DIR:-${HOME}/.local/bin}"
 SHARE_DIR="${XDG_DATA_HOME:-${HOME}/.local/share}/fluxion"
