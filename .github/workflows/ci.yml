@@ -100,7 +100,9 @@ jobs:
       - name: Smoke test JVM assembly
         run: |
           set -eu
-          test "$(java -jar sysboot/out/cli/assembly.dest/out.jar --version)" = "fluxion 1.0.0"
+          expected="$(sed -n 's/.*CURRENT = "\([^"]*\)".*/\1/p' sysboot/core/src/dev/sysboot/core/FluxionVersion.java)"
+          test -n "$expected"
+          test "$(java -jar sysboot/out/cli/assembly.dest/out.jar --version)" = "fluxion ${expected}"
           for f in sysboot/config/*.yaml; do
             java -jar sysboot/out/cli/assembly.dest/out.jar validate --no-tui -c "$f"
           done
@@ -149,7 +151,9 @@ jobs:
           executable=sysboot/out/cli/nativeImage.dest/native-executable
           generated="${RUNNER_TEMP}/fluxion-native-smoke.yaml"
           "$executable" --help >/dev/null
-          test "$("$executable" --version)" = "fluxion 1.0.0"
+          expected="$(sed -n 's/.*CURRENT = "\([^"]*\)".*/\1/p' sysboot/core/src/dev/sysboot/core/FluxionVersion.java)"
+          test -n "$expected"
+          test "$("$executable" --version)" = "fluxion ${expected}"
           for f in sysboot/config/*.yaml; do
             "$executable" validate --no-tui -c "$f"
           done

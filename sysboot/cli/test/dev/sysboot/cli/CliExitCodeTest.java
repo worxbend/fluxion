@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import dev.sysboot.cli.error.ExitCode;
 import dev.sysboot.core.BootstrapState;
+import dev.sysboot.core.FluxionVersion;
 import dev.sysboot.core.ItemType;
 import dev.sysboot.core.PhaseStateEntry;
 import dev.sysboot.core.PhaseStatus;
@@ -69,7 +70,7 @@ class CliExitCodeTest {
     CliResult result = execute("--version");
 
     assertThat(result.exitCode()).isEqualTo(ExitCode.SUCCESS.value());
-    assertThat(result.stdout()).isEqualTo("fluxion 1.0.0\n");
+    assertThat(result.stdout()).isEqualTo("fluxion " + FluxionVersion.CURRENT + "\n");
     assertThat(result.stderr()).isEmpty();
   }
 

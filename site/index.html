@@ -1,0 +1,956 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Fluxion — turn a fresh Linux machine into your machine</title>
+    <meta
+      name="description"
+      content="Fluxion is a YAML-driven Linux workstation bootstrapper. One profile installs your packages, Flatpaks, dotfiles, fonts, and binaries — with a dry run first and state so reruns skip work."
+    />
+    <meta name="color-scheme" content="dark light" />
+    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Ctext y='26' font-size='26'%3E%E2%9A%A1%3C/text%3E%3C/svg%3E" />
+
+    <meta property="og:title" content="Fluxion — turn a fresh Linux machine into your machine" />
+    <meta
+      property="og:description"
+      content="One YAML file. One preview. One run. A friendly Linux workstation bootstrapper."
+    />
+    <meta property="og:type" content="website" />
+    <meta property="og:url" content="https://worxbend.github.io/fluxion/" />
+
+    <style>
+      :root {
+        --bg: #0b1218;
+        --bg-raise: #101820;
+        --bg-card: #121c25;
+        --border: #1e2d3a;
+        --border-soft: #17242e;
+        --text: #e8f1f5;
+        --text-dim: #93a7b4;
+        --text-faint: #6b8090;
+        --mint: #47d6b6;
+        --mint-soft: #d6fff4;
+        --amber: #f4c95d;
+        --blue: #7aa8ff;
+        --shadow: 0 20px 60px -20px rgb(0 0 0 / 0.7);
+        --radius: 14px;
+        --maxw: 1080px;
+        --mono: ui-monospace, "SF Mono", "JetBrains Mono", "Fira Code", Menlo, Consolas, monospace;
+        --sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Inter, Roboto, sans-serif;
+      }
+
+      :root[data-theme="light"] {
+        --bg: #f7fafb;
+        --bg-raise: #ffffff;
+        --bg-card: #ffffff;
+        --border: #dbe6ec;
+        --border-soft: #e9f0f4;
+        --text: #0d1b24;
+        --text-dim: #4a5f6d;
+        --text-faint: #6b8090;
+        --mint: #0f8f74;
+        --mint-soft: #0b6b58;
+        --amber: #a37400;
+        --blue: #2f62c4;
+        --shadow: 0 18px 44px -22px rgb(13 27 36 / 0.28);
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      html {
+        scroll-behavior: smooth;
+      }
+
+      body {
+        margin: 0;
+        background: var(--bg);
+        color: var(--text);
+        font-family: var(--sans);
+        font-size: 16px;
+        line-height: 1.65;
+        -webkit-font-smoothing: antialiased;
+        overflow-x: hidden;
+      }
+
+      a {
+        color: var(--mint);
+        text-decoration: none;
+      }
+      a:hover {
+        text-decoration: underline;
+      }
+
+      .wrap {
+        max-width: var(--maxw);
+        margin: 0 auto;
+        padding: 0 24px;
+      }
+
+      /* ---------- nav ---------- */
+      header.nav {
+        position: sticky;
+        top: 0;
+        z-index: 50;
+        background: color-mix(in srgb, var(--bg) 82%, transparent);
+        backdrop-filter: blur(12px);
+        border-bottom: 1px solid var(--border-soft);
+      }
+
+      .nav-inner {
+        display: flex;
+        align-items: center;
+        gap: 16px;
+        height: 62px;
+      }
+
+      .brand {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        font-weight: 700;
+        letter-spacing: -0.02em;
+        color: var(--text);
+        font-size: 1.05rem;
+      }
+      .brand:hover {
+        text-decoration: none;
+      }
+
+      .bolt {
+        width: 26px;
+        height: 26px;
+        display: grid;
+        place-items: center;
+        border-radius: 8px;
+        background: linear-gradient(140deg, var(--mint), var(--blue));
+        color: #06121a;
+        font-size: 15px;
+        font-weight: 900;
+      }
+
+      .nav-links {
+        margin-left: auto;
+        display: flex;
+        align-items: center;
+        gap: 22px;
+      }
+      .nav-links a {
+        color: var(--text-dim);
+        font-size: 0.92rem;
+        font-weight: 500;
+      }
+      .nav-links a:hover {
+        color: var(--text);
+        text-decoration: none;
+      }
+
+      .icon-btn {
+        background: transparent;
+        border: 1px solid var(--border);
+        color: var(--text-dim);
+        border-radius: 8px;
+        width: 34px;
+        height: 34px;
+        cursor: pointer;
+        display: grid;
+        place-items: center;
+        font-size: 15px;
+        line-height: 1;
+      }
+      .icon-btn:hover {
+        color: var(--text);
+        border-color: var(--mint);
+      }
+
+      @media (max-width: 720px) {
+        .nav-links .hide-sm {
+          display: none;
+        }
+      }
+
+      /* ---------- hero ---------- */
+      .hero {
+        position: relative;
+        padding: 92px 0 78px;
+        overflow: hidden;
+      }
+
+      .hero::before {
+        content: "";
+        position: absolute;
+        inset: -40% 12% auto;
+        height: 620px;
+        background:
+          radial-gradient(50% 50% at 30% 40%, color-mix(in srgb, var(--mint) 26%, transparent), transparent 70%),
+          radial-gradient(46% 46% at 72% 32%, color-mix(in srgb, var(--blue) 22%, transparent), transparent 70%);
+        filter: blur(30px);
+        pointer-events: none;
+        z-index: 0;
+      }
+
+      .hero::after {
+        content: "";
+        position: absolute;
+        inset: 0;
+        background-image:
+          linear-gradient(var(--border-soft) 1px, transparent 1px),
+          linear-gradient(90deg, var(--border-soft) 1px, transparent 1px);
+        background-size: 54px 54px;
+        mask-image: radial-gradient(70% 60% at 50% 30%, #000 20%, transparent 80%);
+        opacity: 0.55;
+        pointer-events: none;
+        z-index: 0;
+      }
+
+      .hero .wrap {
+        position: relative;
+        z-index: 1;
+      }
+
+      .eyebrow {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        padding: 5px 13px;
+        border: 1px solid var(--border);
+        border-radius: 999px;
+        background: var(--bg-raise);
+        color: var(--text-dim);
+        font-size: 0.8rem;
+        font-weight: 500;
+      }
+      .eyebrow b {
+        color: var(--mint);
+        font-weight: 600;
+      }
+
+      h1 {
+        margin: 22px 0 0;
+        font-size: clamp(2.3rem, 6vw, 3.9rem);
+        line-height: 1.05;
+        letter-spacing: -0.035em;
+        font-weight: 800;
+        max-width: 15ch;
+      }
+
+      .grad {
+        background: linear-gradient(105deg, var(--mint) 10%, var(--blue) 90%);
+        -webkit-background-clip: text;
+        background-clip: text;
+        color: transparent;
+      }
+
+      .lede {
+        margin: 20px 0 0;
+        font-size: clamp(1.03rem, 2.1vw, 1.2rem);
+        color: var(--text-dim);
+        max-width: 60ch;
+      }
+
+      /* ---------- install box ---------- */
+      .install {
+        margin: 34px 0 0;
+        max-width: 720px;
+      }
+
+      .install-label {
+        font-size: 0.78rem;
+        text-transform: uppercase;
+        letter-spacing: 0.09em;
+        color: var(--text-faint);
+        margin-bottom: 9px;
+        font-weight: 600;
+      }
+
+      .cmd {
+        display: flex;
+        align-items: stretch;
+        gap: 0;
+        background: var(--bg-raise);
+        border: 1px solid var(--border);
+        border-radius: 12px;
+        box-shadow: var(--shadow);
+        overflow: hidden;
+      }
+
+      .cmd code {
+        flex: 1;
+        min-width: 0;
+        font-family: var(--mono);
+        font-size: 0.855rem;
+        padding: 15px 16px;
+        overflow-x: auto;
+        white-space: nowrap;
+        color: var(--text);
+      }
+      .cmd code .p {
+        color: var(--mint);
+        user-select: none;
+      }
+      .cmd code .f {
+        color: var(--text-faint);
+      }
+
+      .copy {
+        flex: none;
+        border: 0;
+        border-left: 1px solid var(--border);
+        background: transparent;
+        color: var(--text-dim);
+        padding: 0 17px;
+        font-size: 0.82rem;
+        font-weight: 600;
+        font-family: var(--sans);
+        cursor: pointer;
+        white-space: nowrap;
+      }
+      .copy:hover {
+        background: color-mix(in srgb, var(--mint) 12%, transparent);
+        color: var(--mint);
+      }
+      .copy.done {
+        color: var(--mint);
+      }
+
+      .install-note {
+        margin: 11px 2px 0;
+        font-size: 0.85rem;
+        color: var(--text-faint);
+      }
+
+      .cta-row {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 12px;
+        margin-top: 30px;
+      }
+
+      .btn {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        padding: 11px 20px;
+        border-radius: 10px;
+        font-weight: 600;
+        font-size: 0.93rem;
+        border: 1px solid transparent;
+      }
+      .btn:hover {
+        text-decoration: none;
+      }
+      .btn-primary {
+        background: linear-gradient(120deg, var(--mint), #35bfa2);
+        color: #06121a;
+      }
+      .btn-primary:hover {
+        filter: brightness(1.08);
+      }
+      .btn-ghost {
+        border-color: var(--border);
+        color: var(--text);
+        background: var(--bg-raise);
+      }
+      .btn-ghost:hover {
+        border-color: var(--mint);
+        color: var(--mint);
+      }
+
+      /* ---------- sections ---------- */
+      section {
+        padding: 76px 0;
+        border-top: 1px solid var(--border-soft);
+      }
+
+      .sec-head {
+        max-width: 62ch;
+        margin-bottom: 40px;
+      }
+
+      h2 {
+        font-size: clamp(1.6rem, 3.4vw, 2.15rem);
+        letter-spacing: -0.028em;
+        margin: 0 0 12px;
+        font-weight: 750;
+        line-height: 1.2;
+      }
+
+      .sec-head p {
+        margin: 0;
+        color: var(--text-dim);
+        font-size: 1.02rem;
+      }
+
+      /* ---------- split ---------- */
+      .split {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 22px;
+      }
+      @media (max-width: 860px) {
+        .split {
+          grid-template-columns: 1fr;
+        }
+      }
+
+      .panel {
+        background: var(--bg-card);
+        border: 1px solid var(--border);
+        border-radius: var(--radius);
+        overflow: hidden;
+      }
+
+      .panel-head {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 11px 15px;
+        border-bottom: 1px solid var(--border-soft);
+        font-size: 0.8rem;
+        color: var(--text-faint);
+        font-family: var(--mono);
+        background: color-mix(in srgb, var(--bg-raise) 60%, transparent);
+      }
+
+      .dot {
+        width: 9px;
+        height: 9px;
+        border-radius: 50%;
+        background: var(--border);
+      }
+      .dot.m {
+        background: var(--mint);
+      }
+      .dot.a {
+        background: var(--amber);
+      }
+
+      pre {
+        margin: 0;
+        padding: 17px 18px;
+        overflow-x: auto;
+        font-family: var(--mono);
+        font-size: 0.82rem;
+        line-height: 1.7;
+        color: var(--text);
+      }
+
+      .k {
+        color: var(--blue);
+      }
+      .s {
+        color: var(--mint);
+      }
+      .c {
+        color: var(--text-faint);
+        font-style: italic;
+      }
+      .ok {
+        color: var(--mint);
+      }
+      .warnc {
+        color: var(--amber);
+      }
+
+      /* ---------- features ---------- */
+      .grid {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 18px;
+      }
+      @media (max-width: 900px) {
+        .grid {
+          grid-template-columns: repeat(2, 1fr);
+        }
+      }
+      @media (max-width: 600px) {
+        .grid {
+          grid-template-columns: 1fr;
+        }
+      }
+
+      .card {
+        background: var(--bg-card);
+        border: 1px solid var(--border);
+        border-radius: var(--radius);
+        padding: 23px 21px;
+        transition:
+          transform 0.16s ease,
+          border-color 0.16s ease;
+      }
+      .card:hover {
+        transform: translateY(-3px);
+        border-color: color-mix(in srgb, var(--mint) 45%, var(--border));
+      }
+
+      .card .ico {
+        font-size: 1.3rem;
+        margin-bottom: 11px;
+      }
+      .card h3 {
+        margin: 0 0 7px;
+        font-size: 1.02rem;
+        letter-spacing: -0.015em;
+        font-weight: 650;
+      }
+      .card p {
+        margin: 0;
+        color: var(--text-dim);
+        font-size: 0.92rem;
+        line-height: 1.62;
+      }
+
+      /* ---------- distros ---------- */
+      .chips {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 10px;
+      }
+      .chip {
+        padding: 7px 15px;
+        border: 1px solid var(--border);
+        border-radius: 999px;
+        background: var(--bg-card);
+        color: var(--text-dim);
+        font-size: 0.88rem;
+        font-family: var(--mono);
+      }
+
+      /* ---------- steps ---------- */
+      .steps {
+        display: grid;
+        gap: 14px;
+        counter-reset: step;
+      }
+      .step {
+        display: grid;
+        grid-template-columns: 34px 1fr;
+        gap: 15px;
+        align-items: start;
+        background: var(--bg-card);
+        border: 1px solid var(--border);
+        border-radius: var(--radius);
+        padding: 18px 20px;
+      }
+      .step::before {
+        counter-increment: step;
+        content: counter(step);
+        width: 30px;
+        height: 30px;
+        border-radius: 9px;
+        display: grid;
+        place-items: center;
+        background: color-mix(in srgb, var(--mint) 16%, transparent);
+        color: var(--mint);
+        font-weight: 700;
+        font-size: 0.9rem;
+        font-family: var(--mono);
+      }
+      .step h3 {
+        margin: 3px 0 5px;
+        font-size: 1rem;
+        font-weight: 650;
+      }
+      .step p {
+        margin: 0;
+        color: var(--text-dim);
+        font-size: 0.92rem;
+      }
+      .step code {
+        font-family: var(--mono);
+        font-size: 0.86rem;
+        background: var(--bg-raise);
+        border: 1px solid var(--border-soft);
+        padding: 1px 6px;
+        border-radius: 5px;
+        color: var(--mint);
+      }
+
+      /* ---------- alt install ---------- */
+      .alt {
+        display: grid;
+        gap: 16px;
+      }
+      .alt-item .install-label {
+        margin-bottom: 7px;
+      }
+
+      /* ---------- footer ---------- */
+      footer {
+        border-top: 1px solid var(--border-soft);
+        padding: 38px 0 54px;
+        color: var(--text-faint);
+        font-size: 0.88rem;
+      }
+      .foot-inner {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 16px;
+        align-items: center;
+      }
+      .foot-links {
+        margin-left: auto;
+        display: flex;
+        gap: 20px;
+        flex-wrap: wrap;
+      }
+      footer a {
+        color: var(--text-dim);
+      }
+      footer a:hover {
+        color: var(--mint);
+      }
+
+      .sr {
+        position: absolute;
+        width: 1px;
+        height: 1px;
+        overflow: hidden;
+        clip: rect(0 0 0 0);
+        white-space: nowrap;
+      }
+    </style>
+  </head>
+
+  <body>
+    <header class="nav">
+      <div class="wrap nav-inner">
+        <a class="brand" href="#top"><span class="bolt">⚡</span> Fluxion</a>
+        <nav class="nav-links">
+          <a href="#how" class="hide-sm">How it works</a>
+          <a href="#features" class="hide-sm">Features</a>
+          <a href="#install">Install</a>
+          <a href="https://github.com/worxbend/fluxion">GitHub</a>
+          <button class="icon-btn" id="theme" title="Toggle theme" aria-label="Toggle colour theme">◐</button>
+        </nav>
+      </div>
+    </header>
+
+    <main id="top">
+      <!-- HERO -->
+      <div class="hero">
+        <div class="wrap">
+          <span class="eyebrow">⚡ <b>Linux workstation bootstrapper</b> · YAML-driven</span>
+
+          <h1>Turn a fresh Linux box into <span class="grad">your machine</span>.</h1>
+
+          <p class="lede">
+            One YAML profile describes the packages, Flatpaks, dotfiles, fonts, and binaries you
+            want. Fluxion shows you the plan first, then applies only the parts that make sense on
+            this distro — and remembers what it did, so reruns skip the work.
+          </p>
+
+          <div class="install">
+            <div class="install-label">Install</div>
+            <div class="cmd">
+              <code id="cmd-main"><span class="p">$</span> curl <span class="f">--proto '=https' --tlsv1.2 -sSf</span> https://worxbend.github.io/fluxion/install.sh | sh</code>
+              <button class="copy" data-copy="curl --proto '=https' --tlsv1.2 -sSf https://worxbend.github.io/fluxion/install.sh | sh">
+                Copy
+              </button>
+            </div>
+            <p class="install-note">
+              Always installs the latest release. Verifies the published SHA-256 checksum before it
+              writes anything, installs into <code>~/.local/bin</code>, and never touches your shell
+              startup files.
+            </p>
+          </div>
+
+          <div class="cta-row">
+            <a class="btn btn-primary" href="#how">See how it works →</a>
+            <a class="btn btn-ghost" href="https://github.com/worxbend/fluxion">Star on GitHub</a>
+          </div>
+        </div>
+      </div>
+
+      <!-- HOW -->
+      <section id="how">
+        <div class="wrap">
+          <div class="sec-head">
+            <h2>You write the profile. Fluxion writes the plan.</h2>
+            <p>
+              No bash soup, no hidden ordering. The left side is what you keep in git; the right side
+              is what you get to inspect before a single package is touched.
+            </p>
+          </div>
+
+          <div class="split">
+            <div class="panel">
+              <div class="panel-head"><span class="dot m"></span> workstation.yaml</div>
+              <pre><span class="k">profile</span>: my-laptop
+
+<span class="k">jobs</span>:
+  - <span class="k">name</span>: base
+    <span class="k">steps</span>:
+      - <span class="k">type</span>: <span class="s">package</span>
+        <span class="k">name</span>: cli-tools
+        <span class="k">packages</span>: [git, zsh, ripgrep, fzf]
+
+      - <span class="k">type</span>: <span class="s">compiled-binary</span>
+        <span class="k">name</span>: kubectl
+        <span class="k">url</span>: <span class="s">https://dl.k8s.io/.../kubectl</span>
+        <span class="c"># pinned — verified before install</span>
+        <span class="k">checksum</span>:
+          <span class="k">algorithm</span>: SHA-256
+          <span class="k">value</span>: c6e9c45ce3f8...
+
+  - <span class="k">name</span>: desktop
+    <span class="k">needs</span>: [base]
+    <span class="k">steps</span>:
+      - <span class="k">type</span>: <span class="s">flatpak</span>
+        <span class="k">name</span>: apps
+        <span class="k">packages</span>: [com.spotify.Client]</pre>
+            </div>
+
+            <div class="panel">
+              <div class="panel-head"><span class="dot a"></span> fluxion dry-run</div>
+              <pre><span class="c">$ fluxion dry-run -c workstation.yaml</span>
+
+<span class="ok">plan</span> my-laptop · 2 jobs · 4 steps
+
+<span class="k">base</span>
+  <span class="ok">+</span> package        cli-tools
+      git, zsh, ripgrep, fzf     <span class="c">(dnf)</span>
+  <span class="warnc">·</span> compiled-binary kubectl
+      <span class="c">already installed — skipped</span>
+
+<span class="k">desktop</span>  <span class="c">needs: base</span>
+  <span class="ok">+</span> flatpak        apps
+      com.spotify.Client
+
+<span class="c">nothing has been changed.</span>
+<span class="c">run `fluxion apply -c workstation.yaml` to proceed.</span></pre>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- FEATURES -->
+      <section id="features">
+        <div class="wrap">
+          <div class="sec-head">
+            <h2>Built to be boring, in the good way</h2>
+            <p>
+              Bootstrapping a machine is a job you do rarely and need to trust completely. Fluxion is
+              designed around that.
+            </p>
+          </div>
+
+          <div class="grid">
+            <div class="card">
+              <div class="ico">🔍</div>
+              <h3>Dry run first</h3>
+              <p>
+                Every run can be previewed. See the resolved plan, the installer chosen for each
+                step, and what will be skipped — before anything is touched.
+              </p>
+            </div>
+            <div class="card">
+              <div class="ico">🧭</div>
+              <h3>Distro-aware</h3>
+              <p>
+                One profile, many machines. Package steps resolve to apt, dnf, pacman, or zypper
+                based on the host, and steps that do not apply are skipped.
+              </p>
+            </div>
+            <div class="card">
+              <div class="ico">🔐</div>
+              <h3>Verified supply chain</h3>
+              <p>
+                Downloads are pinned to SHA-256 checksums, repository keys are verified before
+                publication, and install destinations are checked against a trusted ancestry.
+              </p>
+            </div>
+            <div class="card">
+              <div class="ico">💾</div>
+              <h3>State that survives</h3>
+              <p>
+                Fluxion records what it installed, so reruns skip completed work and interrupted runs
+                can resume instead of starting over.
+              </p>
+            </div>
+            <div class="card">
+              <div class="ico">🖥️</div>
+              <h3>CLI or TUI</h3>
+              <p>
+                Plain, parseable output for scripts and CI — or an interactive terminal UI for
+                picking exactly which jobs and steps to run.
+              </p>
+            </div>
+            <div class="card">
+              <div class="ico">📦</div>
+              <h3>Many installer kinds</h3>
+              <p>
+                Packages, Flatpaks and their remotes, shell installers, dotfiles, Nerd Fonts,
+                toolchains, git repos, GPG keys, and prebuilt binaries — in one file.
+              </p>
+            </div>
+          </div>
+
+          <div style="margin-top: 30px">
+            <div class="install-label">Tested against</div>
+            <div class="chips">
+              <span class="chip">Ubuntu</span>
+              <span class="chip">Debian</span>
+              <span class="chip">Fedora</span>
+              <span class="chip">Arch / EndeavourOS</span>
+              <span class="chip">openSUSE Tumbleweed</span>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- INSTALL -->
+      <section id="install">
+        <div class="wrap">
+          <div class="sec-head">
+            <h2>Install</h2>
+            <p>
+              A single native binary built with GraalVM. No JVM required at runtime, no daemon, no
+              system-wide install.
+            </p>
+          </div>
+
+          <div class="steps" style="margin-bottom: 34px">
+            <div class="step">
+              <div>
+                <h3>Run the installer</h3>
+                <p>
+                  Downloads the latest release for your architecture, verifies its checksum, and
+                  installs to <code>~/.local/bin/fluxion</code>.
+                </p>
+              </div>
+            </div>
+            <div class="step">
+              <div>
+                <h3>Generate a starting profile</h3>
+                <p>
+                  <code>fluxion generate --os fedora --profile my-laptop --output workstation.yaml</code>
+                </p>
+              </div>
+            </div>
+            <div class="step">
+              <div>
+                <h3>Preview, then apply</h3>
+                <p>
+                  <code>fluxion dry-run -c workstation.yaml</code> — and when it looks right,
+                  <code>fluxion apply -c workstation.yaml</code>.
+                </p>
+              </div>
+            </div>
+          </div>
+
+          <div class="alt">
+            <div class="alt-item">
+              <div class="install-label">Latest release (recommended)</div>
+              <div class="cmd">
+                <code><span class="p">$</span> curl <span class="f">--proto '=https' --tlsv1.2 -sSf</span> https://worxbend.github.io/fluxion/install.sh | sh</code>
+                <button class="copy" data-copy="curl --proto '=https' --tlsv1.2 -sSf https://worxbend.github.io/fluxion/install.sh | sh">
+                  Copy
+                </button>
+              </div>
+            </div>
+
+            <div class="alt-item">
+              <div class="install-label">Pin a specific version</div>
+              <div class="cmd">
+                <code><span class="p">$</span> curl <span class="f">--proto '=https' --tlsv1.2 -sSf</span> https://worxbend.github.io/fluxion/install.sh | sh <span class="f">-s --</span> --version v1.0.0</code>
+                <button class="copy" data-copy="curl --proto '=https' --tlsv1.2 -sSf https://worxbend.github.io/fluxion/install.sh | sh -s -- --version v1.0.0">
+                  Copy
+                </button>
+              </div>
+            </div>
+
+            <div class="alt-item">
+              <div class="install-label">Inspect the script before running it</div>
+              <div class="cmd">
+                <code><span class="p">$</span> curl <span class="f">--proto '=https' --tlsv1.2 -sSf</span> https://worxbend.github.io/fluxion/install.sh <span class="f">-o</span> install.sh &amp;&amp; less install.sh</code>
+                <button class="copy" data-copy="curl --proto '=https' --tlsv1.2 -sSf https://worxbend.github.io/fluxion/install.sh -o install.sh && less install.sh">
+                  Copy
+                </button>
+              </div>
+              <p class="install-note">
+                Piping a script into a shell means trusting the host that served it. Reading it first
+                is always reasonable — the installer is short and does nothing clever.
+              </p>
+            </div>
+
+            <div class="alt-item">
+              <div class="install-label">Prefer a manual download?</div>
+              <p class="install-note" style="margin-top: 0">
+                Every release publishes the native Linux binary, a runnable JAR for other platforms,
+                and a <code>.sha256</code> checksum file —
+                <a href="https://github.com/worxbend/fluxion/releases/latest">see the latest release</a>.
+              </p>
+            </div>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <footer>
+      <div class="wrap foot-inner">
+        <span>Fluxion — a friendly Linux workstation bootstrapper.</span>
+        <div class="foot-links">
+          <a href="https://github.com/worxbend/fluxion">GitHub</a>
+          <a href="https://github.com/worxbend/fluxion/releases">Releases</a>
+          <a href="https://github.com/worxbend/fluxion/tree/master/sysboot/docs">Docs</a>
+          <a href="https://github.com/worxbend/fluxion/issues">Issues</a>
+        </div>
+      </div>
+    </footer>
+
+    <script>
+      // Theme: follow the OS unless the visitor has chosen otherwise.
+      (function () {
+        var root = document.documentElement;
+        var saved = null;
+        try {
+          saved = localStorage.getItem("fluxion-theme");
+        } catch (e) {}
+        if (saved) {
+          root.setAttribute("data-theme", saved);
+        } else if (window.matchMedia && window.matchMedia("(prefers-color-scheme: light)").matches) {
+          root.setAttribute("data-theme", "light");
+        }
+        document.getElementById("theme").addEventListener("click", function () {
+          var next = root.getAttribute("data-theme") === "light" ? "dark" : "light";
+          root.setAttribute("data-theme", next);
+          try {
+            localStorage.setItem("fluxion-theme", next);
+          } catch (e) {}
+        });
+      })();
+
+      // Copy buttons.
+      document.querySelectorAll(".copy").forEach(function (btn) {
+        btn.addEventListener("click", function () {
+          var text = btn.getAttribute("data-copy");
+          var done = function () {
+            var old = btn.textContent;
+            btn.textContent = "Copied";
+            btn.classList.add("done");
+            setTimeout(function () {
+              btn.textContent = old;
+              btn.classList.remove("done");
+            }, 1600);
+          };
+          if (navigator.clipboard && navigator.clipboard.writeText) {
+            navigator.clipboard.writeText(text).then(done, function () {});
+          } else {
+            var ta = document.createElement("textarea");
+            ta.value = text;
+            document.body.appendChild(ta);
+            ta.select();
+            try {
+              document.execCommand("copy");
+              done();
+            } catch (e) {}
+            document.body.removeChild(ta);
+          }
+        });
+      });
+    </script>
+  </body>
+</html>

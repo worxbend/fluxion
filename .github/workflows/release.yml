@@ -201,7 +201,11 @@ jobs:
           tar --sort=name --mtime="@${source_date_epoch}" --owner=0 --group=0 \
             --numeric-owner -C dist/pkg -cf - . |
             gzip -n > "dist/fluxion-${version}-linux-amd64.tar.gz"
-          (cd dist && sha256sum "fluxion-${version}-all.jar" "fluxion-${version}-linux-amd64.tar.gz" > "fluxion-${version}-checksums.sha256")
+          # Ship the installer as a release asset too. The name is deliberately
+          # unversioned so releases/latest/download/install.sh is a stable URL.
+          cp install.sh dist/install.sh
+          chmod 644 dist/install.sh
+          (cd dist && sha256sum "fluxion-${version}-all.jar" "fluxion-${version}-linux-amd64.tar.gz" install.sh > "fluxion-${version}-checksums.sha256")
 
       - name: Upload release assets as workflow artifacts
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
@@ -211,6 +215,7 @@ jobs:
             dist/*.jar
             dist/*.tar.gz
             dist/*.sha256
+            dist/install.sh
           if-no-files-found: error
 
   publish:
@@ -265,3 +270,4 @@ jobs:
             dist/*.jar
             dist/*.tar.gz
             dist/*.sha256
+            dist/install.sh

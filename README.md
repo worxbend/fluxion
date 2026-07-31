@@ -16,6 +16,14 @@
   One YAML file. One preview. One run. CLI or TUI. No mystery bash soup.
 </p>
 
+<p align="center">
+  <a href="https://worxbend.github.io/fluxion/"><b>worxbend.github.io/fluxion</b></a>
+</p>
+
+```bash
+curl --proto '=https' --tlsv1.2 -sSf https://worxbend.github.io/fluxion/install.sh | sh
+```
+
 ---
 
 ## What Is Fluxion?
@@ -125,14 +133,43 @@ rules decide which entries run or skip.
 
 ## Install
 
+```bash
+curl --proto '=https' --tlsv1.2 -sSf https://worxbend.github.io/fluxion/install.sh | sh
+```
+
+That always installs the newest release. The script resolves the latest tag, verifies the published
+SHA-256 checksum before it writes anything, installs the binary to `~/.local/bin/fluxion`, and drops
+the example profiles and docs in `~/.local/share/fluxion`. It does not touch your shell startup
+files; if `~/.local/bin` is not on `PATH` it tells you the line to add.
+
+Pin a version, or install somewhere else:
+
+```bash
+curl --proto '=https' --tlsv1.2 -sSf https://worxbend.github.io/fluxion/install.sh | sh -s -- --version v1.0.0
+curl --proto '=https' --tlsv1.2 -sSf https://worxbend.github.io/fluxion/install.sh | sh -s -- --bin-dir ~/bin
+```
+
+Piping a script to a shell means trusting whatever served it. Read it first if you would rather:
+
+```bash
+curl --proto '=https' --tlsv1.2 -sSf https://worxbend.github.io/fluxion/install.sh -o install.sh
+less install.sh && sh install.sh
+```
+
+The same script ships with every release, so `install.sh` is also available from
+`https://github.com/worxbend/fluxion/releases/latest/download/install.sh`.
+
+### Manual download
+
 Native Linux builds are published from tags by GitHub Actions.
 
 Release archives are named like:
 
 ```text
-fluxion-v0.0.1-all.jar
-fluxion-v0.0.1-linux-amd64.tar.gz
-fluxion-v0.0.1-checksums.sha256
+fluxion-v1.0.0-all.jar
+fluxion-v1.0.0-linux-amd64.tar.gz
+fluxion-v1.0.0-checksums.sha256
+install.sh
 ```
 
 When a release archive is unpacked and `fluxion` is on `PATH`:
