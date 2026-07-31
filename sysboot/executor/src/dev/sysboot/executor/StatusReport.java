@@ -12,6 +12,7 @@ public record StatusReport(String profileName, List<StatusReport.Item> items, Su
   }
 
   public record Item(
+      String moduleName,
       String key,
       String displayName,
       String type,
@@ -21,6 +22,7 @@ public record StatusReport(String profileName, List<StatusReport.Item> items, Su
       String liveVersion) {
 
     public Item {
+      Objects.requireNonNull(moduleName);
       Objects.requireNonNull(key);
       Objects.requireNonNull(displayName);
       Objects.requireNonNull(type);

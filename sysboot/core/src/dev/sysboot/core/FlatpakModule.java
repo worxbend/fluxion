@@ -19,9 +19,14 @@ public record FlatpakModule(
       remote = "flathub";
     }
     appIds = List.copyOf(appIds);
+    RepositoryIdentifierPolicy.requireSafe(remote, "Flatpak remote name");
     if (appIds.isEmpty()) {
       throw new IllegalArgumentException(
           "Flatpak module '" + name.value() + "' must declare at least one app ID");
+    }
+    appIds.forEach(FlatpakApplicationPolicy::requireAppId);
+    if (appIds.stream().distinct().count() != appIds.size()) {
+      throw new IllegalArgumentException("Flatpak module must not repeat an app ID");
     }
   }
 }

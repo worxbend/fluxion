@@ -60,7 +60,8 @@ class BootstrapConfigBuilderTest {
             new ModuleName("flathub"),
             "flathub",
             URI.create("https://flathub.org/repo/flathub.flatpakrepo"),
-            true);
+            true,
+            Optional.of(new Sha256Digest("a".repeat(64))));
 
     var config =
         BootstrapConfig.builder()

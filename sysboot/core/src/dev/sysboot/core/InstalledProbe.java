@@ -11,5 +11,9 @@ public interface InstalledProbe {
     return supports(item.itemType());
   }
 
+  default InstallationStatus probe(ModuleItem item) {
+    return probe(item.key());
+  }
+
   InstallationStatus probe(String itemKey);
 }

@@ -24,11 +24,10 @@ abstract sealed class AbstractPackageInstaller implements PackageManagerExecutor
   protected static final Duration INSTALL_TIMEOUT = Duration.ofMinutes(10);
 
   protected final ShellRunner shellRunner;
-  protected final SudoPasswordProvider sudoPasswordProvider;
 
   AbstractPackageInstaller(ShellRunner shellRunner, SudoPasswordProvider sudoPasswordProvider) {
     this.shellRunner = shellRunner;
-    this.sudoPasswordProvider = sudoPasswordProvider;
+    java.util.Objects.requireNonNull(sudoPasswordProvider);
   }
 
   protected abstract List<String> buildInstallCommand(PackageName packageName);

@@ -9,11 +9,16 @@ import dev.sysboot.cli.output.JsonOutput;
 import dev.sysboot.cli.output.OutputFormat;
 import dev.sysboot.core.BootstrapConfig;
 import dev.sysboot.core.BootstrapState;
+import dev.sysboot.core.ItemType;
+import dev.sysboot.core.ModuleName;
 import dev.sysboot.core.PhaseStateEntry;
+import dev.sysboot.core.PublicUrl;
 import dev.sysboot.core.StateEntry;
 import dev.sysboot.executor.JsonStateRepository;
 import dev.sysboot.executor.PhaseExecutionPlanner;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
+import java.nio.file.LinkOption;
 import java.nio.file.Path;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -98,8 +103,8 @@ public final class StateCommand implements Runnable {
                       .forEach(
                           e ->
                               out.printf(
-                                  "  %-40s  %-15s  %s%n",
-                                  e.itemKey(), e.itemType(), e.completedAt()));
+                                  "  %-24s  %-40s  %-15s  %s%n",
+                                  e.moduleName(), e.itemKey(), e.itemType(), e.completedAt()));
                 }
               },
               () -> writeMissingState());
@@ -164,7 +169,7 @@ public final class StateCommand implements Runnable {
       output.put("completedAt", entry.completedAt().toString());
       output.put("version", entry.version().orElse(null));
       output.put("checksum", entry.checksum().orElse(null));
-      output.put("sourceUrl", entry.sourceUrl().orElse(null));
+      output.put("sourceUrl", entry.sourceUrl().map(PublicUrl::from).orElse(null));
       return output;
     }
   }
@@ -187,13 +192,15 @@ public final class StateCommand implements Runnable {
       var repo = new JsonStateRepository(new ObjectMapper());
       Path stateFile = repo.path(profile);
       Path legacyStateFile = repo.legacyPath(profile);
-      if (!Files.exists(stateFile) && !Files.exists(legacyStateFile)) {
+      if (!Files.exists(stateFile, LinkOption.NOFOLLOW_LINKS)
+          && !Files.exists(legacyStateFile, LinkOption.NOFOLLOW_LINKS)) {
         spec.commandLine().getOut().println("No state file found for profile: " + profile);
         return;
       }
       if (!force) {
         System.out.print("Delete state for profile '" + profile + "'? [y/N] ");
-        String response = new java.util.Scanner(System.in).nextLine().strip();
+        String response =
+            new java.util.Scanner(System.in, StandardCharsets.UTF_8).nextLine().strip();
         if (!response.equalsIgnoreCase("y")) {
           System.out.println("Aborted.");
           return;
@@ -225,28 +232,81 @@ public final class StateCommand implements Runnable {
         description = "Item key to forget")
     private String itemKey;
 
+    @Option(
+        names = {"--module"},
+        description = "Module name qualifying --item")
+    private String moduleName;
+
+    @Option(
+        names = {"--type"},
+        description = "Item type qualifying --item")
+    private String itemType;
+
     @Override
     public void run() {
       if (phaseName == null && itemKey == null) {
         throw new CliFailureException(ExitCode.INVALID_INPUT, "Specify --phase or --item");
       }
+      if (itemKey == null && (moduleName != null || itemType != null)) {
+        throw new CliFailureException(ExitCode.INVALID_INPUT, "--module and --type require --item");
+      }
       var mapper = new ObjectMapper();
       var repo = new JsonStateRepository(mapper);
-      if (repo.load(profile).isEmpty()) {
+      Optional<BootstrapState> loaded = repo.load(profile);
+      if (loaded.isEmpty()) {
         spec.commandLine().getOut().println("No state file found for profile: " + profile);
         return;
       }
+      Optional<StateEntry> selectedItem =
+          itemKey == null ? Optional.empty() : Optional.of(resolveItem(loaded.orElseThrow()));
       if (phaseName != null) {
         repo.forgetPhase(profile, phaseName);
         spec.commandLine()
             .getOut()
             .printf("Forgot phase '%s' from profile '%s'%n", phaseName, profile);
       }
-      if (itemKey != null) {
-        repo.forgetItem(profile, itemKey);
+      if (selectedItem.isPresent()) {
+        StateEntry item = selectedItem.orElseThrow();
+        repo.forgetItem(
+            profile, new ModuleName(item.moduleName()), item.itemKey(), item.itemType());
         spec.commandLine()
             .getOut()
-            .printf("Forgot item '%s' from profile '%s'%n", itemKey, profile);
+            .printf(
+                "Forgot item '%s/%s' (%s) from profile '%s'%n",
+                item.moduleName(), item.itemKey(), item.itemType(), profile);
+      }
+    }
+
+    private StateEntry resolveItem(BootstrapState state) {
+      Optional<ItemType> expectedType = parseItemType();
+      List<StateEntry> matches =
+          state.entries().stream()
+              .filter(entry -> entry.itemKey().equals(itemKey))
+              .filter(entry -> moduleName == null || entry.moduleName().equals(moduleName))
+              .filter(
+                  entry -> expectedType.isEmpty() || entry.itemType() == expectedType.orElseThrow())
+              .toList();
+      if (matches.isEmpty()) {
+        throw new CliFailureException(
+            ExitCode.INVALID_INPUT, "No matching state item found: " + itemKey);
+      }
+      if (matches.size() > 1) {
+        throw new CliFailureException(
+            ExitCode.INVALID_INPUT,
+            "Item key '%s' is ambiguous; qualify it with --module and --type".formatted(itemKey));
+      }
+      return matches.getFirst();
+    }
+
+    private Optional<ItemType> parseItemType() {
+      if (itemType == null) {
+        return Optional.empty();
+      }
+      try {
+        return Optional.of(
+            ItemType.valueOf(itemType.replace('-', '_').toUpperCase(java.util.Locale.ROOT)));
+      } catch (IllegalArgumentException e) {
+        throw new CliFailureException(ExitCode.INVALID_INPUT, "Unknown item type: " + itemType, e);
       }
     }
   }

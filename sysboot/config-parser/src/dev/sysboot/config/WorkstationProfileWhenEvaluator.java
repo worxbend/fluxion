@@ -43,6 +43,7 @@ final class WorkstationProfileWhenEvaluator {
   }
 
   private Decision evaluate(WhenDocument when, HostFacts facts) {
+    rejectUnsupportedConditions(when);
     Decision decision = scalarFacts(when, facts);
     if (!decision.matches()) {
       return decision;
@@ -56,6 +57,13 @@ final class WorkstationProfileWhenEvaluator {
       return decision;
     }
     return oneOf(when.oneOf(), facts);
+  }
+
+  private void rejectUnsupportedConditions(WhenDocument when) {
+    if (!when.unsupportedFields().isEmpty()) {
+      throw new IllegalArgumentException(
+          "Unsupported when conditions: " + String.join(", ", when.unsupportedFields()));
+    }
   }
 
   private Decision scalarFacts(WhenDocument when, HostFacts facts) {

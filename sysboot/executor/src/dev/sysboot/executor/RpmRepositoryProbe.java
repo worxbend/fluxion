@@ -3,6 +3,8 @@ package dev.sysboot.executor;
 import dev.sysboot.core.InstallationStatus;
 import dev.sysboot.core.InstalledProbe;
 import dev.sysboot.core.ItemType;
+import dev.sysboot.core.ModuleItem;
+import dev.sysboot.core.RpmRepositorySourceSetup;
 import dev.sysboot.core.ShellRunner;
 import java.time.Duration;
 import java.util.List;
@@ -35,5 +37,33 @@ public final class RpmRepositoryProbe implements InstalledProbe {
               "RPM repository probe failed (exit %d): %s"
                   .formatted(result.exitCode(), result.stderr()));
     };
+  }
+
+  @Override
+  public InstallationStatus probe(ModuleItem item) {
+    if (item.sourceSetup().orElse(null) instanceof RpmRepositorySourceSetup setup) {
+      return configuredProbe(item, setup);
+    }
+    return probe(item.key());
+  }
+
+  private InstallationStatus configuredProbe(ModuleItem item, RpmRepositorySourceSetup setup) {
+    if (!item.key().equals(setup.repoFilePath().toString())) {
+      return new InstallationStatus.NotInstalled(item.key());
+    }
+    var values =
+        RepositoryConfigVerifier.lines(shellRunner, setup.repoFilePath(), PROBE_TIMEOUT)
+            .map(lines -> RepositoryConfigVerifier.iniSection(lines, setup.repositoryId()))
+            .orElse(Map.of());
+    boolean configMatches =
+        setup.repositoryId().equals(values.get("name"))
+            && setup.baseUrl().toString().equals(values.get("baseurl"))
+            && (setup.enabled() ? "1" : "0").equals(values.get("enabled"))
+            && (setup.gpgCheck() ? "1" : "0").equals(values.get("gpgcheck"))
+            && values.size() == (setup.gpgKeyUrl().isPresent() ? 5 : 4);
+    boolean trustMatches = setup.gpgKeyUrl().isEmpty() && !values.containsKey("gpgkey");
+    return configMatches && trustMatches
+        ? new InstallationStatus.InstalledByProbe(item.key(), null)
+        : new InstallationStatus.NotInstalled(item.key());
   }
 }

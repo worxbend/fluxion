@@ -2,6 +2,7 @@ package dev.sysboot.executor;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import dev.sysboot.core.CancellationSignal;
 import dev.sysboot.core.EventKind;
 import dev.sysboot.core.ExecutionEvent;
 import dev.sysboot.core.ItemType;
@@ -9,6 +10,7 @@ import dev.sysboot.core.ModuleName;
 import dev.sysboot.core.ProcessResult;
 import dev.sysboot.core.SdkmanModule;
 import dev.sysboot.core.SdkmanPackage;
+import dev.sysboot.core.ShellKind;
 import dev.sysboot.core.ShellRunner;
 import dev.sysboot.core.StateEntry;
 import dev.sysboot.core.StepResult;
@@ -56,6 +58,52 @@ class SdkmanModuleExecutorTest {
     assertThat(runner.commands).hasSize(3);
     assertThat(completedItems(events)).containsExactly("first", "broken", "last");
     assertThat(recorded).extracting(StateEntry::itemKey).containsExactly("first", "last");
+  }
+
+  @Test
+  void execute_whenCancelledAfterFirstItem_stopsBeforeSecondItem() {
+    var cancellation = new CancellationSignal();
+    var commands = new ArrayList<List<String>>();
+    ShellRunner runner =
+        (command, environment, timeout) -> {
+          commands.add(command);
+          cancellation.cancel();
+          return new ProcessResult(0, "", "", Duration.ZERO);
+        };
+    var executor = new SdkmanModuleExecutor(runner);
+
+    executor.execute(
+        module(false, pkg("java"), pkg("gradle")),
+        ignored -> {},
+        new ModuleExecutionContext(
+            SkipEvaluator.alwaysRun(),
+            (moduleName, itemKey, itemType, result) -> {},
+            Optional.of(runner),
+            cancellation));
+
+    assertThat(commands).hasSize(1);
+  }
+
+  @Test
+  void activeLoginShellRunnerIsUsedForLiveAndDryRunCommands() {
+    var baseRunner = new RecordingRunner();
+    var loginRunner = new LoginShellWrappingRunner(baseRunner, ShellKind.ZSH);
+    var executor = new SdkmanModuleExecutor(baseRunner);
+    var dryRunEvents = new ArrayList<ExecutionEvent>();
+
+    executor.execute(
+        module(false, pkg("java")),
+        ignored -> {},
+        new ModuleExecutionContext(
+            SkipEvaluator.alwaysRun(),
+            (moduleName, itemKey, itemType, result) -> {},
+            Optional.of(loginRunner),
+            CancellationSignal.never()));
+    executor.dryRun(module(false, pkg("java")), dryRunEvents::add, loginRunner);
+
+    assertThat(baseRunner.commands.getFirst()).startsWith("zsh", "--login", "-i", "-c");
+    StepResult.DryRun preview = (StepResult.DryRun) dryRunEvents.get(1).result().orElseThrow();
+    assertThat(preview.wouldExecute()).isEqualTo(baseRunner.commands.getFirst());
   }
 
   @Test

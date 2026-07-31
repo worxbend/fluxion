@@ -38,13 +38,12 @@ public final class ProfileLinter {
 
   private void lintBinary(CompiledBinaryModule module, String path, List<ProfileLintIssue> issues) {
     if (module.checksum().isEmpty()
-        && module.checksumUrl().isEmpty()
-        && module.signatureUrl().isEmpty()) {
+        && (module.signatureUrl().isEmpty() || module.allowedSignerFingerprint().isEmpty())) {
       warning(
           issues,
           "safety",
           path + ".checksum",
-          "Compiled binary '%s' should declare a checksum or detached signature"
+          "Compiled binary '%s' should declare a literal checksum or a signer-bound signature"
               .formatted(module.name().value()));
     }
     if (module.expectedVersion().isEmpty()) {

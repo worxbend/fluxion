@@ -42,7 +42,9 @@ public final class PhaseExecutionPlanner {
 
     Deque<String> ready = new ArrayDeque<>();
     for (Map.Entry<String, Integer> e : inDegree.entrySet()) {
-      if (e.getValue() == 0) ready.add(e.getKey());
+      if (e.getValue() == 0) {
+        ready.add(e.getKey());
+      }
     }
 
     List<Phase> sorted = new ArrayList<>();
@@ -51,7 +53,9 @@ public final class PhaseExecutionPlanner {
       sorted.add(byName.get(current));
       for (String successor : successors.get(current)) {
         int newDegree = inDegree.merge(successor, -1, Integer::sum);
-        if (newDegree == 0) ready.add(successor);
+        if (newDegree == 0) {
+          ready.add(successor);
+        }
       }
     }
 
@@ -99,7 +103,7 @@ public final class PhaseExecutionPlanner {
     for (Phase p : phases) {
       for (PhaseName dep : p.dependsOn()) {
         if (!byName.containsKey(dep.value())) {
-          throw new IllegalArgumentException(
+          throw new PhasePlanningException(
               "Phase '%s' declares dependency on unknown phase '%s'"
                   .formatted(p.name().value(), dep.value()));
         }

@@ -46,6 +46,9 @@ final class SdkmanModuleExecutor implements ModuleExecutor {
     SdkmanModule sdkmanModule = (SdkmanModule) module;
     boolean anyFailed = false;
     for (SdkmanPackage pkg : sdkmanModule.packages()) {
+      if (context.cancellation().isCancelled()) {
+        break;
+      }
       StepResult result = executeItem(sdkmanModule, pkg, listener, context);
       anyFailed = anyFailed || result instanceof StepResult.Failure;
     }
@@ -53,9 +56,21 @@ final class SdkmanModuleExecutor implements ModuleExecutor {
   }
 
   @Override
-  public void dryRun(BootstrapModule module, ExecutionEventListener listener) {
+  public void dryRun(
+      BootstrapModule module, ExecutionEventListener listener, ShellRunner shellRunner) {
+    dryRun(module, listener, shellRunner, SkipEvaluator.alwaysRun());
+  }
+
+  @Override
+  public void dryRun(
+      BootstrapModule module,
+      ExecutionEventListener listener,
+      ShellRunner shellRunner,
+      SkipEvaluator skipEvaluator) {
     SdkmanModule sdkmanModule = (SdkmanModule) module;
-    sdkmanModule.packages().forEach(pkg -> emitDryRun(sdkmanModule, pkg, listener));
+    sdkmanModule
+        .packages()
+        .forEach(pkg -> emitDryRun(sdkmanModule, pkg, shellRunner, skipEvaluator, listener));
   }
 
   List<String> commandPreview(SdkmanPackage pkg) {
@@ -73,14 +88,14 @@ final class SdkmanModuleExecutor implements ModuleExecutor {
     if (decision instanceof SkipDecision.Skip skip) {
       return skipped(module, pkg, skip, listener);
     }
-    StepResult result = install(pkg);
+    StepResult result = install(pkg, context.shellRunner().orElse(shellRunner));
     listener.onEvent(ExecutionEvent.itemCompleted(module.name(), pkg.itemKey(), result));
     context.successRecorder().record(module.name(), pkg.itemKey(), ItemType.SDKMAN_PACKAGE, result);
     return result;
   }
 
-  private StepResult install(SdkmanPackage pkg) {
-    ProcessResult result = shellRunner.run(command(pkg), Map.of(), INSTALL_TIMEOUT);
+  private StepResult install(SdkmanPackage pkg, ShellRunner activeRunner) {
+    ProcessResult result = activeRunner.run(command(pkg), Map.of(), INSTALL_TIMEOUT);
     if (result.exitCode() == 0) {
       return new StepResult.Success(pkg.itemKey(), result.elapsed());
     }
@@ -101,13 +116,33 @@ final class SdkmanModuleExecutor implements ModuleExecutor {
     return result;
   }
 
-  private void emitDryRun(SdkmanModule module, SdkmanPackage pkg, ExecutionEventListener listener) {
+  private void emitDryRun(
+      SdkmanModule module,
+      SdkmanPackage pkg,
+      ShellRunner activeRunner,
+      SkipEvaluator skipEvaluator,
+      ExecutionEventListener listener) {
     listener.onEvent(ExecutionEvent.itemStarted(module.name(), pkg.itemKey()));
+    SkipDecision decision =
+        skipEvaluator.evaluate(
+            new ModuleItem(module.name(), pkg.itemKey(), ItemType.SDKMAN_PACKAGE));
+    if (decision instanceof SkipDecision.Skip skip) {
+      skipped(module, pkg, skip, listener);
+      return;
+    }
     listener.onEvent(
         ExecutionEvent.itemCompleted(
             module.name(),
             pkg.itemKey(),
-            new StepResult.DryRun(pkg.itemKey(), commandPreview(pkg))));
+            new StepResult.DryRun(pkg.itemKey(), previewCommand(pkg, activeRunner))));
+  }
+
+  private List<String> previewCommand(SdkmanPackage pkg, ShellRunner activeRunner) {
+    List<String> preview = commandPreview(pkg);
+    if (activeRunner instanceof LoginShellWrappingRunner loginShell) {
+      return loginShell.wrapCommand(preview);
+    }
+    return preview;
   }
 
   private List<String> command(SdkmanPackage pkg) {

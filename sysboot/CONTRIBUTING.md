@@ -15,6 +15,12 @@ All code must follow the constraints in `SKILL.md`:
 ## Running Tests
 
 ```bash
+# Run formatting, Checkstyle, PMD, SpotBugs, policy checks, tests, and config validation
+just verify
+
+# Run Java static analysis only
+just quality-check
+
 # Run all tests
 ./mill __.test
 
@@ -67,6 +73,8 @@ just native-metadata-check
 - [ ] Test names follow `<scenario>_<condition>_<expectedResult>` convention.
 - [ ] No class exceeds 300 lines.
 - [ ] No method exceeds 20 lines.
+- [ ] `just format-check` passes.
+- [ ] `just quality-check` passes with no Checkstyle, PMD, or unsuppressed HIGH/MEDIUM SpotBugs findings.
 - [ ] `./mill __.test` passes.
 - [ ] `./mill config-parser.test` covers any new YAML fields.
 - [ ] `just native-metadata-check` passes.

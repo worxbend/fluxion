@@ -56,6 +56,9 @@ public final class SourceSpecDocument {
   @JsonProperty("gpgCheck")
   private Boolean gpgCheck;
 
+  @JsonProperty("autoRefresh")
+  private Boolean autoRefresh;
+
   @JsonProperty("system")
   private Boolean system;
 
@@ -128,6 +131,10 @@ public final class SourceSpecDocument {
 
   public Optional<Boolean> gpgCheck() {
     return DocumentDefaults.optional(gpgCheck);
+  }
+
+  public Optional<Boolean> autoRefresh() {
+    return DocumentDefaults.optional(autoRefresh);
   }
 
   public Optional<Boolean> system() {

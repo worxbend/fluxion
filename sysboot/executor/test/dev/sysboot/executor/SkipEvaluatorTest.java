@@ -4,12 +4,15 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.when;
 
+import dev.sysboot.core.AptRepositorySourceSetup;
 import dev.sysboot.core.BootstrapState;
 import dev.sysboot.core.InstallationStatus;
 import dev.sysboot.core.ItemType;
 import dev.sysboot.core.ModuleItem;
+import dev.sysboot.core.ModuleName;
 import dev.sysboot.core.SkipDecision;
 import dev.sysboot.core.StateEntry;
+import java.nio.file.Path;
 import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
@@ -26,7 +29,7 @@ class SkipEvaluatorTest {
   @Test
   void evaluate_whenSkipDisabled_alwaysReturnsRun() {
     var evaluator = new SkipEvaluator(Optional.empty(), probeRegistry, false, false);
-    SkipDecision decision = evaluator.evaluate("git", ItemType.PACKAGE);
+    SkipDecision decision = evaluator.evaluate(item("git"));
     assertThat(decision).isInstanceOf(SkipDecision.Run.class);
   }
 
@@ -44,11 +47,33 @@ class SkipEvaluatorTest {
     var state = new BootstrapState("profile", Instant.now(), "1.0.0", List.of(entry));
 
     var evaluator = new SkipEvaluator(Optional.of(state), probeRegistry, true, false);
-    SkipDecision decision = evaluator.evaluate("git", ItemType.PACKAGE);
+    SkipDecision decision = evaluator.evaluate(item("git"));
 
     assertThat(decision).isInstanceOf(SkipDecision.Skip.class);
     var skip = (SkipDecision.Skip) decision;
     assertThat(skip.reason()).isInstanceOf(InstallationStatus.InstalledFromState.class);
+  }
+
+  @Test
+  void evaluate_whenAnotherModuleHasSameItemKey_doesNotUseItsState() {
+    StateEntry entry =
+        new StateEntry(
+            "profile",
+            "core",
+            "shared",
+            ItemType.PACKAGE,
+            Instant.now(),
+            Optional.empty(),
+            Optional.empty());
+    var state = new BootstrapState("profile", Instant.now(), "1.0.0", List.of(entry));
+    when(probeRegistry.probe(any(ModuleItem.class)))
+        .thenReturn(new InstallationStatus.NotInstalled("shared"));
+    var evaluator = new SkipEvaluator(Optional.of(state), probeRegistry, true, false);
+
+    SkipDecision decision =
+        evaluator.evaluate(new ModuleItem(new ModuleName("desktop"), "shared", ItemType.PACKAGE));
+
+    assertThat(decision).isInstanceOf(SkipDecision.Run.class);
   }
 
   @Test
@@ -68,7 +93,7 @@ class SkipEvaluatorTest {
         .thenReturn(new InstallationStatus.NotInstalled("git"));
 
     var evaluator = new SkipEvaluator(Optional.of(state), probeRegistry, true, true);
-    SkipDecision decision = evaluator.evaluate("git", ItemType.PACKAGE);
+    SkipDecision decision = evaluator.evaluate(item("git"));
 
     assertThat(decision).isInstanceOf(SkipDecision.Run.class);
   }
@@ -79,7 +104,7 @@ class SkipEvaluatorTest {
         .thenReturn(new InstallationStatus.InstalledByProbe("git", "2.45.1"));
 
     var evaluator = new SkipEvaluator(Optional.empty(), probeRegistry, true, false);
-    SkipDecision decision = evaluator.evaluate("git", ItemType.PACKAGE);
+    SkipDecision decision = evaluator.evaluate(item("git"));
 
     assertThat(decision).isInstanceOf(SkipDecision.Skip.class);
   }
@@ -90,8 +115,44 @@ class SkipEvaluatorTest {
         .thenReturn(new InstallationStatus.Unknown("git", "probe error"));
 
     var evaluator = new SkipEvaluator(Optional.empty(), probeRegistry, true, false);
-    SkipDecision decision = evaluator.evaluate("git", ItemType.PACKAGE);
+    SkipDecision decision = evaluator.evaluate(item("git"));
 
     assertThat(decision).isInstanceOf(SkipDecision.Run.class);
+  }
+
+  @Test
+  void evaluate_configuredSourceNeverSkipsFromStateWithoutValidatingLiveConfiguration() {
+    Path source = Path.of("/etc/apt/sources.list.d/example.list");
+    Path keyring = Path.of("/etc/apt/keyrings/example.gpg");
+    String entry = "deb [signed-by=" + keyring + "] https://example.test stable main";
+    var setup =
+        new AptRepositorySourceSetup(
+            new ModuleName("core"),
+            entry,
+            source,
+            Optional.empty(),
+            Optional.of(keyring),
+            Optional.empty());
+    ModuleItem item = ModuleItem.sourceSetupItem(setup, source.toString(), ItemType.APT_REPOSITORY);
+    StateEntry entryState =
+        new StateEntry(
+            "profile",
+            "core",
+            source.toString(),
+            ItemType.APT_REPOSITORY,
+            Instant.now(),
+            Optional.empty(),
+            Optional.empty());
+    var state = new BootstrapState("profile", Instant.now(), "1.0.0", List.of(entryState));
+    when(probeRegistry.probe(item)).thenReturn(new InstallationStatus.NotInstalled(item.key()));
+
+    SkipDecision decision =
+        new SkipEvaluator(Optional.of(state), probeRegistry, true, false).evaluate(item);
+
+    assertThat(decision).isInstanceOf(SkipDecision.Run.class);
+  }
+
+  private ModuleItem item(String key) {
+    return new ModuleItem(new ModuleName("core"), key, ItemType.PACKAGE);
   }
 }

@@ -85,6 +85,9 @@ jobs:
         name: kubectl
         binaryName: kubectl
         url: https://dl.k8s.io/release/v1.30.2/bin/linux/amd64/kubectl
+        checksum:
+          algorithm: SHA-256
+          value: c6e9c45ce3f82c90663e3c30db3b27c167e8b19d83ed4048b61c1013f6a7c66e
         installPath: /usr/local/bin/kubectl
 ```
 
@@ -232,6 +235,7 @@ Common development commands:
 cd sysboot
 ./mill __.compile
 ./mill __.test
+just quality-check
 ./mill cli.run --help
 ./mill cli.run validate -c config/example-fedora.yaml --no-tui
 ```

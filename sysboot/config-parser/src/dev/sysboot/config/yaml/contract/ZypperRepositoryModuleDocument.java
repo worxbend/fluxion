@@ -25,4 +25,7 @@ public final class ZypperRepositoryModuleDocument extends ModuleDocument {
 
   @JsonProperty("autoRefresh")
   public boolean autoRefresh = true;
+
+  @JsonProperty("checksum")
+  public ChecksumDocument checksum;
 }

@@ -34,7 +34,17 @@ class PackageNameTest {
   }
 
   @ParameterizedTest
-  @ValueSource(strings = {"pkg name", "pkg$name", "pkg;name", "pkg|name", "pkg&name", "pkg`name"})
+  @ValueSource(
+      strings = {
+        "pkg name",
+        "pkg\tname",
+        "pkg\nname",
+        "pkg$name",
+        "pkg;name",
+        "pkg|name",
+        "pkg&name",
+        "pkg`name"
+      })
   void constructor_whenValueContainsUnsafeChars_throwsIllegalArgumentException(String unsafe) {
     assertThatThrownBy(() -> new PackageName(unsafe))
         .isInstanceOf(IllegalArgumentException.class)
@@ -42,7 +52,26 @@ class PackageNameTest {
   }
 
   @ParameterizedTest
-  @ValueSource(strings = {"git", "python3-pip", "java-21-openjdk-devel", "libstdc++", "g++"})
+  @ValueSource(strings = {"-Syu", "--assume-yes", "-"})
+  void constructor_whenValueCanBeParsedAsOption_throwsIllegalArgumentException(String option) {
+    assertThatThrownBy(() -> new PackageName(option))
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("option");
+  }
+
+  @ParameterizedTest
+  @ValueSource(
+      strings = {
+        "git",
+        "python3-pip",
+        "java-21-openjdk-devel",
+        "libstdc++",
+        "g++",
+        "libc6:amd64",
+        "curl=8.14.1-2",
+        "extra/bash",
+        "@development-tools"
+      })
   void constructor_whenValueIsValidPackageName_acceptsIt(String valid) {
     assertThat(new PackageName(valid).value()).isEqualTo(valid);
   }

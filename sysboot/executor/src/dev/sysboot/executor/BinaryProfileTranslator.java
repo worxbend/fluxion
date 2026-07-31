@@ -14,10 +14,10 @@ import java.util.Optional;
  * Translates a {@code compiled-binary} step into a binstaller {@code BinaryDistributionProfile}.
  *
  * <p>binstaller already resolves, downloads, verifies, extracts (zip, tar.gz <em>and</em> tar.xz),
- * installs and symlinks binary tools. Fluxion's own installer only handles tar.gz, which is why the
- * shipped Fedora profile falls back to hand-written {@code curl | unzip | mv | chmod} for yazi and
- * zig. Translating instead of extending removes that limitation without Fluxion growing a second
- * archive implementation.
+ * installs and symlinks binary tools. Fluxion's own installer only handles tar.gz; profiles
+ * historically needed hand-written download and extraction commands for other formats. Translating
+ * instead of extending removes that limitation without Fluxion growing a second archive
+ * implementation.
  *
  * <p>Translation is deliberately partial. {@link #translate} returns empty rather than guessing
  * when binstaller cannot express the step faithfully, and the caller falls back to the built-in
@@ -27,6 +27,9 @@ import java.util.Optional;
 final class BinaryProfileTranslator {
 
   private static final String APPS_DIR = "${appsDir}";
+  private static final Path USER_HOME =
+      Path.of(System.getProperty("user.home")).toAbsolutePath().normalize();
+  private static final Path LOCAL_APPS_DIR = USER_HOME.resolve(".apps");
 
   /** Why a step could not be expressed as a binstaller profile. */
   record Refusal(String reason) {}
@@ -56,15 +59,24 @@ final class BinaryProfileTranslator {
     if (module.checksum().filter(BinaryProfileTranslator::isNotSha256).isPresent()) {
       return Optional.of(new Refusal("binstaller supports only SHA-256 checksums"));
     }
+    if (!safePathSegment(module.name().value()) || !safePathSegment(module.binaryName())) {
+      return Optional.of(new Refusal("tool and binary names must be safe path segments"));
+    }
     if (archiveType(module).isPresent() && module.archivePath().isEmpty()) {
       // An archive with no declared member cannot be mapped: binstaller requires an explicit
       // from/to, and guessing which member is the binary is exactly how you install the wrong file.
       return Optional.of(
           new Refusal("an archive step needs archivePath so the member can be mapped"));
     }
-    if (module.stripComponents() > 1 && module.archivePath().isPresent()) {
+    if (module.stripComponents() > 0) {
+      return Optional.of(new Refusal("stripComponents has no binstaller equivalent"));
+    }
+    if (symlinks(module, module.name().value()).stream()
+        .anyMatch(BinaryProfileTranslator::usesSudo)) {
       return Optional.of(
-          new Refusal("stripComponents > 1 has no binstaller equivalent; map the member directly"));
+          new Refusal(
+              "binstaller delegation cannot perform privileged symlinks through Fluxion's"
+                  + " authenticated runner"));
     }
     return Optional.empty();
   }
@@ -93,9 +105,9 @@ final class BinaryProfileTranslator {
 
     var policy = new LinkedHashMap<String, Object>();
     policy.put("mode", "developer");
-    policy.put("appsDir", "${HOME}/.apps");
+    policy.put("appsDir", LOCAL_APPS_DIR.toString());
     policy.put("continueOnError", module.continueOnError());
-    policy.put("allowSudoSymlinks", !symlinks.isEmpty());
+    policy.put("allowSudoSymlinks", symlinks.stream().anyMatch(BinaryProfileTranslator::usesSudo));
 
     var profileSpec = new LinkedHashMap<String, Object>();
     profileSpec.put("policy", policy);
@@ -177,26 +189,47 @@ final class BinaryProfileTranslator {
    */
   private static List<Map<String, Object>> symlinks(CompiledBinaryModule module, String tool) {
     var symlinks = new ArrayList<Map<String, Object>>();
-    String target = "${appsDir}/" + tool + "/bin/" + module.binaryName();
-    if (!isInsideAppsDir(module.installPath())) {
-      symlinks.add(privilegedSymlink(module.installPath().toString(), target));
+    Path canonicalTarget = appsBinaryPath(module);
+    String target = APPS_DIR + "/" + tool + "/bin/" + module.binaryName();
+    if (!module.installPath().equals(canonicalTarget)) {
+      symlinks.add(symlink(module.installPath(), target));
     }
     module
         .symlinkPath()
-        .ifPresent(link -> symlinks.add(privilegedSymlink(link.toString(), target)));
+        .filter(link -> !link.equals(canonicalTarget))
+        .ifPresent(link -> symlinks.add(symlink(link, target)));
     return List.copyOf(symlinks);
   }
 
-  private static Map<String, Object> privilegedSymlink(String path, String target) {
+  private static Map<String, Object> symlink(Path path, String target) {
     var symlink = new LinkedHashMap<String, Object>();
-    symlink.put("path", path);
+    symlink.put("path", path.toString());
     symlink.put("target", target);
-    symlink.put("sudo", true);
+    symlink.put("sudo", requiresSudo(path));
     return symlink;
   }
 
-  private static boolean isInsideAppsDir(Path installPath) {
-    return installPath.toString().contains("/.apps/");
+  static Path appsBinaryPath(CompiledBinaryModule module) {
+    return LOCAL_APPS_DIR
+        .resolve(module.name().value())
+        .resolve("bin")
+        .resolve(module.binaryName());
+  }
+
+  private static boolean requiresSudo(Path path) {
+    return !path.startsWith(USER_HOME);
+  }
+
+  private static boolean usesSudo(Map<String, Object> symlink) {
+    return Boolean.TRUE.equals(symlink.get("sudo"));
+  }
+
+  private static boolean safePathSegment(String value) {
+    return !value.isBlank()
+        && value.indexOf('/') < 0
+        && value.indexOf('\\') < 0
+        && !".".equals(value)
+        && !"..".equals(value);
   }
 
   private static String filename(CompiledBinaryModule module) {

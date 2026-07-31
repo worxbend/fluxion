@@ -3,7 +3,6 @@ package dev.sysboot.cli.command;
 import dev.sysboot.cli.error.CliFailureException;
 import dev.sysboot.cli.error.ExitCode;
 import java.io.IOException;
-import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.util.List;
@@ -55,7 +54,7 @@ public final class ImportCommand implements Runnable {
       if (!fromHost) {
         throw new CliFailureException(ExitCode.INVALID_INPUT, "Specify --from-host");
       }
-      if (Files.exists(output) && !force) {
+      if (AtomicOutputFileWriter.exists(output) && !force) {
         throw new CliFailureException(
             ExitCode.INVALID_INPUT, "Output file already exists. Use --force to overwrite.");
       }
@@ -101,10 +100,7 @@ public final class ImportCommand implements Runnable {
 
     private void writeFragment(HostPackages packages) {
       try {
-        if (output.getParent() != null) {
-          Files.createDirectories(output.getParent());
-        }
-        Files.writeString(output, render(packages));
+        AtomicOutputFileWriter.write(output, render(packages), force);
       } catch (IOException e) {
         throw new CliFailureException(
             ExitCode.IO_ERROR, "Failed to write import fragment: " + output.toAbsolutePath(), e);
@@ -178,7 +174,7 @@ public final class ImportCommand implements Runnable {
       if (!fromHost) {
         throw new CliFailureException(ExitCode.INVALID_INPUT, "Specify --from-host");
       }
-      if (Files.exists(output) && !force) {
+      if (AtomicOutputFileWriter.exists(output) && !force) {
         throw new CliFailureException(
             ExitCode.INVALID_INPUT, "Output file already exists. Use --force to overwrite.");
       }
@@ -212,10 +208,7 @@ public final class ImportCommand implements Runnable {
 
     private void writeFragment(HostFlatpaks flatpaks) {
       try {
-        if (output.getParent() != null) {
-          Files.createDirectories(output.getParent());
-        }
-        Files.writeString(output, render(flatpaks));
+        AtomicOutputFileWriter.write(output, render(flatpaks), force);
       } catch (IOException e) {
         throw new CliFailureException(
             ExitCode.IO_ERROR, "Failed to write import fragment: " + output.toAbsolutePath(), e);

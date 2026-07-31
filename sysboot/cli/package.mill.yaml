@@ -4,9 +4,9 @@ moduleDeps: [app]
 mainClass: dev.sysboot.cli.Main
 javacOptions: [--release, "25", -Xlint:all, -Xlint:-processing, -Aproject=sysboot]
 mvnDeps:
-- info.picocli:picocli:4.7.6
+- info.picocli:picocli:4.7.7
 compileMvnDeps:
-- info.picocli:picocli-codegen:4.7.6
+- info.picocli:picocli-codegen:4.7.7
 nativeImageOptions:
 - --no-fallback
 - -H:+UnlockExperimentalVMOptions

@@ -16,11 +16,26 @@ dependencies and should not import process, terminal, YAML, or framework APIs.
 `config-parser` maps YAML DTOs into the core domain model with Jackson YAML. Reflective DTOs must be
 registered in `graal/reflect-config.json` when added.
 
-`executor` owns shell execution, package-manager adapters, probes, state persistence, and the
-orchestrator. External effects are hidden behind core ports such as `ShellRunner`.
+`WorkstationProfileConfigMapper` and `WorkstationProfileValidator` are thin coordinators.
+`PlanKinds` remains the single plan-kind dispatch table, while constructor-injected package/file,
+structured-command, tooling/trust, and system/control helpers own cohesive rules. Shared support
+objects contain only deterministic field, path, checksum, and default mechanics, preserving error
+order and reflective DTO behavior without recreating kind switches.
 
-Package modules already use the `ModuleExecutor` foundation. Other module types still dispatch
-directly from the orchestrator and can be migrated incrementally.
+`executor` owns shell execution, package-manager adapters, probes, state persistence, and
+orchestration. External effects are hidden behind core ports such as `ShellRunner`.
+
+`BootstrapOrchestratorImpl` is the composition boundary for three execution stages:
+
+```text
+source setup -> phase planning -> module/item execution
+```
+
+`SourceSetupRunner` handles repository and remote-source prerequisites.
+`PhaseExecutionRunner` owns dependency order, cancellation boundaries, phase fingerprints, and
+resume state. `ModuleDispatcher` routes registered `ModuleExecutor` implementations, table-driven
+single-item bindings, and the remaining multi-item modules through `DirectModuleExecutor`.
+Per-item events, skip decisions, and successful state writes converge in `ItemExecution`.
 
 `tui` owns terminal UI screens, sudo prompting, and event-listener integration.
 
@@ -48,5 +63,23 @@ include fingerprints derived from phase/module configuration. A completed phase 
 its saved fingerprint matches the current config, so changing package lists or commands causes the
 phase to run again.
 
+State files are written through a private temporary file and an atomic replacement. Profile names
+are constrained to safe slugs, state roots and files reject symbolic links, and profile mutations
+hold both a process-local lock and an operating-system file lock so concurrent Fluxion processes do
+not lose each other's updates.
+
 Restart checkpoints emit resume guidance in plain CLI mode. `status --resume-command` computes the
 next incomplete phase from saved state and prints a rerun command with `--skip-already-installed`.
+
+## Trust Boundaries
+
+Structured argument vectors are preferred whenever user-controlled values cross into a process.
+Shell-backed compatibility steps remain explicit in the profile and are redacted before their text
+reaches logs, events, state, JSON, or the TUI.
+
+Remote scripts, toolchain installers, compiled binaries, repository keys, and repository descriptor
+files are verified before execution or privileged mutation. Remote transport is HTTPS without URL
+credentials, downloads are bounded and deadline-controlled, and temporary artifacts are private.
+Compiled binaries require an exact SHA-256 binding or a detached signature from the configured full
+signer fingerprint. Repository signing keys are similarly pinned rather than trusted solely because
+they were served by a configured URL.

@@ -24,7 +24,8 @@ public record ZypperRepositoryModule(
     Optional<URI> gpgKeyUrl,
     boolean enabled,
     boolean gpgCheck,
-    boolean autoRefresh)
+    boolean autoRefresh,
+    Optional<Sha256Digest> artifactSha256)
     implements BootstrapModule {
 
   public ZypperRepositoryModule {
@@ -33,14 +34,60 @@ public record ZypperRepositoryModule(
     Objects.requireNonNull(baseUrl);
     Objects.requireNonNull(repoFilePath);
     gpgKeyUrl = gpgKeyUrl == null ? Optional.empty() : gpgKeyUrl;
-    if (repositoryId.isBlank()) {
-      throw new IllegalArgumentException("Zypper repository id must not be blank");
-    }
+    artifactSha256 = artifactSha256 == null ? Optional.empty() : artifactSha256;
+    repoFilePath = RepositoryDestinationPolicy.requireZypperRepository(repoFilePath);
+    RepositoryIdentifierPolicy.requireSafe(repositoryId, "Zypper repository id");
+    SourceUrlPolicy.requireHttps(baseUrl, "Zypper repository base URL");
+    gpgKeyUrl.ifPresent(url -> SourceUrlPolicy.requireHttps(url, "Zypper signing-key URL"));
+    requireArtifactTrust(gpgKeyUrl, enabled, gpgCheck, artifactSha256);
+  }
+
+  public ZypperRepositoryModule(
+      ModuleName name,
+      String repositoryId,
+      URI baseUrl,
+      Path repoFilePath,
+      Optional<URI> gpgKeyUrl,
+      boolean enabled,
+      boolean gpgCheck,
+      boolean autoRefresh) {
+    this(
+        name,
+        repositoryId,
+        baseUrl,
+        repoFilePath,
+        gpgKeyUrl,
+        enabled,
+        gpgCheck,
+        autoRefresh,
+        Optional.empty());
   }
 
   /** Reuses the existing installer rather than restating how to write a .repo file. */
   public ZypperRepositorySourceSetup asSourceSetup() {
     return new ZypperRepositorySourceSetup(
-        name, repositoryId, baseUrl, repoFilePath, gpgKeyUrl, enabled, gpgCheck);
+        name,
+        repositoryId,
+        baseUrl,
+        repoFilePath,
+        gpgKeyUrl,
+        enabled,
+        gpgCheck,
+        autoRefresh,
+        artifactSha256);
+  }
+
+  private static void requireArtifactTrust(
+      Optional<URI> url, boolean enabled, boolean gpgCheck, Optional<Sha256Digest> checksum) {
+    if (url.isPresent() != checksum.isPresent()) {
+      throw new IllegalArgumentException(
+          "Zypper signing-key URL and SHA-256 checksum must be configured together");
+    }
+    if (gpgCheck && url.isEmpty()) {
+      throw new IllegalArgumentException("Zypper gpgCheck requires a signing-key URL");
+    }
+    if (enabled && !gpgCheck) {
+      throw new IllegalArgumentException("Enabled Zypper repositories must enforce gpgCheck");
+    }
   }
 }

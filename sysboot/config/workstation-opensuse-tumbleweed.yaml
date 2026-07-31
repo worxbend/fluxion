@@ -27,6 +27,9 @@ spec:
           repoFile: /etc/zypp/repos.d/packman.repo
           gpgKeyUrl: https://ftp.gwdg.de/pub/linux/misc/packman/suse/openSUSE_Tumbleweed/repodata/repomd.xml.key
           gpgCheck: true
+          checksum:
+            algorithm: sha256
+            value: 449f4218c726ce2788079099e17bbe29cf9a353404b9e71e9f9a51a5264856c8
     flatpak:
       - name: flathub
         kind: flatpak-remote
@@ -34,6 +37,9 @@ spec:
           remote: flathub
           url: https://flathub.org/repo/flathub.flatpakrepo
           system: true
+          checksum:
+            algorithm: sha256
+            value: 3371dd250e61d9e1633630073fefda153cd4426f72f4afa0c3373ae2e8fea03a
   plan:
     - name: zypper-foundation
       kind: zypper-packages

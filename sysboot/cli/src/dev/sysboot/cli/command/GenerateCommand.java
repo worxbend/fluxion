@@ -2,6 +2,7 @@ package dev.sysboot.cli.command;
 
 import dev.sysboot.cli.error.CliFailureException;
 import dev.sysboot.cli.error.ExitCode;
+import dev.sysboot.core.KnownTools;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -13,6 +14,9 @@ import picocli.CommandLine.Spec;
 
 @Command(name = "generate", description = "Generate a starter Fluxion config")
 public final class GenerateCommand implements Runnable {
+
+  private static final String FLATHUB_DESCRIPTOR_SHA256 =
+      "3371dd250e61d9e1633630073fefda153cd4426f72f4afa0c3373ae2e8fea03a";
 
   @Spec private CommandSpec spec;
 
@@ -53,15 +57,12 @@ public final class GenerateCommand implements Runnable {
   }
 
   private void writeConfig(Target target, Preset selectedPreset) {
-    if (Files.exists(output) && !force) {
+    if (AtomicOutputFileWriter.exists(output) && !force) {
       throw new CliFailureException(
           ExitCode.INVALID_INPUT, "Output file already exists. Use --force to overwrite.");
     }
     try {
-      if (output.getParent() != null) {
-        Files.createDirectories(output.getParent());
-      }
-      Files.writeString(output, render(target, selectedPreset));
+      AtomicOutputFileWriter.write(output, render(target, selectedPreset), force);
       spec.commandLine().getOut().println("Generated config: " + output.toAbsolutePath());
     } catch (IOException e) {
       throw new CliFailureException(
@@ -191,13 +192,17 @@ public final class GenerateCommand implements Runnable {
                     name: flathub-remote
                     remote: flathub
                     url: https://flathub.org/repo/flathub.flatpakrepo
+                    checksum:
+                      algorithm: sha256
+                      value: %s
 
                   - type: flatpak
                     name: starter-flatpaks
                     remote: flathub
                     appIds:
                       - org.mozilla.firefox
-            """;
+            """
+                .formatted(FLATHUB_DESCRIPTOR_SHA256);
       }
     },
     DOTFILES {
@@ -216,11 +221,12 @@ public final class GenerateCommand implements Runnable {
                 steps:
                   - type: dotbot
                     name: dotfiles-core
-                    installerVersion: "v0.2.1"
+                    installerVersion: "%s"
                     config: "~/.dotfiles/install.conf.yaml"
                     dotbotBinary: dotbot
                     probeCommand: "test -f ~/.zshrc"
-            """;
+            """
+                .formatted(KnownTools.DOTBOT_GO.version());
       }
     };
 

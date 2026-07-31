@@ -1,91 +1,51 @@
 package dev.sysboot.config;
 
-import static dev.sysboot.config.MappingSupport.enumValue;
-import static dev.sysboot.config.MappingSupport.expandHome;
 import static dev.sysboot.config.MappingSupport.requireField;
 
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import dev.sysboot.config.yaml.contract.MetadataDocument;
 import dev.sysboot.config.yaml.contract.PlanEntryDocument;
-import dev.sysboot.config.yaml.contract.PlanSpecDocument;
 import dev.sysboot.config.yaml.contract.PolicyDocument;
 import dev.sysboot.config.yaml.contract.TargetDocument;
 import dev.sysboot.config.yaml.contract.TargetOsDocument;
-import dev.sysboot.config.yaml.contract.WhenDocument;
 import dev.sysboot.config.yaml.contract.WorkstationProfileDocument;
-import dev.sysboot.core.BinaryUrl;
-import dev.sysboot.core.BinstallerModule;
 import dev.sysboot.core.BootstrapConfig;
 import dev.sysboot.core.BootstrapModule;
 import dev.sysboot.core.BootstrapPolicy;
-import dev.sysboot.core.Checksum;
-import dev.sysboot.core.CompiledBinaryModule;
-import dev.sysboot.core.DotbotModule;
-import dev.sysboot.core.FileWriteItem;
-import dev.sysboot.core.FileWriteModule;
-import dev.sysboot.core.FlatpakModule;
-import dev.sysboot.core.GitConfigModule;
-import dev.sysboot.core.GitConfigScope;
-import dev.sysboot.core.GitRepoModule;
-import dev.sysboot.core.GitRepoUpdate;
-import dev.sysboot.core.GpgKeyModule;
 import dev.sysboot.core.HostFactsProvider;
-import dev.sysboot.core.InterruptModule;
-import dev.sysboot.core.InterruptResumeMode;
-import dev.sysboot.core.KnownTools;
-import dev.sysboot.core.ModuleName;
-import dev.sysboot.core.NerdFontConfig;
-import dev.sysboot.core.NerdFontModule;
 import dev.sysboot.core.OsTarget;
-import dev.sysboot.core.PackageManagerAction;
-import dev.sysboot.core.PackageManagerKind;
-import dev.sysboot.core.PackageModule;
-import dev.sysboot.core.PackageName;
 import dev.sysboot.core.Phase;
 import dev.sysboot.core.PhaseName;
 import dev.sysboot.core.ProfileName;
 import dev.sysboot.core.RestartPolicy;
-import dev.sysboot.core.ScriptPath;
-import dev.sysboot.core.SdkmanModule;
-import dev.sysboot.core.SdkmanPackage;
-import dev.sysboot.core.ShellCommandItem;
-import dev.sysboot.core.ShellCommandModule;
-import dev.sysboot.core.ShellEnvironmentVariable;
-import dev.sysboot.core.ShellScriptItem;
-import dev.sysboot.core.ShellScriptModule;
 import dev.sysboot.core.SkippedPlanEntry;
-import dev.sysboot.core.SystemSettingModule;
-import dev.sysboot.core.SystemUpdateModule;
-import dev.sysboot.core.SystemdScope;
-import dev.sysboot.core.SystemdState;
-import dev.sysboot.core.SystemdUnitModule;
-import dev.sysboot.core.ToolPackageBackend;
-import dev.sysboot.core.ToolPackagesModule;
-import dev.sysboot.core.UserGroupsModule;
-import dev.sysboot.core.ZypperRepositoryModule;
-import java.net.URI;
 import java.nio.file.Path;
-import java.time.Duration;
 import java.util.ArrayList;
-import java.util.Iterator;
 import java.util.List;
 import java.util.Locale;
-import java.util.Map;
 import java.util.Optional;
 
 final class WorkstationProfileConfigMapper {
 
-  private static final ObjectMapper MAPPER = new ObjectMapper();
-
   private final WorkstationProfileValidator validator;
   private final WorkstationProfileWhenEvaluator whenEvaluator;
   private final WorkstationProfileSourceMapper sourceMapper;
+  private final WorkstationMappingSupport mappingSupport;
 
   WorkstationProfileConfigMapper(HostFactsProvider hostFactsProvider) {
-    this.validator = new WorkstationProfileValidator();
-    this.whenEvaluator = new WorkstationProfileWhenEvaluator(hostFactsProvider);
-    this.sourceMapper = new WorkstationProfileSourceMapper();
+    this(
+        new WorkstationProfileValidator(),
+        new WorkstationProfileWhenEvaluator(hostFactsProvider),
+        new WorkstationProfileSourceMapper());
+  }
+
+  WorkstationProfileConfigMapper(
+      WorkstationProfileValidator validator,
+      WorkstationProfileWhenEvaluator whenEvaluator,
+      WorkstationProfileSourceMapper sourceMapper) {
+    this.validator = validator;
+    this.whenEvaluator = whenEvaluator;
+    this.sourceMapper = sourceMapper;
+    this.mappingSupport = new WorkstationMappingSupport();
   }
 
   BootstrapConfig map(WorkstationProfileDocument document, Path manifestPath) {
@@ -97,13 +57,18 @@ final class WorkstationProfileConfigMapper {
     WorkstationProfileWhenEvaluator.PlanSelection selection = whenEvaluator.select(spec.plan());
     WorkstationProfileSourceMapper.SourceMapping sourceMapping =
         sourceMapper.map(spec.sources(), selection.selected());
+    Path manifestDirectory =
+        Optional.ofNullable(manifestPath.toAbsolutePath().normalize().getParent())
+            .orElseThrow(
+                () -> new IllegalArgumentException("Workstation manifest must have a directory"));
+    var planMappers = new WorkstationPlanMappers(whenEvaluator, mappingSupport, manifestDirectory);
     return BootstrapConfig.builder()
         .profileName(new ProfileName(requireField(metadata.name().orElse(null), "metadata.name")))
         .target(mapTarget(requireField(target, "spec.target")))
         .policy(policy)
         .skippedPlanEntries(skippedEntries(selection.skipped(), sourceMapping.skippedEntries()))
         .sourceSetups(sourceMapping.sourceSetups())
-        .addPhase(manifestPhase(selection.selected(), policy))
+        .addPhase(manifestPhase(selection.selected(), policy, planMappers))
         .build();
   }
 
@@ -132,664 +97,39 @@ final class WorkstationProfileConfigMapper {
         .orElseGet(BootstrapPolicy::empty);
   }
 
-  private Phase manifestPhase(List<PlanEntryDocument> plan, BootstrapPolicy policy) {
+  private Phase manifestPhase(
+      List<PlanEntryDocument> plan, BootstrapPolicy policy, WorkstationPlanMappers planMappers) {
     return new Phase(
         new PhaseName("manifest-plan"),
         "WorkstationProfile plan",
-        mapPlanModules(plan, policy),
+        mapPlanModules(plan, policy, planMappers),
         List.of(),
         new RestartPolicy.None(),
         false);
   }
 
   private List<BootstrapModule> mapPlanModules(
-      List<PlanEntryDocument> plan, BootstrapPolicy policy) {
+      List<PlanEntryDocument> plan, BootstrapPolicy policy, WorkstationPlanMappers planMappers) {
     var modules = new ArrayList<BootstrapModule>();
     for (PlanEntryDocument entry : plan) {
-      mapPlanModule(entry, policy).ifPresent(modules::add);
+      mapPlanModule(entry, policy, planMappers).ifPresent(modules::add);
     }
     return List.copyOf(modules);
   }
 
-  private Optional<BootstrapModule> mapPlanModule(PlanEntryDocument entry, BootstrapPolicy policy) {
-    return PlanKinds.find(planKind(entry)).flatMap(kind -> kind.mapper().map(this, entry, policy));
-  }
-
-  InterruptModule interruptModule(PlanEntryDocument entry) {
-    PlanSpecDocument spec = entry.spec().orElse(null);
-    String name = planName(entry);
-    return new InterruptModule(
-        new ModuleName(name),
-        interruptMessage(name, spec),
-        spec == null ? List.of() : spec.instructions(),
-        resumeMode(spec),
-        spec == null ? 75 : spec.exitCode().orElse(75));
-  }
-
-  private String interruptMessage(String name, PlanSpecDocument spec) {
-    if (spec == null || spec.message().isEmpty()) {
-      return "Execution paused by interrupt entry: " + name;
-    }
-    return spec.message().orElseThrow();
-  }
-
-  private InterruptResumeMode resumeMode(PlanSpecDocument spec) {
-    String raw = spec == null ? "next" : spec.resumeFrom().orElse("next");
-    return switch (raw.strip().toLowerCase(Locale.ROOT)) {
-      case "current" -> InterruptResumeMode.CURRENT;
-      case "next" -> InterruptResumeMode.NEXT;
-      default -> throw new IllegalArgumentException("Unsupported interrupt resumeFrom: " + raw);
-    };
-  }
-
-  PackageModule packageModule(
-      PlanEntryDocument entry, PackageManagerKind kind, BootstrapPolicy policy) {
-    PlanSpecDocument spec = requireField(entry.spec().orElse(null), planName(entry) + ".spec");
-    return new PackageModule(
-        new ModuleName(planName(entry)),
-        kind,
-        packageNames(spec),
-        packageActions(spec),
-        continueOnError(entry, policy));
-  }
-
-  PackageManagerKind aurPackageManager(PlanEntryDocument entry) {
-    PlanSpecDocument spec = requireField(entry.spec().orElse(null), planName(entry) + ".spec");
-    String packageManager = spec.packageManager().orElseThrow().strip().toLowerCase(Locale.ROOT);
-    return switch (packageManager) {
-      case "paru" -> PackageManagerKind.PARU;
-      case "yay" -> PackageManagerKind.YAY;
-      default -> throw new IllegalArgumentException("Unsupported AUR helper: " + packageManager);
-    };
-  }
-
-  private boolean continueOnError(PlanEntryDocument entry, BootstrapPolicy policy) {
-    return entry
-        .execution()
-        .flatMap(execution -> execution.continueOnError())
-        .or(policy::continueOnErrorDefault)
-        .orElse(true);
-  }
-
-  private List<PackageName> packageNames(PlanSpecDocument spec) {
-    return spec.packages().stream().map(PackageName::new).toList();
-  }
-
-  private List<PackageManagerAction> packageActions(PlanSpecDocument spec) {
-    return spec.actions().stream()
-        .map(
-            action ->
-                new PackageManagerAction(
-                    action.action().orElseThrow().toLowerCase(Locale.ROOT), action.args()))
-        .toList();
-  }
-
-  SdkmanModule sdkmanModule(PlanEntryDocument entry, BootstrapPolicy policy) {
-    PlanSpecDocument spec = requireField(entry.spec().orElse(null), planName(entry) + ".spec");
-    return new SdkmanModule(
-        new ModuleName(planName(entry)), sdkmanPackages(spec), continueOnError(entry, policy));
-  }
-
-  private List<SdkmanPackage> sdkmanPackages(PlanSpecDocument spec) {
-    return spec.packageItems().stream().map(this::sdkmanPackage).toList();
-  }
-
-  private SdkmanPackage sdkmanPackage(JsonNode node) {
-    if (node.isTextual()) {
-      return new SdkmanPackage(node.asText());
-    }
-    return new SdkmanPackage(text(node, "candidate").orElseThrow(), text(node, "version"));
-  }
-
-  FlatpakModule flatpakModule(PlanEntryDocument entry, BootstrapPolicy policy) {
-    PlanSpecDocument spec = requireField(entry.spec().orElse(null), planName(entry) + ".spec");
-    return new FlatpakModule(
-        new ModuleName(planName(entry)),
-        spec.remote().orElse("flathub"),
-        appIds(spec),
-        continueOnError(entry, policy));
-  }
-
-  private List<String> appIds(PlanSpecDocument spec) {
-    var appIds = new ArrayList<String>();
-    appIds.addAll(spec.apps());
-    appIds.addAll(spec.appIds());
-    return List.copyOf(appIds);
-  }
-
-  CompiledBinaryModule compiledBinaryModule(PlanEntryDocument entry, BootstrapPolicy policy) {
-    PlanSpecDocument spec = requireField(entry.spec().orElse(null), planName(entry) + ".spec");
-    return new CompiledBinaryModule(
-        new ModuleName(planName(entry)),
-        requireField(spec.binaryName().orElse(null), planName(entry) + ".spec.binaryName"),
-        binaryUrl(requireField(spec.url().orElse(null), planName(entry) + ".spec.url")),
-        checksum(spec.checksum()),
-        spec.checksumUrl().map(this::binaryUrl),
-        spec.signatureUrl().map(this::binaryUrl),
-        absolutePath(
-            requireField(spec.installPath().orElse(null), planName(entry) + ".spec.installPath")),
-        spec.archivePath(),
-        spec.stripComponents().orElse(0),
-        Optional.of(spec.installMode().orElse("0755")),
-        spec.symlinkPath().map(this::absolutePath),
-        continueOnError(entry, policy),
-        spec.versionCommand(),
-        spec.expectedVersion());
-  }
-
-  ShellScriptModule shellScriptModule(PlanEntryDocument entry, BootstrapPolicy policy) {
-    PlanSpecDocument spec = requireField(entry.spec().orElse(null), planName(entry) + ".spec");
-    return new ShellScriptModule(
-        new ModuleName(planName(entry)),
-        scriptItems(entry, spec),
-        spec.workingDir().map(Path::of),
-        continueOnError(entry, policy),
-        spec.probeCommand());
-  }
-
-  ShellCommandModule shellCommandModule(PlanEntryDocument entry, BootstrapPolicy policy) {
-    PlanSpecDocument spec = requireField(entry.spec().orElse(null), planName(entry) + ".spec");
-    return new ShellCommandModule(
-        new ModuleName(planName(entry)),
-        commandItems(entry, spec),
-        spec.shell().orElse("/bin/bash"),
-        spec.workingDir().map(Path::of),
-        continueOnError(entry, policy),
-        spec.probeCommand());
-  }
-
-  Optional<BootstrapModule> fileWriteModule(PlanEntryDocument entry, BootstrapPolicy policy) {
-    PlanSpecDocument spec = requireField(entry.spec().orElse(null), planName(entry) + ".spec");
-    List<FileWriteItem> items = fileWriteItems(entry, spec);
-    if (items.isEmpty()) {
-      return Optional.empty();
-    }
-    return Optional.of(
-        new FileWriteModule(
-            new ModuleName(planName(entry)), items, continueOnError(entry, policy)));
-  }
-
-  private List<FileWriteItem> fileWriteItems(PlanEntryDocument entry, PlanSpecDocument spec) {
-    List<JsonNode> nodes = spec.fileWriteItems();
-    if (nodes.isEmpty()) {
-      return List.of(fileWriteItem(entry, spec, null, 0));
-    }
-    var items = new ArrayList<FileWriteItem>();
-    for (int index = 0; index < nodes.size(); index++) {
-      if (itemMatches(nodes.get(index))) {
-        items.add(fileWriteItem(entry, spec, nodes.get(index), index));
-      }
-    }
-    return List.copyOf(items);
-  }
-
-  private FileWriteItem fileWriteItem(
-      PlanEntryDocument entry, PlanSpecDocument spec, JsonNode node, int index) {
-    String name = text(node, "name").orElse(planName(entry) + "[" + index + "]");
-    return new FileWriteItem(
-        name,
-        path(node, "destination")
-            .or(() -> spec.destination().map(this::absolutePath))
-            .orElseThrow(),
-        content(node).or(spec::content),
-        path(node, "source").or(() -> spec.fileSource().map(this::absolutePath)),
-        text(node, "owner").or(spec::owner),
-        text(node, "group").or(spec::group),
-        text(node, "mode").or(spec::installMode),
-        bool(node, "sudo").or(spec::sudo).orElse(false));
-  }
-
-  private Optional<String> content(JsonNode node) {
-    return child(node, "content").filter(JsonNode::isTextual).map(JsonNode::asText);
-  }
-
-  private List<ShellScriptItem> scriptItems(PlanEntryDocument entry, PlanSpecDocument spec) {
-    List<JsonNode> nodes = spec.scriptItems();
-    if (nodes.isEmpty()) {
-      return List.of(scriptItem(entry, spec, null, 0));
-    }
-    var items = new ArrayList<ShellScriptItem>();
-    for (int index = 0; index < nodes.size(); index++) {
-      if (itemMatches(nodes.get(index))) {
-        items.add(scriptItem(entry, spec, nodes.get(index), index));
-      }
-    }
-    return List.copyOf(items);
-  }
-
-  private ShellScriptItem scriptItem(
-      PlanEntryDocument entry, PlanSpecDocument spec, JsonNode node, int index) {
-    String name = text(node, "name").orElse(planName(entry) + "[" + index + "]");
-    Optional<ScriptPath> script = scriptPath(node, spec);
-    Optional<URI> url = text(node, "url").or(spec::url).map(URI::create);
-    return new ShellScriptItem(
-        name,
-        script,
-        url,
-        stringList(node, "args").orElseGet(spec::args),
-        path(node, "cwd")
-            .or(() -> path(node, "workingDir"))
-            .or(() -> spec.workingDir().map(Path::of)),
-        environment(spec.envNode(), child(node, "env")),
-        bool(node, "sudo").or(spec::sudo).orElse(false),
-        intList(node, "allowedExitCodes").orElseGet(spec::allowedExitCodes),
-        path(node, "creates").or(() -> spec.creates().map(Path::of)),
-        text(node, "unless").or(spec::unless),
-        confirm(node).or(spec::confirm),
-        timeout(node).orElseGet(() -> timeout(spec)));
-  }
-
-  private Optional<ScriptPath> scriptPath(JsonNode node, PlanSpecDocument spec) {
-    return text(node, "script")
-        .or(spec::script)
-        .map(raw -> new ScriptPath(Path.of(expandHome(raw))));
-  }
-
-  private List<ShellCommandItem> commandItems(PlanEntryDocument entry, PlanSpecDocument spec) {
-    List<JsonNode> nodes = spec.commandItems();
-    var items = new ArrayList<ShellCommandItem>();
-    for (int index = 0; index < nodes.size(); index++) {
-      if (itemMatches(nodes.get(index))) {
-        items.add(commandItem(entry, spec, nodes.get(index), index));
-      }
-    }
-    return List.copyOf(items);
-  }
-
-  private ShellCommandItem commandItem(
-      PlanEntryDocument entry, PlanSpecDocument spec, JsonNode node, int index) {
-    String fallback = node.isTextual() ? node.asText() : planName(entry) + "[" + index + "]";
-    String name = text(node, "name").orElse(fallback);
-    return new ShellCommandItem(
-        name,
-        shellCommand(node),
-        argv(node),
-        text(node, "shell").or(spec::shell).orElse("/bin/bash"),
-        path(node, "cwd")
-            .or(() -> path(node, "workingDir"))
-            .or(() -> spec.workingDir().map(Path::of)),
-        environment(spec.envNode(), child(node, "env")),
-        bool(node, "sudo").or(spec::sudo).orElse(false),
-        intList(node, "allowedExitCodes").orElseGet(spec::allowedExitCodes),
-        path(node, "creates").or(() -> spec.creates().map(Path::of)),
-        text(node, "unless").or(spec::unless),
-        confirm(node).or(spec::confirm),
-        timeout(node).orElseGet(() -> timeout(spec)));
-  }
-
-  private Optional<String> shellCommand(JsonNode node) {
-    if (node.isTextual()) {
-      return Optional.of(node.asText());
-    }
-    return text(node, "run").or(() -> text(node, "shellCommand"));
-  }
-
-  private Optional<List<String>> argv(JsonNode node) {
-    if (node.isArray()) {
-      return Optional.of(stringArray(node));
-    }
-    return array(node, "run").or(() -> array(node, "argv")).or(() -> commandWithArgs(node));
-  }
-
-  private Optional<List<String>> commandWithArgs(JsonNode node) {
-    return text(node, "command")
-        .map(
-            command -> {
-              var values = new ArrayList<String>();
-              values.add(command);
-              values.addAll(stringList(node, "args").orElse(List.of()));
-              return List.copyOf(values);
-            });
-  }
-
-  private List<ShellEnvironmentVariable> environment(
-      Optional<JsonNode> moduleEnv, Optional<JsonNode> itemEnv) {
-    var values = new java.util.LinkedHashMap<String, ShellEnvironmentVariable>();
-    moduleEnv.ifPresent(env -> addEnvironment(values, env));
-    itemEnv.ifPresent(env -> addEnvironment(values, env));
-    return List.copyOf(values.values());
-  }
-
-  private void addEnvironment(Map<String, ShellEnvironmentVariable> values, JsonNode env) {
-    if (env == null || !env.isObject()) {
-      return;
-    }
-    Iterator<Map.Entry<String, JsonNode>> fields = env.fields();
-    while (fields.hasNext()) {
-      Map.Entry<String, JsonNode> field = fields.next();
-      environmentVariable(field.getKey(), field.getValue())
-          .ifPresent(value -> values.put(field.getKey(), value));
-    }
-  }
-
-  private Optional<ShellEnvironmentVariable> environmentVariable(String name, JsonNode value) {
-    if (value.isTextual()) {
-      return Optional.of(new ShellEnvironmentVariable(name, value.asText(), sensitiveName(name)));
-    }
-    if (!value.isObject()) {
-      return Optional.empty();
-    }
-    return text(value, "value")
-        .map(
-            raw ->
-                new ShellEnvironmentVariable(
-                    name, raw, bool(value, "sensitive").orElse(sensitiveName(name))));
-  }
-
-  private boolean sensitiveName(String name) {
-    String normalized = name.toLowerCase(Locale.ROOT);
-    return normalized.contains("token")
-        || normalized.contains("secret")
-        || normalized.contains("password")
-        || normalized.contains("passwd")
-        || normalized.contains("credential");
-  }
-
-  private boolean itemMatches(JsonNode node) {
-    return child(node, "when")
-        .map(
-            value ->
-                whenEvaluator.matches(Optional.of(MAPPER.convertValue(value, WhenDocument.class))))
-        .orElse(true);
-  }
-
-  private Optional<JsonNode> child(JsonNode node, String field) {
-    if (node == null || !node.isObject()) {
-      return Optional.empty();
-    }
-    JsonNode value = node.get(field);
-    return value == null || value.isNull() ? Optional.empty() : Optional.of(value);
-  }
-
-  private Optional<String> text(JsonNode node, String field) {
-    return child(node, field)
-        .filter(JsonNode::isTextual)
-        .map(JsonNode::asText)
-        .filter(value -> !value.isBlank());
-  }
-
-  private Optional<Boolean> bool(JsonNode node, String field) {
-    return child(node, field).filter(JsonNode::isBoolean).map(JsonNode::asBoolean);
-  }
-
-  private Optional<Path> path(JsonNode node, String field) {
-    return text(node, field).map(value -> Path.of(expandHome(value)));
-  }
-
-  private Optional<List<Integer>> intList(JsonNode node, String field) {
-    return child(node, field)
-        .filter(JsonNode::isArray)
-        .map(
-            values -> {
-              var result = new ArrayList<Integer>();
-              values.forEach(
-                  value -> {
-                    if (value.canConvertToInt()) {
-                      result.add(value.asInt());
-                    }
-                  });
-              return List.copyOf(result);
-            });
-  }
-
-  private Optional<List<String>> stringList(JsonNode node, String field) {
-    return child(node, field).filter(JsonNode::isArray).map(this::stringArray);
-  }
-
-  private Optional<List<String>> array(JsonNode node, String field) {
-    return stringList(node, field).filter(values -> !values.isEmpty());
-  }
-
-  private List<String> stringArray(JsonNode node) {
-    var values = new ArrayList<String>();
-    node.forEach(
-        value -> {
-          if (value.isTextual() && !value.asText().isBlank()) {
-            values.add(value.asText());
-          }
-        });
-    return List.copyOf(values);
-  }
-
-  private Optional<String> confirm(JsonNode node) {
-    return text(node, "confirm")
-        .or(() -> bool(node, "confirm").filter(Boolean::booleanValue).map(ignored -> "confirm"));
-  }
-
-  private Optional<Duration> timeout(JsonNode node) {
-    return text(node, "timeout")
-        .map(MappingSupport::duration)
-        .or(
-            () ->
-                child(node, "timeoutSeconds")
-                    .filter(JsonNode::canConvertToInt)
-                    .map(value -> Duration.ofSeconds(value.asInt())));
-  }
-
-  private Duration timeout(PlanSpecDocument spec) {
-    return spec.timeout()
-        .map(MappingSupport::duration)
-        .or(() -> spec.timeoutSeconds().map(Duration::ofSeconds))
-        .orElse(Duration.ofMinutes(30));
-  }
-
-  NerdFontModule nerdFontModule(PlanEntryDocument entry) {
-    PlanSpecDocument spec = requireField(entry.spec().orElse(null), planName(entry) + ".spec");
-    return new NerdFontModule(
-        new ModuleName(planName(entry)),
-        spec.installerVersion().orElse(KnownTools.NERD_FONTS_INSTALLER.version()),
-        spec.nerdfontBinary().orElse(KnownTools.NERD_FONTS_INSTALLER.executableName()),
-        nerdFontConfig(spec),
-        spec.configIsObject()
-            ? Optional.empty()
-            : spec.nerdFontsConfigPath().map(path -> Path.of(expandHome(path))),
-        spec.probeCommand());
-  }
-
-  BinstallerModule binstallerModule(PlanEntryDocument entry, BootstrapPolicy policy) {
-    PlanSpecDocument spec = requireField(entry.spec().orElse(null), planName(entry) + ".spec");
-    return new BinstallerModule(
-        new ModuleName(planName(entry)),
-        Path.of(
-            expandHome(
-                requireField(
-                    spec.dotfilesConfig().orElse(null), planName(entry) + ".spec.config"))),
-        spec.only(),
-        spec.skip(),
-        spec.locked(),
-        spec.lockFile().map(path -> Path.of(expandHome(path))),
-        spec.installerVersion().orElse(KnownTools.BINSTALLER.version()),
-        spec.binstallerBinary().orElse(KnownTools.BINSTALLER.executableName()),
-        spec.probeCommand(),
-        continueOnError(entry, policy));
-  }
-
-  UserGroupsModule userGroupsModule(PlanEntryDocument entry, BootstrapPolicy policy) {
-    PlanSpecDocument spec = requireField(entry.spec().orElse(null), planName(entry) + ".spec");
-    return new UserGroupsModule(
-        new ModuleName(planName(entry)),
-        spec.user(),
-        spec.groups(),
-        spec.createMissing(),
-        spec.logoutCheckpoint(),
-        spec.message(),
-        continueOnError(entry, policy));
-  }
-
-  GitConfigModule gitConfigModule(PlanEntryDocument entry, BootstrapPolicy policy) {
-    PlanSpecDocument spec = requireField(entry.spec().orElse(null), planName(entry) + ".spec");
-    return new GitConfigModule(
-        new ModuleName(planName(entry)),
-        enumValue(GitConfigScope.class, spec.scope().orElse("global")),
-        spec.entries(),
-        continueOnError(entry, policy));
-  }
-
-  GitRepoModule gitRepoModule(PlanEntryDocument entry, BootstrapPolicy policy) {
-    PlanSpecDocument spec = requireField(entry.spec().orElse(null), planName(entry) + ".spec");
-    var repos =
-        spec.repos().stream()
-            .map(
-                repo ->
-                    new GitRepoModule.GitRepo(
-                        requireField(repo.url, planName(entry) + ".spec.repos[].url"),
-                        requireField(repo.dest, planName(entry) + ".spec.repos[].dest"),
-                        Optional.ofNullable(repo.ref),
-                        Optional.ofNullable(repo.depth),
-                        repo.submodules,
-                        enumValue(GitRepoUpdate.class, repo.update)))
-            .toList();
-    return new GitRepoModule(
-        new ModuleName(planName(entry)), repos, continueOnError(entry, policy));
-  }
-
-  SystemdUnitModule systemdUnitModule(PlanEntryDocument entry, BootstrapPolicy policy) {
-    PlanSpecDocument spec = requireField(entry.spec().orElse(null), planName(entry) + ".spec");
-    var units =
-        spec.units().stream()
-            .map(
-                unit ->
-                    new SystemdUnitModule.SystemdUnit(
-                        requireField(unit.name, planName(entry) + ".spec.units[].name"),
-                        unit.enabled,
-                        enumValue(SystemdState.class, unit.state),
-                        unit.mask))
-            .toList();
-    return new SystemdUnitModule(
-        new ModuleName(planName(entry)),
-        enumValue(SystemdScope.class, spec.scope().orElse("system")),
-        units,
-        continueOnError(entry, policy));
-  }
-
-  SystemSettingModule systemSettingModule(PlanEntryDocument entry, BootstrapPolicy policy) {
-    PlanSpecDocument spec = requireField(entry.spec().orElse(null), planName(entry) + ".spec");
-    return new SystemSettingModule(
-        new ModuleName(planName(entry)),
-        spec.localRtc(),
-        spec.ntp(),
-        spec.timezone(),
-        spec.hostname(),
-        spec.locale(),
-        continueOnError(entry, policy));
-  }
-
-  SystemUpdateModule systemUpdateModule(PlanEntryDocument entry, BootstrapPolicy policy) {
-    PlanSpecDocument spec = requireField(entry.spec().orElse(null), planName(entry) + ".spec");
-    return new SystemUpdateModule(
-        new ModuleName(planName(entry)),
-        PackageManagerKind.valueOf(
-            requireField(
-                    spec.packageManager().orElse(null), planName(entry) + ".spec.packageManager")
-                .toUpperCase()),
-        spec.distUpgrade(),
-        spec.refreshOnly(),
-        spec.timeout().map(MappingSupport::duration),
-        continueOnError(entry, policy));
-  }
-
-  GpgKeyModule gpgKeyModule(PlanEntryDocument entry, BootstrapPolicy policy) {
-    PlanSpecDocument spec = requireField(entry.spec().orElse(null), planName(entry) + ".spec");
-    var keys =
-        spec.keys().stream()
-            .map(
-                key ->
-                    new GpgKeyModule.GpgKey(
-                        requireField(key.url, planName(entry) + ".spec.keys[].url"),
-                        Optional.ofNullable(key.keyring).map(path -> Path.of(expandHome(path))),
-                        Optional.ofNullable(key.fingerprint)))
-            .toList();
-    return new GpgKeyModule(new ModuleName(planName(entry)), keys, continueOnError(entry, policy));
-  }
-
-  ToolPackagesModule toolPackagesModule(PlanEntryDocument entry, BootstrapPolicy policy) {
-    PlanSpecDocument spec = requireField(entry.spec().orElse(null), planName(entry) + ".spec");
-    var backend =
-        ToolPackageBackend.fromId(
-                requireField(spec.backend().orElse(null), planName(entry) + ".spec.backend"))
-            .orElseThrow(
-                () ->
-                    new IllegalArgumentException(
-                        "Unsupported tool-packages backend: " + spec.backend().orElse("")));
-    var packages = spec.packages().stream().map(MappingSupport::toolPackage).toList();
-    return new ToolPackagesModule(
-        new ModuleName(planName(entry)), backend, packages, continueOnError(entry, policy));
-  }
-
-  ZypperRepositoryModule zypperRepositoryModule(PlanEntryDocument entry) {
-    PlanSpecDocument spec = requireField(entry.spec().orElse(null), planName(entry) + ".spec");
-    String name = planName(entry);
-    return new ZypperRepositoryModule(
-        new ModuleName(name),
-        spec.repositoryId().orElse(name),
-        java.net.URI.create(requireField(spec.baseUrl().orElse(null), name + ".spec.baseUrl")),
-        Path.of(expandHome(spec.repoFile().orElse("/etc/zypp/repos.d/" + name + ".repo"))),
-        spec.gpgKeyUrl().map(java.net.URI::create),
-        spec.repoEnabled(),
-        spec.gpgCheck(),
-        spec.autoRefresh());
-  }
-
-  DotbotModule dotbotModule(PlanEntryDocument entry) {
-    PlanSpecDocument spec = requireField(entry.spec().orElse(null), planName(entry) + ".spec");
-    return new DotbotModule(
-        new ModuleName(planName(entry)),
-        Path.of(
-            expandHome(
-                requireField(
-                    spec.dotfilesConfig().orElse(null), planName(entry) + ".spec.config"))),
-        spec.installerVersion().orElse(KnownTools.DOTBOT_GO.version()),
-        spec.dotbotBinary().orElse(KnownTools.DOTBOT_GO.executableName()),
-        spec.probeCommand());
-  }
-
-  private NerdFontConfig nerdFontConfig(PlanSpecDocument spec) {
-    var config = spec.nerdFontConfig().orElse(null);
-    String release = config != null ? config.release : spec.release().orElse("latest");
-    String destination = config != null ? config.destination : spec.destination().orElse(null);
-    boolean refresh =
-        config != null ? config.refreshFontCache : spec.refreshFontCache().orElse(true);
-    List<String> families = config != null ? config.families : spec.families();
-    return new NerdFontConfig(
-        release,
-        Path.of(expandHome(destination != null ? destination : "~/.local/share/fonts/NerdFonts")),
-        refresh,
-        families);
-  }
-
-  private Optional<Checksum> checksum(
-      Optional<dev.sysboot.config.yaml.contract.WorkstationChecksumDocument> dto) {
-    return dto.map(
-        value -> new Checksum(value.algorithm().orElseThrow(), value.value().orElseThrow()));
-  }
-
-  private BinaryUrl binaryUrl(String rawUrl) {
-    return new BinaryUrl(URI.create(rawUrl));
-  }
-
-  private Path absolutePath(String rawPath) {
-    Path path = Path.of(expandHome(rawPath));
-    if (!path.isAbsolute()) {
-      throw new IllegalArgumentException("Required field 'installPath' must be absolute");
-    }
-    return path;
+  private Optional<BootstrapModule> mapPlanModule(
+      PlanEntryDocument entry, BootstrapPolicy policy, WorkstationPlanMappers planMappers) {
+    return PlanKinds.find(planKind(entry))
+        .flatMap(kind -> kind.mapper().map(planMappers, entry, policy));
   }
 
   private String planKind(PlanEntryDocument entry) {
-    return requireField(entry.kind().orElse(null), planName(entry) + ".kind")
-        .strip()
-        .toLowerCase(Locale.ROOT);
-  }
-
-  private String planName(PlanEntryDocument entry) {
-    return requireField(entry.name().orElse(null), "spec.plan[].name");
+    String name = requireField(entry.name().orElse(null), "spec.plan[].name");
+    return requireField(entry.kind().orElse(null), name + ".kind").strip().toLowerCase(Locale.ROOT);
   }
 
   private OsTarget mapTarget(TargetDocument target) {
-    return mapOs(requireField(target.os().orElse(null), "spec.target.os"));
-  }
-
-  private OsTarget mapOs(TargetOsDocument os) {
+    TargetOsDocument os = requireField(target.os().orElse(null), "spec.target.os");
     String distribution =
         requireField(os.distribution().orElse(null), "spec.target.os.distribution")
             .strip()

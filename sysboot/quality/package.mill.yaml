@@ -1,0 +1,7 @@
+extends: JavaModule
+jvmVersion: temurin:25
+mvnDeps:
+  - com.puppycrawl.tools:checkstyle:13.9.0
+  - net.sourceforge.pmd:pmd-cli:7.26.0
+  - net.sourceforge.pmd:pmd-java:7.26.0
+  - com.github.spotbugs:spotbugs:4.10.3

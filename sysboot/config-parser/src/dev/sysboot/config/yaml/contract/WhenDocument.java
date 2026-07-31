@@ -123,6 +123,20 @@ public final class WhenDocument {
     return DocumentDefaults.optional(expression);
   }
 
+  public List<String> unsupportedFields() {
+    var fields = new ArrayList<String>();
+    if (files != null) {
+      fields.add("files");
+    }
+    if (vars != null) {
+      fields.add("vars");
+    }
+    if (expression != null) {
+      fields.add("expression");
+    }
+    return List.copyOf(fields);
+  }
+
   private List<String> stringList(JsonNode node) {
     if (node == null || node.isNull() || node.isMissingNode()) {
       return List.of();

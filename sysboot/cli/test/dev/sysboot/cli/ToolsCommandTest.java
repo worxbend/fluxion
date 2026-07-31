@@ -73,6 +73,24 @@ class ToolsCommandTest {
     assertThat(result.stderr()).contains("Unknown tool 'homebrew'").contains("binstaller");
   }
 
+  @Test
+  void installRejectsTraversalVersionBeforeCacheOrDownloadWork() {
+    CliResult result = execute("tools", "install", "dotbot-go", "--release", "../escape");
+
+    assertThat(result.exitCode()).isEqualTo(ExitCode.INVALID_INPUT.value());
+    assertThat(result.stderr()).contains("Invalid tool version").contains("traversal");
+  }
+
+  @Test
+  void installRejectsUncataloguedVersionBeforeCacheOrDownloadWork() {
+    CliResult result = execute("tools", "install", "dotbot-go", "--release", "v9.9.9");
+
+    assertThat(result.exitCode()).isEqualTo(ExitCode.INVALID_INPUT.value());
+    assertThat(result.stderr())
+        .contains("Invalid tool version")
+        .contains("trusted release-digest catalog");
+  }
+
   private CliResult execute(String... args) {
     CommandLine commandLine = Main.commandLine();
     var stdout = new StringWriter();

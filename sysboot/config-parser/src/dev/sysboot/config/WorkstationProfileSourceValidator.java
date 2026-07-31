@@ -4,6 +4,8 @@ import dev.sysboot.config.yaml.contract.SourceDocument;
 import dev.sysboot.config.yaml.contract.SourceSpecDocument;
 import dev.sysboot.config.yaml.contract.SourcesDocument;
 import dev.sysboot.config.yaml.contract.WorkstationChecksumDocument;
+import dev.sysboot.core.PacmanRepositoryPolicy;
+import dev.sysboot.core.SourceUrlPolicy;
 import java.net.URI;
 import java.net.URISyntaxException;
 import java.nio.file.InvalidPathException;
@@ -25,7 +27,7 @@ final class WorkstationProfileSourceValidator {
     validateSources("spec.sources.apt", sources.apt(), this::validateAptSource, errors);
     validateSources("spec.sources.dnf", sources.dnf(), this::validateRpmSource, errors);
     validateSources("spec.sources.rpm", sources.rpm(), this::validateRpmSource, errors);
-    validateChecksums("spec.sources.pacman", sources.pacman(), errors);
+    validateSources("spec.sources.pacman", sources.pacman(), this::validatePacmanSource, errors);
     validateSources("spec.sources.zypper", sources.zypper(), this::validateRpmSource, errors);
     validateSources("spec.sources.flatpak", sources.flatpak(), this::validateFlatpakSource, errors);
   }
@@ -57,10 +59,13 @@ final class WorkstationProfileSourceValidator {
   private void validateAptSource(SourceContext context, List<String> errors) {
     SourceSpecDocument spec = context.spec();
     validateRequiredText(context.path() + ".source", spec.source().orElse(null), errors);
+    validateAptSourceEntry(context.path() + ".source", spec.source().orElse(null), errors);
     validateAbsolutePath(context.path() + ".sourceList", spec.sourceList().orElse(null), errors);
     validateHttpUrl(context.path() + ".signingKeyUrl", spec.signingKeyUrl().orElse(null), errors);
     validateAbsolutePath(context.path() + ".keyring", spec.keyring().orElse(null), errors);
     validateChecksum(context.path() + ".checksum", spec.checksum().orElse(null), errors);
+    validateArtifactChecksum(
+        context.path(), spec.signingKeyUrl().orElse(null), spec.checksum().orElse(null), errors);
   }
 
   private void validateRpmSource(SourceContext context, List<String> errors) {
@@ -70,7 +75,10 @@ final class WorkstationProfileSourceValidator {
     validateAbsolutePath(context.path() + ".repoFile", spec.repoFile().orElse(null), errors);
     validateHttpUrl(context.path() + ".gpgKeyUrl", spec.gpgKeyUrl().orElse(null), errors);
     validateRequiredGpgKey(context.path(), spec, errors);
+    validateEnabledGpgCheck(context.path(), spec, errors);
     validateChecksum(context.path() + ".checksum", spec.checksum().orElse(null), errors);
+    validateArtifactChecksum(
+        context.path(), spec.gpgKeyUrl().orElse(null), spec.checksum().orElse(null), errors);
   }
 
   private void validateFlatpakSource(SourceContext context, List<String> errors) {
@@ -78,11 +86,40 @@ final class WorkstationProfileSourceValidator {
     validateRequiredText(context.path() + ".remote", spec.remote().orElse(null), errors);
     validateRequiredHttpUrl(context.path() + ".url", spec.url().orElse(null), errors);
     validateChecksum(context.path() + ".checksum", spec.checksum().orElse(null), errors);
+    if (spec.checksum().isEmpty()) {
+      errors.add(context.path() + ".checksum is required for the Flatpak repository descriptor");
+    }
+  }
+
+  private void validatePacmanSource(SourceContext context, List<String> errors) {
+    SourceSpecDocument spec = context.spec();
+    validateRequiredHttpUrl(context.path() + ".server", spec.server().orElse(null), errors);
+    validateAbsolutePath(context.path() + ".config", spec.config().orElse(null), errors);
+    validateAbsolutePath(context.path() + ".include", spec.include().orElse(null), errors);
+    validatePacmanTrust(context.path(), spec, errors);
+    validateChecksum(context.path() + ".checksum", spec.checksum().orElse(null), errors);
+    if (spec.checksum().isPresent()) {
+      errors.add(context.path() + ".checksum has no finite Pacman source artifact to verify");
+    }
   }
 
   private void validateRequiredGpgKey(String path, SourceSpecDocument spec, List<String> errors) {
     if (spec.gpgCheck().orElse(true) && isBlank(spec.gpgKeyUrl().orElse(null))) {
       errors.add(path + ".gpgKeyUrl is required when gpgCheck is true");
+    }
+  }
+
+  private void validateEnabledGpgCheck(String path, SourceSpecDocument spec, List<String> errors) {
+    if (spec.enabled().orElse(true) && !spec.gpgCheck().orElse(true)) {
+      errors.add(path + ".gpgCheck must be true for an enabled repository");
+    }
+  }
+
+  private void validatePacmanTrust(String path, SourceSpecDocument spec, List<String> errors) {
+    try {
+      PacmanRepositoryPolicy.requireSignatureTrust(spec.sigLevel(), spec.enabled().orElse(true));
+    } catch (IllegalArgumentException e) {
+      errors.add(path + ".sigLevel " + e.getMessage());
     }
   }
 
@@ -143,17 +180,35 @@ final class WorkstationProfileSourceValidator {
     }
     try {
       URI uri = new URI(value.strip());
-      if (!uri.isAbsolute() || !isHttpScheme(uri)) {
-        errors.add(path + " must be an absolute HTTP(S) URL");
+      if (!uri.isAbsolute()
+          || !"https".equalsIgnoreCase(uri.getScheme())
+          || uri.getHost() == null
+          || uri.getUserInfo() != null) {
+        errors.add(path + " must be an absolute HTTPS URL without user-info");
       }
     } catch (URISyntaxException e) {
-      errors.add(path + " must be a valid HTTP(S) URL");
+      errors.add(path + " must be a valid HTTPS URL without user-info");
     }
   }
 
-  private boolean isHttpScheme(URI uri) {
-    String scheme = uri.getScheme();
-    return "http".equalsIgnoreCase(scheme) || "https".equalsIgnoreCase(scheme);
+  private void validateAptSourceEntry(String path, String value, List<String> errors) {
+    if (isBlank(value)) {
+      return;
+    }
+    try {
+      SourceUrlPolicy.aptRepositoryUri(value);
+    } catch (IllegalArgumentException e) {
+      errors.add(path + " must contain an HTTPS repository URL without user-info");
+    }
+  }
+
+  private void validateArtifactChecksum(
+      String path, String artifactUrl, WorkstationChecksumDocument checksum, List<String> errors) {
+    if (!isBlank(artifactUrl) && checksum == null) {
+      errors.add(path + ".checksum is required for the remote signing key");
+    } else if (isBlank(artifactUrl) && checksum != null) {
+      errors.add(path + ".checksum has no remote signing-key artifact to verify");
+    }
   }
 
   private void validateAbsolutePath(String path, String value, List<String> errors) {

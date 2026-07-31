@@ -30,6 +30,9 @@ spec:
           sourceList: ${aptSourceList}
           signingKeyUrl: https://download.docker.com/linux/ubuntu/gpg
           keyring: ${aptKeyring}
+          checksum:
+            algorithm: sha256
+            value: 1500c1f56fa9e26b9b8f42452a553675796ade0807cdce11975eb98170b3a570
     flatpak:
       - name: flathub
         kind: flatpak-remote
@@ -37,6 +40,9 @@ spec:
           remote: flathub
           url: https://flathub.org/repo/flathub.flatpakrepo
           system: true
+          checksum:
+            algorithm: sha256
+            value: 3371dd250e61d9e1633630073fefda153cd4426f72f4afa0c3373ae2e8fea03a
   plan:
     - name: apt-foundation
       kind: apt-packages
@@ -82,10 +88,10 @@ spec:
     - name: developer-fonts
       kind: nerd-fonts
       spec:
-        installerVersion: v1.0.5
-        nerdfontBinary: nerdfont-install
+        installerVersion: v1.0.7
+        nerdfontBinary: nerd-fonts-installer
         config:
-          release: latest
+          release: v3.4.0
           destination: ${HOME}/.local/share/fonts/NerdFonts
           refreshFontCache: true
           families:

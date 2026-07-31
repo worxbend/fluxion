@@ -26,7 +26,10 @@ public enum ExitCode {
   EXTERNAL_DEPENDENCY_ERROR(5),
 
   /** Execution paused at an explicit interrupt checkpoint. */
-  PAUSED(75);
+  PAUSED(75),
+
+  /** Execution stopped after the first Ctrl-C at a safe item boundary. */
+  CANCELLED(130);
 
   private final int value;
 

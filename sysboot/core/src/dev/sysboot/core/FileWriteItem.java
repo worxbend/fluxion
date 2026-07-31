@@ -28,6 +28,10 @@ public record FileWriteItem(
     if (!destination.isAbsolute()) {
       throw new IllegalArgumentException("File write destination must be absolute");
     }
+    destination = destination.normalize();
+    if (destination.getParent() == null) {
+      throw new IllegalArgumentException("File write destination must not be the filesystem root");
+    }
     if (content.isPresent() == source.isPresent()) {
       throw new IllegalArgumentException("File write must define exactly one of content or source");
     }

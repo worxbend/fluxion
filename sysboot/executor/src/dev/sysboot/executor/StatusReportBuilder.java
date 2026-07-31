@@ -18,28 +18,34 @@ public final class StatusReportBuilder {
       Optional<BootstrapState> state,
       Map<String, InstallationStatus> liveResults) {
     List<StatusReport.Item> items = new ArrayList<>();
-    Set<String> configuredKeys = new LinkedHashSet<>();
+    Set<ItemIdentity> configuredKeys = new LinkedHashSet<>();
+    for (ExecutionPlan.Module sourceSetup : plan.sourceSetups()) {
+      addConfiguredItems(sourceSetup, state, liveResults, configuredKeys, items);
+    }
     for (ExecutionPlan.Phase phase : plan.phases()) {
-      addConfiguredItems(phase, state, liveResults, configuredKeys, items);
+      for (ExecutionPlan.Module module : phase.modules()) {
+        addConfiguredItems(module, state, liveResults, configuredKeys, items);
+      }
     }
     state.ifPresent(saved -> addStateOnlyItems(saved, configuredKeys, items));
     return new StatusReport(plan.profileName(), items, summary(items));
   }
 
   private void addConfiguredItems(
-      ExecutionPlan.Phase phase,
+      ExecutionPlan.Module module,
       Optional<BootstrapState> state,
       Map<String, InstallationStatus> liveResults,
-      Set<String> configuredKeys,
+      Set<ItemIdentity> configuredKeys,
       List<StatusReport.Item> items) {
-    for (ExecutionPlan.Module module : phase.modules()) {
-      for (ExecutionPlan.Item item : module.items()) {
-        ModuleItem moduleItem = item.item();
-        configuredKeys.add(moduleItem.key());
-        Optional<StateEntry> stateEntry =
-            state.flatMap(saved -> saved.findEntry(moduleItem.key(), moduleItem.itemType()));
-        items.add(configuredItem(moduleItem, stateEntry, liveResults.get(moduleItem.key())));
-      }
+    for (ExecutionPlan.Item item : module.items()) {
+      ModuleItem moduleItem = item.item();
+      configuredKeys.add(ItemIdentity.of(moduleItem));
+      Optional<StateEntry> stateEntry =
+          state.flatMap(
+              saved ->
+                  saved.findEntry(
+                      moduleItem.moduleName(), moduleItem.key(), moduleItem.itemType()));
+      items.add(configuredItem(moduleItem, stateEntry, liveResults.get(moduleItem.qualifiedKey())));
     }
   }
 
@@ -99,15 +105,16 @@ public final class StatusReportBuilder {
   }
 
   private void addStateOnlyItems(
-      BootstrapState state, Set<String> configuredKeys, List<StatusReport.Item> items) {
+      BootstrapState state, Set<ItemIdentity> configuredKeys, List<StatusReport.Item> items) {
     state.entries().stream()
-        .filter(entry -> !configuredKeys.contains(entry.itemKey()))
+        .filter(entry -> !configuredKeys.contains(ItemIdentity.of(entry)))
         .map(this::stateOnlyItem)
         .forEach(items::add);
   }
 
   private StatusReport.Item stateOnlyItem(StateEntry entry) {
     return new StatusReport.Item(
+        entry.moduleName(),
         entry.itemKey(),
         entry.itemKey(),
         entry.itemType().name().toLowerCase(),
@@ -124,6 +131,7 @@ public final class StatusReportBuilder {
       String stateVersion,
       String liveVersion) {
     return new StatusReport.Item(
+        item.moduleName().value(),
         item.key(),
         item.displayName(),
         item.itemType().name().toLowerCase(),
@@ -153,5 +161,16 @@ public final class StatusReportBuilder {
 
   private int count(List<StatusReport.Item> items, StatusReport.Classification classification) {
     return (int) items.stream().filter(item -> item.classification() == classification).count();
+  }
+
+  private record ItemIdentity(String moduleName, String itemKey, dev.sysboot.core.ItemType type) {
+
+    private static ItemIdentity of(ModuleItem item) {
+      return new ItemIdentity(item.moduleName().value(), item.key(), item.itemType());
+    }
+
+    private static ItemIdentity of(StateEntry entry) {
+      return new ItemIdentity(entry.moduleName(), entry.itemKey(), entry.itemType());
+    }
   }
 }

@@ -71,10 +71,12 @@ import dev.sysboot.core.ProfileName;
 import dev.sysboot.core.RestartPolicy;
 import dev.sysboot.core.RpmRepositoryModule;
 import dev.sysboot.core.ScriptPath;
+import dev.sysboot.core.Sha256Digest;
 import dev.sysboot.core.ShellCommandItem;
 import dev.sysboot.core.ShellCommandModule;
 import dev.sysboot.core.ShellKind;
 import dev.sysboot.core.ShellReloadModule;
+import dev.sysboot.core.ShellScriptItem;
 import dev.sysboot.core.ShellScriptModule;
 import dev.sysboot.core.SystemSettingModule;
 import dev.sysboot.core.SystemUpdateModule;
@@ -89,6 +91,7 @@ import dev.sysboot.core.UserGroupsModule;
 import dev.sysboot.core.ZypperRepositoryModule;
 import java.net.URI;
 import java.nio.file.Path;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
@@ -161,11 +164,15 @@ final class ConfigMapper {
   }
 
   private ShellKind mapShellKind(String shell) {
-    if (shell == null) return ShellKind.ZSH;
-    return switch (shell.toLowerCase()) {
+    if (shell == null) {
+      return ShellKind.ZSH;
+    }
+    return switch (shell.toLowerCase(java.util.Locale.ROOT)) {
+      case "zsh" -> ShellKind.ZSH;
       case "bash" -> ShellKind.BASH;
       case "sh" -> ShellKind.SH;
-      default -> ShellKind.ZSH;
+      default ->
+          throw new IllegalArgumentException("Unsupported requires-new-shell value: " + shell);
     };
   }
 
@@ -190,7 +197,7 @@ final class ConfigMapper {
       case FlatpakRemoteModuleDocument frm -> mapFlatpakRemoteModule(frm);
       case ShellScriptModuleDocument sm -> mapShellScriptModule(sm, configFile);
       case CompiledBinaryModuleDocument bm -> mapCompiledBinaryModule(bm);
-      case DotbotModuleDocument db -> mapDotbotModule(db, configFile);
+      case DotbotModuleDocument db -> mapDotbotModule(db);
       case DefaultShellModuleDocument ds -> mapDefaultShellModule(ds);
       case OhMyZshModuleDocument omz -> mapOhMyZshModule(omz);
       case ToolchainModuleDocument tc -> mapToolchainModule(tc);
@@ -237,7 +244,8 @@ final class ConfigMapper {
         Path.of(
             dto.sourceList != null ? dto.sourceList : "/etc/apt/sources.list.d/" + name + ".list"),
         keyUrl,
-        keyring);
+        keyring,
+        mapSha256Checksum(dto.checksum, "apt-repository.checksum"));
   }
 
   private RpmRepositoryModule mapRpmRepositoryModule(RpmRepositoryModuleDocument dto) {
@@ -249,7 +257,8 @@ final class ConfigMapper {
         Path.of(dto.repoFile != null ? dto.repoFile : "/etc/yum.repos.d/" + name + ".repo"),
         mapUri(dto.gpgKeyUrl),
         dto.enabled == null || dto.enabled,
-        dto.gpgCheck == null || dto.gpgCheck);
+        dto.gpgCheck == null || dto.gpgCheck,
+        mapSha256Checksum(dto.checksum, "rpm-repository.checksum"));
   }
 
   private PacmanRepositoryModule mapPacmanRepositoryModule(PacmanRepositoryModuleDocument dto) {
@@ -276,22 +285,38 @@ final class ConfigMapper {
         new ModuleName(requireField(dto.name, "name")),
         requireField(dto.remote, "flatpak-remote.remote"),
         URI.create(requireField(dto.url, "flatpak-remote.url")),
-        system);
+        system,
+        mapSha256Checksum(dto.checksum, "flatpak-remote.checksum"));
   }
 
   private ShellScriptModule mapShellScriptModule(ShellScriptModuleDocument dto, Path configFile) {
-    var scriptPath =
-        new ScriptPath(Path.of(requireField(dto.script, "script"))).resolve(configFile.getParent());
-    var args = dto.args != null ? dto.args : List.<String>of();
     var workingDir =
         dto.workingDir != null ? Optional.of(Path.of(dto.workingDir)) : Optional.<Path>empty();
     return new ShellScriptModule(
         new ModuleName(requireField(dto.name, "name")),
-        scriptPath,
-        args,
+        List.of(mapShellScriptItem(dto, configFile, workingDir)),
         workingDir,
         dto.continueOnError,
         Optional.ofNullable(dto.probeCommand));
+  }
+
+  private ShellScriptItem mapShellScriptItem(
+      ShellScriptModuleDocument dto, Path configFile, Optional<Path> workingDir) {
+    return new ShellScriptItem(
+        requireField(dto.name, "name"),
+        Optional.ofNullable(dto.script)
+            .map(path -> new ScriptPath(Path.of(path)).resolve(configFile.getParent())),
+        Optional.ofNullable(dto.url).map(URI::create),
+        dto.args != null ? dto.args : List.of(),
+        workingDir,
+        List.of(),
+        false,
+        List.of(0),
+        Optional.empty(),
+        Optional.empty(),
+        Optional.empty(),
+        Duration.ofMinutes(30),
+        Optional.ofNullable(dto.sha256).map(Sha256Digest::new));
   }
 
   private CompiledBinaryModule mapCompiledBinaryModule(CompiledBinaryModuleDocument dto) {
@@ -311,7 +336,8 @@ final class ConfigMapper {
         mapSymlinkPath(dto),
         dto.continueOnError,
         Optional.ofNullable(dto.versionCommand),
-        Optional.ofNullable(dto.expectedVersion));
+        Optional.ofNullable(dto.expectedVersion),
+        Optional.ofNullable(dto.allowedSignerFingerprint));
   }
 
   private String binaryMode(CompiledBinaryModuleDocument dto) {
@@ -323,7 +349,7 @@ final class ConfigMapper {
     return Optional.ofNullable(rawPath).map(path -> absolutePath(path, "symlinkPath"));
   }
 
-  private DotbotModule mapDotbotModule(DotbotModuleDocument dto, Path configFile) {
+  private DotbotModule mapDotbotModule(DotbotModuleDocument dto) {
     String rawConfig = requireField(dto.config, "dotbot.config");
     Path configPath = Path.of(rawConfig.replace("~", System.getProperty("user.home")));
     return new DotbotModule(
@@ -347,6 +373,8 @@ final class ConfigMapper {
     return new OhMyZshModule(
         new ModuleName(requireField(dto.name, "name")),
         Path.of(dir.replace("~", System.getProperty("user.home"))),
+        requireField(dto.revision, "oh-my-zsh.revision"),
+        new Sha256Digest(requireField(dto.sha256, "oh-my-zsh.sha256")),
         Optional.ofNullable(dto.probeCommand));
   }
 
@@ -357,6 +385,7 @@ final class ConfigMapper {
         new ModuleName(requireField(dto.name, "name")),
         kind,
         requireField(installScript, "toolchain.installScriptUrl"),
+        new Sha256Digest(requireField(dto.sha256, "toolchain.sha256")),
         dto.installArgs != null ? dto.installArgs : List.of(),
         Optional.ofNullable(dto.postInstallEnvSource),
         Optional.ofNullable(dto.probeCommand),
@@ -513,10 +542,14 @@ final class ConfigMapper {
   }
 
   private SystemUpdateModule mapSystemUpdateModule(SystemUpdateModuleDocument dto) {
+    PackageManagerKind packageManager =
+        enumValue(
+            PackageManagerKind.class,
+            requireField(dto.packageManager, "system-update.packageManager"),
+            "system-update.packageManager");
     return new SystemUpdateModule(
         new ModuleName(requireField(dto.name, "name")),
-        PackageManagerKind.valueOf(
-            requireField(dto.packageManager, "system-update.packageManager").toUpperCase()),
+        packageManager,
         dto.distUpgrade,
         dto.refreshOnly,
         Optional.ofNullable(dto.timeout).map(java.time.Duration::parse),
@@ -531,7 +564,7 @@ final class ConfigMapper {
                     new GpgKeyModule.GpgKey(
                         requireField(key.url, "gpg-key.keys[].url"),
                         Optional.ofNullable(key.keyring).map(Path::of),
-                        Optional.ofNullable(key.fingerprint)))
+                        requireField(key.fingerprint, "gpg-key.keys[].fingerprint")))
             .toList();
     return new GpgKeyModule(
         new ModuleName(requireField(dto.name, "name")), keys, dto.continueOnError);
@@ -563,15 +596,29 @@ final class ConfigMapper {
         Optional.ofNullable(dto.gpgKeyUrl).map(URI::create),
         dto.enabled,
         dto.gpgCheck,
-        dto.autoRefresh);
+        dto.autoRefresh,
+        mapSha256Checksum(dto.checksum, "zypper-repository.checksum"));
   }
 
   private Optional<Checksum> mapChecksum(ChecksumDocument dto) {
-    if (dto == null) return Optional.empty();
+    if (dto == null) {
+      return Optional.empty();
+    }
     return Optional.of(
         new Checksum(
             requireField(dto.algorithm, "checksum.algorithm"),
             requireField(dto.value, "checksum.value")));
+  }
+
+  private Optional<Sha256Digest> mapSha256Checksum(ChecksumDocument dto, String field) {
+    Optional<Checksum> checksum = mapChecksum(dto);
+    checksum
+        .filter(value -> !value.hasValidSha256Value())
+        .ifPresent(
+            ignored -> {
+              throw new IllegalArgumentException(field + " must be a valid SHA-256 checksum");
+            });
+    return checksum.map(value -> new Sha256Digest(value.value()));
   }
 
   private Optional<BinaryUrl> mapBinaryUrl(String value) {

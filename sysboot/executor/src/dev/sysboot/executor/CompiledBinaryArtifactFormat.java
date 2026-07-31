@@ -51,6 +51,10 @@ public final class CompiledBinaryArtifactFormat {
     return !isArchive(path) && UNSUPPORTED_SUFFIXES.stream().noneMatch(path::endsWith);
   }
 
+  public static boolean isArchive(URI uri) {
+    return isArchive(path(uri));
+  }
+
   private static boolean isArchive(String path) {
     return DELEGATED_SUFFIXES.stream().anyMatch(path::endsWith)
         || NATIVE_SUFFIXES.stream().anyMatch(path::endsWith);

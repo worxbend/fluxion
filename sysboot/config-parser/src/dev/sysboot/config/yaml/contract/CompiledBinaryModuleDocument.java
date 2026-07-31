@@ -19,6 +19,9 @@ public final class CompiledBinaryModuleDocument extends ModuleDocument {
   @JsonProperty("signatureUrl")
   public String signatureUrl;
 
+  @JsonProperty("allowedSignerFingerprint")
+  public String allowedSignerFingerprint;
+
   @JsonProperty("installPath")
   public String installPath;
 

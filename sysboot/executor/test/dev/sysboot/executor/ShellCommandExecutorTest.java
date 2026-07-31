@@ -2,6 +2,7 @@ package dev.sysboot.executor;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import dev.sysboot.core.ExecutionApproval;
 import dev.sysboot.core.ModuleName;
 import dev.sysboot.core.ProcessResult;
 import dev.sysboot.core.ShellCommandItem;
@@ -141,6 +142,89 @@ class ShellCommandExecutorTest {
         .doesNotContain("abc123", "user:pass")
         .contains("<redacted>");
     assertThat(preview).doesNotContain("https://user:pass@example.test/install");
+  }
+
+  @Test
+  void execute_registersSensitiveValuesBeforeLiveOutputReachesSink() {
+    var lines = new ArrayList<String>();
+    ShellRunner runner =
+        (command, env, timeout) -> {
+          ExecutionOutput.sink().accept("live api-value");
+          return new ProcessResult(0, "", "", Duration.ZERO);
+        };
+    var item =
+        new ShellCommandItem(
+            "credential-command",
+            Optional.empty(),
+            Optional.of(List.of("tool", "run")),
+            "/bin/bash",
+            Optional.empty(),
+            List.of(new ShellEnvironmentVariable("API_KEY", "api-value", true)),
+            false,
+            List.of(0),
+            Optional.empty(),
+            Optional.empty(),
+            Optional.empty(),
+            Duration.ofSeconds(5));
+
+    ExecutionOutput.withSink(
+        lines::add, () -> new ShellCommandExecutor(runner).execute(module(item)));
+
+    assertThat(lines).containsExactly("live <redacted>");
+  }
+
+  @Test
+  void execute_appliesWorkingDirectoryToRelativePaths(@TempDir Path directory) {
+    var item =
+        new ShellCommandItem(
+            "relative-command",
+            Optional.of("touch command-created"),
+            Optional.empty(),
+            "/bin/sh",
+            Optional.of(directory),
+            List.of(),
+            false,
+            List.of(0),
+            Optional.empty(),
+            Optional.empty(),
+            Optional.empty(),
+            Duration.ofSeconds(5));
+
+    StepResult result = new ShellCommandExecutor(new DefaultShellRunner()).execute(module(item));
+
+    assertThat(result).isInstanceOf(StepResult.Success.class);
+    assertThat(directory.resolve("command-created")).exists();
+  }
+
+  @Test
+  void execute_whenConfirmationIsRequired_deniesByDefaultAndRunsWhenApproved() {
+    Path marker = tempDir.resolve("confirmed-command");
+    var item =
+        new ShellCommandItem(
+            "guarded-command",
+            Optional.empty(),
+            Optional.of(List.of("/bin/sh", "-c", "touch " + marker)),
+            "/bin/sh",
+            Optional.empty(),
+            List.of(),
+            false,
+            List.of(0),
+            Optional.empty(),
+            Optional.empty(),
+            Optional.of("Create the marker?"),
+            Duration.ofSeconds(5));
+
+    StepResult denied = new ShellCommandExecutor(new DefaultShellRunner()).execute(module(item));
+
+    assertThat(denied).isInstanceOf(StepResult.Failure.class);
+    assertThat(marker).doesNotExist();
+
+    StepResult approved =
+        new ShellCommandExecutor(new DefaultShellRunner(), ExecutionApproval.approveAll())
+            .execute(module(item));
+
+    assertThat(approved).isInstanceOf(StepResult.Success.class);
+    assertThat(marker).exists();
   }
 
   private ShellCommandItem directItem(String name, List<String> argv) {

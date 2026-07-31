@@ -32,7 +32,7 @@ class DotbotExecutorTest {
     return new DotbotModule(
         new ModuleName("dotfiles"),
         Path.of("~/.dotfiles/install.conf.yaml"),
-        "v0.2.1",
+        "v0.4.2",
         "dotbot",
         Optional.empty());
   }
@@ -80,5 +80,22 @@ class DotbotExecutorTest {
     assertThat(cmd.getFirst()).isEqualTo(installer.toString());
     assertThat(cmd).contains("--config");
     assertThat(String.join(" ", cmd)).contains("install.conf.yaml");
+  }
+
+  @Test
+  void execute_uncataloguedInstallerVersionFailsBeforeToolResolution() {
+    var custom =
+        new DotbotModule(
+            new ModuleName("dotfiles"),
+            Path.of("~/.dotfiles/install.conf.yaml"),
+            "v9.9.9",
+            "dotbot",
+            Optional.empty());
+
+    StepResult result = new DotbotExecutor(runner, ignored -> installer()).execute(custom);
+
+    assertThat(result).isInstanceOf(StepResult.Failure.class);
+    assertThat(((StepResult.Failure) result).errorMessage())
+        .contains("trusted release-digest catalog");
   }
 }

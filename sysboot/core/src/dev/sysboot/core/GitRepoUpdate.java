@@ -1,11 +1,11 @@
 package dev.sysboot.core;
 
-/** What to do when a git-repo destination already exists. */
+/** Legacy config values retained while immutable Git repository provisioning replaces updates. */
 public enum GitRepoUpdate {
-  /** Leave it alone. The safe default: a clone is provisioning, not synchronisation. */
+  /** Verify the configured origin and exact commit without changing an existing destination. */
   NONE,
-  /** Fast-forward with {@code git pull --ff-only}, failing rather than merging. */
+  /** Rejected by {@link GitRepoModule.GitRepo}; mutable pulls are not trusted provisioning. */
   PULL,
-  /** Discard local changes and match the remote. Destructive, so never the default. */
+  /** Rejected by {@link GitRepoModule.GitRepo}; existing destinations are never reset. */
   RESET_HARD
 }

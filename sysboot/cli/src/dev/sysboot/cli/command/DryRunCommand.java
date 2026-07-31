@@ -8,9 +8,11 @@ import dev.sysboot.cli.option.GlobalOptions;
 import dev.sysboot.cli.output.PlainExecutionReport;
 import dev.sysboot.cli.output.StdoutExecutionEventListener;
 import dev.sysboot.core.BootstrapConfig;
+import dev.sysboot.core.ExecutionApproval;
 import dev.sysboot.executor.ExecutionPlan;
 import dev.sysboot.executor.JsonStateRepository;
 import java.io.PrintWriter;
+import java.nio.charset.StandardCharsets;
 import java.util.Optional;
 import picocli.CommandLine.Command;
 import picocli.CommandLine.Mixin;
@@ -29,22 +31,26 @@ public final class DryRunCommand implements Runnable {
 
   @Override
   public void run() {
-    var context = ApplicationContext.create(true, profile, false, false);
-    BootstrapConfig config = context.configLoader().load(options.resolvedConfigFile());
-    ExecutionPlan plan = buildPlan(context, config);
-    var statePath = new JsonStateRepository(new ObjectMapper()).path(profile);
-    PlainExecutionReport.writeHeader(
-        new PrintWriter(System.out, true),
-        "dry-run",
-        "dry-run",
-        plan.profileName(),
-        context.hostFactsProvider().facts(),
-        Optional.of(statePath));
-    PlainExecutionReport.writeWorkstationSelection(new PrintWriter(System.out, true), plan);
-    var listener =
-        new StdoutExecutionEventListener(event -> Optional.empty(), () -> Optional.of(statePath));
-    context.orchestrator().dryRun(config, listener);
-    listener.printSummary();
+    try (var context =
+        ApplicationContext.create(true, profile, false, false, ExecutionApproval.denyAll(), true)) {
+      BootstrapConfig config = context.configLoader().load(options.resolvedConfigFile());
+      SemanticConfigValidation.requireValid(config);
+      ExecutionPlan plan = buildPlan(context, config);
+      var statePath = new JsonStateRepository(new ObjectMapper()).path(profile);
+      PlainExecutionReport.writeHeader(
+          new PrintWriter(System.out, true, StandardCharsets.UTF_8),
+          "dry-run",
+          "dry-run",
+          plan.profileName(),
+          context.hostFactsProvider().facts(),
+          Optional.of(statePath));
+      PlainExecutionReport.writeWorkstationSelection(
+          new PrintWriter(System.out, true, StandardCharsets.UTF_8), plan);
+      var listener =
+          new StdoutExecutionEventListener(event -> Optional.empty(), () -> Optional.of(statePath));
+      context.orchestrator().dryRun(config, listener);
+      listener.printSummary();
+    }
   }
 
   private ExecutionPlan buildPlan(ApplicationContext context, BootstrapConfig config) {

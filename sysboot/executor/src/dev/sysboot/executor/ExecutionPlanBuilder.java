@@ -44,25 +44,24 @@ import java.util.Optional;
 public final class ExecutionPlanBuilder {
 
   private final PackageManagerExecutorRegistry packageManagerRegistry;
-  private final ModuleExecutorRegistry moduleExecutorRegistry;
   private final PhaseExecutionPlanner phasePlanner;
   private final SourceSetupExecutor sourceSetupExecutor;
+  private final PhaseExecutors previewExecutors;
+  private final CompiledBinaryInstaller binaryInstaller;
 
   public ExecutionPlanBuilder(PackageManagerExecutorRegistry packageManagerRegistry) {
     this.packageManagerRegistry = packageManagerRegistry;
-    this.moduleExecutorRegistry =
-        new ModuleExecutorRegistry(
-            List.of(
-                new PackageModuleExecutor(packageManagerRegistry),
-                new SdkmanModuleExecutor(new DefaultShellRunner())));
     this.phasePlanner = new PhaseExecutionPlanner();
+    var runner = new DefaultShellRunner();
+    this.previewExecutors = PhaseExecutors.forRunner(runner);
+    this.binaryInstaller = new CompiledBinaryInstaller(runner);
     this.sourceSetupExecutor =
         new SourceSetupExecutor(
-            new AptRepositoryInstaller(new DefaultShellRunner()),
-            new RpmRepositoryInstaller(new DefaultShellRunner()),
-            new PacmanRepositoryInstaller(new DefaultShellRunner()),
-            new ZypperRepositoryInstaller(new DefaultShellRunner()),
-            new FlatpakRemoteInstaller(new DefaultShellRunner()));
+            new AptRepositoryInstaller(runner),
+            new RpmRepositoryInstaller(runner),
+            new PacmanRepositoryInstaller(runner),
+            new ZypperRepositoryInstaller(runner),
+            new FlatpakRemoteInstaller(runner));
   }
 
   public ExecutionPlan build(BootstrapConfig config) {
@@ -88,38 +87,52 @@ public final class ExecutionPlanBuilder {
         phase.name().value(),
         phase.dependsOn().stream().map(dep -> dep.value()).toList(),
         restartEffect(phase.restartPolicy()),
-        phase.modules().stream().map(this::module).toList());
+        phase.modules().stream().map(module -> module(phase, module)).toList());
   }
 
-  private ExecutionPlan.Module module(BootstrapModule module) {
+  private ExecutionPlan.Module module(Phase phase, BootstrapModule module) {
     return new ExecutionPlan.Module(
         module.name().value(),
         moduleType(module),
-        items(module).stream().map(item -> item(module, item)).toList());
+        items(module).stream().map(item -> item(phase, module, item)).toList());
   }
 
   private List<ModuleItem> items(BootstrapModule module) {
-    return moduleExecutorRegistry
-        .find(module)
-        .map(executor -> executor.items(module))
-        .orElseGet(() -> fallbackItems(module));
+    return ModuleItemCatalog.items(module);
   }
 
-  private ExecutionPlan.Item item(BootstrapModule module, ModuleItem item) {
-    Optional<List<String>> commandPreview = commandPreview(module, item);
+  private ExecutionPlan.Item item(Phase phase, BootstrapModule module, ModuleItem item) {
+    Optional<List<String>> commandPreview =
+        commandPreview(module, item).map(command -> transformForPhase(phase, module, command));
     return new ExecutionPlan.Item(item, commandPreview);
   }
 
+  private List<String> transformForPhase(
+      Phase phase, BootstrapModule module, List<String> command) {
+    if (phase.restartPolicy() instanceof RestartPolicy.RequiresNewShell newShell
+        && !(module instanceof ManualModule)
+        && !(module instanceof InterruptModule)) {
+      return new LoginShellWrappingRunner(new DefaultShellRunner(), newShell.shell())
+          .wrapCommand(command);
+    }
+    return command;
+  }
+
   private Optional<List<String>> commandPreview(BootstrapModule module, ModuleItem item) {
+    Optional<SourceSetup> sourceSetup = directSourceSetup(module);
+    if (sourceSetup.isPresent()) {
+      return Optional.of(sourceSetupExecutor.commandPreview(sourceSetup.orElseThrow()));
+    }
+    Optional<StepBinding> binding = StepBinding.find(module);
+    if (binding.isPresent()) {
+      return Optional.of(binding.orElseThrow().commandPreview(module, previewExecutors));
+    }
     if (module instanceof PackageModule packageModule
         && item.itemType() == ItemType.PACKAGE_ACTION) {
       return packageActionCommand(packageModule, item);
     }
     if (module instanceof FlatpakModule flatpakModule) {
       return Optional.of(List.of("flatpak", "install", "-y", flatpakModule.remote(), item.key()));
-    }
-    if (module instanceof FlatpakRemoteModule flatpakRemoteModule) {
-      return Optional.of(flatpakRemoteCommand(flatpakRemoteModule));
     }
     if (module instanceof ShellScriptModule shellScriptModule) {
       return shellScriptModule.items().stream()
@@ -134,6 +147,12 @@ public final class ExecutionPlanBuilder {
           .map(
               command ->
                   new ShellCommandExecutor(new DefaultShellRunner()).commandPreview(command));
+    }
+    if (module instanceof GpgKeyModule gpgKeyModule) {
+      return gpgKeyModule.keys().stream()
+          .filter(key -> key.itemKey().equals(item.key()))
+          .findFirst()
+          .map(key -> new GpgKeyExecutor(new DefaultShellRunner()).commandPreview(key));
     }
     if (module instanceof BinstallerModule binstallerModule) {
       return Optional.of(
@@ -152,24 +171,63 @@ public final class ExecutionPlanBuilder {
           .findFirst()
           .map(pkg -> new SdkmanModuleExecutor(new DefaultShellRunner()).commandPreview(pkg));
     }
-    if (module instanceof AptRepositoryModule aptRepositoryModule) {
-      return Optional.of(
-          new AptRepositoryInstaller(new DefaultShellRunner()).addCommand(aptRepositoryModule));
-    }
-    if (module instanceof RpmRepositoryModule rpmRepositoryModule) {
-      return Optional.of(
-          new RpmRepositoryInstaller(new DefaultShellRunner()).addCommand(rpmRepositoryModule));
-    }
-    if (module instanceof PacmanRepositoryModule pacmanRepositoryModule) {
-      return Optional.of(
-          new PacmanRepositoryInstaller(new DefaultShellRunner())
-              .addCommand(pacmanRepositoryModule));
-    }
     if (module instanceof FileWriteModule fileWriteModule) {
       return fileWriteModule.items().stream()
           .filter(file -> file.itemKey().equals(item.key()))
           .findFirst()
           .map(file -> new FileWriteExecutor(new DefaultShellRunner()).dryRunCommand(file));
+    }
+    if (module instanceof CompiledBinaryModule binaryModule) {
+      return Optional.of(binaryInstaller.dryRunCommand(binaryModule));
+    }
+    if (module instanceof UserGroupsModule userGroupsModule) {
+      return userGroupsModule.groups().stream()
+          .filter(group -> userGroupsModule.itemKey(group).equals(item.key()))
+          .findFirst()
+          .map(group -> previewExecutors.userGroups().commandPreview(userGroupsModule, group));
+    }
+    if (module instanceof GitConfigModule gitConfigModule) {
+      return gitConfigModule.sortedKeys().stream()
+          .filter(key -> gitConfigModule.itemKey(key).equals(item.key()))
+          .findFirst()
+          .map(key -> previewExecutors.gitConfig().commandPreview(gitConfigModule, key));
+    }
+    if (module instanceof GitRepoModule gitRepoModule) {
+      return gitRepoModule.repos().stream()
+          .filter(repo -> repo.destination().equals(item.key()))
+          .findFirst()
+          .map(previewExecutors.gitRepo()::commandPreview);
+    }
+    if (module instanceof SystemdUnitModule systemdModule) {
+      return systemdModule.units().stream()
+          .filter(unit -> unit.qualifiedName().equals(item.key()))
+          .findFirst()
+          .map(unit -> previewExecutors.systemdUnit().commandPreview(systemdModule, unit));
+    }
+    if (module instanceof SystemSettingModule settingModule) {
+      return Optional.of(
+          previewExecutors.systemSetting().commandPreview(settingModule, item.key()));
+    }
+    if (module instanceof ToolPackagesModule toolPackagesModule) {
+      return toolPackagesModule.packages().stream()
+          .filter(tool -> tool.name().equals(item.key()))
+          .findFirst()
+          .map(tool -> previewExecutors.toolPackages().commandPreview(toolPackagesModule, tool));
+    }
+    if (module instanceof AssertModule assertion) {
+      return Optional.of(List.of(assertion.shell(), "-lc", assertion.command()));
+    }
+    if (module instanceof ManualModule manual) {
+      return Optional.of(List.of("manual", manual.message()));
+    }
+    if (module instanceof InterruptModule interrupt) {
+      return Optional.of(
+          List.of(
+              "interrupt",
+              interrupt.name().value(),
+              "message=" + interrupt.message(),
+              "resumeFrom=" + interrupt.resumeFrom().name().toLowerCase(),
+              "exitCode=" + interrupt.exitCode()));
     }
     return item.packageManager()
         .map(
@@ -198,109 +256,14 @@ public final class ExecutionPlanBuilder {
     }
   }
 
-  private List<String> flatpakRemoteCommand(FlatpakRemoteModule module) {
-    if (module.system()) {
-      return List.of(
-          "flatpak", "remote-add", "--if-not-exists", module.remote(), module.url().toString());
-    }
-    return List.of(
-        "flatpak",
-        "--user",
-        "remote-add",
-        "--if-not-exists",
-        module.remote(),
-        module.url().toString());
-  }
-
-  private List<ModuleItem> fallbackItems(BootstrapModule module) {
+  private Optional<SourceSetup> directSourceSetup(BootstrapModule module) {
     return switch (module) {
-      case AptRepositoryModule arm ->
-          List.of(
-              new ModuleItem(arm.name(), arm.sourceListPath().toString(), ItemType.APT_REPOSITORY));
-      case RpmRepositoryModule rrm ->
-          List.of(
-              new ModuleItem(rrm.name(), rrm.repoFilePath().toString(), ItemType.RPM_REPOSITORY));
-      case PacmanRepositoryModule prm ->
-          List.of(new ModuleItem(prm.name(), prm.repositoryName(), ItemType.PACMAN_REPOSITORY));
-      case FileWriteModule fwm -> new FileWriteExecutor(new DefaultShellRunner()).items(fwm);
-      case FlatpakModule fm ->
-          fm.appIds().stream()
-              .map(app -> new ModuleItem(fm.name(), app, ItemType.FLATPAK))
-              .toList();
-      case FlatpakRemoteModule frm ->
-          List.of(new ModuleItem(frm.name(), frm.remote(), ItemType.FLATPAK_REMOTE));
-      case ShellScriptModule sm ->
-          sm.items().stream()
-              .map(
-                  item ->
-                      new ModuleItem(
-                          sm.name(),
-                          item.name(),
-                          item.key(),
-                          ItemType.SHELL_SCRIPT,
-                          Optional.empty()))
-              .toList();
-      case CompiledBinaryModule bm ->
-          List.of(new ModuleItem(bm.name(), bm.installPath().toString(), ItemType.COMPILED_BINARY));
-      case DotbotModule dm ->
-          List.of(new ModuleItem(dm.name(), dm.config().toString(), ItemType.DOTBOT));
-      case DefaultShellModule dsm ->
-          List.of(new ModuleItem(dsm.name(), dsm.shellPath().toString(), ItemType.DEFAULT_SHELL));
-      case OhMyZshModule omz ->
-          List.of(new ModuleItem(omz.name(), omz.installDir().toString(), ItemType.OH_MY_ZSH));
-      case ToolchainModule tm ->
-          List.of(new ModuleItem(tm.name(), tm.kind().name().toLowerCase(), ItemType.TOOLCHAIN));
-      case NerdFontModule nfm ->
-          List.of(new ModuleItem(nfm.name(), "nerd-fonts", ItemType.NERD_FONT));
-      case ShellReloadModule srm ->
-          List.of(new ModuleItem(srm.name(), srm.shell().binaryName(), ItemType.SHELL_RELOAD));
-      case ShellCommandModule sc ->
-          sc.items().stream()
-              .map(item -> new ModuleItem(sc.name(), item.name(), ItemType.SHELL_COMMAND))
-              .toList();
-      case AssertModule am ->
-          List.of(new ModuleItem(am.name(), am.name().value(), ItemType.ASSERT));
-      case ManualModule mm ->
-          List.of(new ModuleItem(mm.name(), mm.name().value(), ItemType.MANUAL));
-      case InterruptModule im ->
-          List.of(new ModuleItem(im.name(), im.name().value(), ItemType.INTERRUPT));
-      case BinstallerModule bsm ->
-          List.of(new ModuleItem(bsm.name(), bsm.itemKey(), ItemType.BINSTALLER_PROFILE));
-      case ZypperRepositoryModule zrm ->
-          List.of(
-              new ModuleItem(
-                  zrm.name(), zrm.repoFilePath().toString(), ItemType.ZYPPER_REPOSITORY));
-      case UserGroupsModule ugm ->
-          ugm.groups().stream()
-              .map(group -> new ModuleItem(ugm.name(), ugm.itemKey(group), ItemType.USER_GROUP))
-              .toList();
-      case GitConfigModule gcm ->
-          gcm.sortedKeys().stream()
-              .map(key -> new ModuleItem(gcm.name(), gcm.itemKey(key), ItemType.GIT_CONFIG))
-              .toList();
-      case GitRepoModule grm ->
-          grm.repos().stream()
-              .map(repo -> new ModuleItem(grm.name(), repo.destination(), ItemType.GIT_REPO))
-              .toList();
-      case SystemdUnitModule sum ->
-          sum.units().stream()
-              .map(unit -> new ModuleItem(sum.name(), unit.qualifiedName(), ItemType.SYSTEMD_UNIT))
-              .toList();
-      case SystemSettingModule ssm ->
-          List.of(new ModuleItem(ssm.name(), ssm.name().value(), ItemType.SYSTEM_SETTING));
-      case SystemUpdateModule sup ->
-          List.of(new ModuleItem(sup.name(), sup.itemKey(), ItemType.SYSTEM_UPDATE));
-      case GpgKeyModule gkm ->
-          gkm.keys().stream()
-              .map(key -> new ModuleItem(gkm.name(), key.itemKey(), ItemType.GPG_KEY))
-              .toList();
-      case ToolPackagesModule tpm ->
-          tpm.packages().stream()
-              .map(pkg -> new ModuleItem(tpm.name(), pkg.name(), ItemType.TOOL_PACKAGE))
-              .toList();
-      case SdkmanModule ignored -> throw new IllegalStateException("SDKMAN executor missing");
-      case PackageModule ignored -> throw new IllegalStateException("Package executor missing");
-      case ZypperModule ignored -> throw new IllegalStateException("Zypper executor missing");
+      case AptRepositoryModule apt -> Optional.of(apt.asSourceSetup());
+      case RpmRepositoryModule rpm -> Optional.of(rpm.asSourceSetup());
+      case PacmanRepositoryModule pacman -> Optional.of(pacman.asSourceSetup());
+      case ZypperRepositoryModule zypper -> Optional.of(zypper.asSourceSetup());
+      case FlatpakRemoteModule flatpak -> Optional.of(flatpak.asSourceSetup());
+      default -> Optional.empty();
     };
   }
 

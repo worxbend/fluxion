@@ -5,7 +5,9 @@ import dev.sysboot.core.InstalledProbe;
 import dev.sysboot.core.ItemType;
 import dev.sysboot.core.ShellRunner;
 import java.time.Duration;
+import java.util.Arrays;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 
 public final class NerdFontProbe implements InstalledProbe {
@@ -25,19 +27,38 @@ public final class NerdFontProbe implements InstalledProbe {
 
   @Override
   public InstallationStatus probe(String itemKey) {
-    // itemKey is the first font family name; check fc-list for it
-    var result =
-        shellRunner.run(
-            List.of("/bin/sh", "-c", "fc-list | grep -qi '" + itemKey + "'"),
-            Map.of(),
-            PROBE_TIMEOUT);
+    try {
+      var result = shellRunner.run(List.of("fc-list", ":", "family"), Map.of(), PROBE_TIMEOUT);
 
-    if (result.exitCode() == 0) {
-      return new InstallationStatus.InstalledByProbe(itemKey, null);
-    }
-    if (result.exitCode() == 1) {
+      if (result.exitCode() != 0) {
+        return new InstallationStatus.Unknown(itemKey, "fc-list probe failed: " + result.stderr());
+      }
+      if (containsFamily(result.stdout(), itemKey)) {
+        return new InstallationStatus.InstalledByProbe(itemKey, null);
+      }
       return new InstallationStatus.NotInstalled(itemKey);
+    } catch (ShellExecutionException exception) {
+      return unavailable(itemKey, exception);
     }
-    return new InstallationStatus.Unknown(itemKey, "fc-list probe failed: " + result.stderr());
+  }
+
+  private InstallationStatus unavailable(String itemKey, ShellExecutionException exception) {
+    if (Thread.currentThread().isInterrupted()
+        || exception.getCause() instanceof InterruptedException) {
+      Thread.currentThread().interrupt();
+      throw exception;
+    }
+    return new InstallationStatus.Unknown(
+        itemKey, "fc-list probe unavailable: " + exception.getMessage());
+  }
+
+  private boolean containsFamily(String output, String expectedFamily) {
+    String expected = expectedFamily.toLowerCase(Locale.ROOT);
+    return output
+        .lines()
+        .flatMap(line -> Arrays.stream(line.split(",")))
+        .map(String::strip)
+        .map(family -> family.toLowerCase(Locale.ROOT))
+        .anyMatch(family -> family.contains(expected));
   }
 }

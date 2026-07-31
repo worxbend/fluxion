@@ -1,6 +1,6 @@
 package dev.sysboot.executor;
 
-public final class CyclicDependencyException extends RuntimeException {
+public final class CyclicDependencyException extends PhasePlanningException {
 
   private static final long serialVersionUID = 1L;
 

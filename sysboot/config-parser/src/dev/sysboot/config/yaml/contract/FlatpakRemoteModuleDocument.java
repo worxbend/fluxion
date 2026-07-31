@@ -12,4 +12,7 @@ public final class FlatpakRemoteModuleDocument extends ModuleDocument {
 
   @JsonProperty("system")
   public Boolean system;
+
+  @JsonProperty("checksum")
+  public ChecksumDocument checksum;
 }

@@ -1,8 +1,10 @@
 package dev.sysboot.executor;
 
+import dev.sysboot.core.DotbotModule;
 import dev.sysboot.core.InstallationStatus;
 import dev.sysboot.core.InstalledProbe;
 import dev.sysboot.core.ItemType;
+import dev.sysboot.core.ModuleItem;
 import dev.sysboot.core.ShellRunner;
 import java.time.Duration;
 import java.util.List;
@@ -27,7 +29,21 @@ public final class DotbotProbe implements InstalledProbe {
 
   @Override
   public InstallationStatus probe(String itemKey) {
-    String probeCommand = probeCommandsByKey.get(itemKey);
+    return probe(itemKey, probeCommandsByKey.get(itemKey));
+  }
+
+  @Override
+  public InstallationStatus probe(ModuleItem item) {
+    String configured =
+        item.configuredModule()
+            .filter(DotbotModule.class::isInstance)
+            .map(DotbotModule.class::cast)
+            .flatMap(DotbotModule::probeCommand)
+            .orElse(null);
+    return probe(item.key(), configured != null ? configured : probeCommandsByKey.get(item.key()));
+  }
+
+  private InstallationStatus probe(String itemKey, String probeCommand) {
     if (probeCommand == null) {
       return new InstallationStatus.Unknown(
           itemKey, "No probeCommand configured for dotbot module");

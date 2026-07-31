@@ -14,5 +14,9 @@ public record SdkmanModule(ModuleName name, List<SdkmanPackage> packages, boolea
       throw new IllegalArgumentException(
           "SDKMAN module '" + name.value() + "' must declare at least one package");
     }
+    if (packages.stream().map(SdkmanPackage::itemKey).distinct().count() != packages.size()) {
+      throw new IllegalArgumentException(
+          "SDKMAN module '" + name.value() + "' contains duplicate canonical packages");
+    }
   }
 }

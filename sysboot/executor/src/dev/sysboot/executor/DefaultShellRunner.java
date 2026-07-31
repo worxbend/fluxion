@@ -2,9 +2,11 @@ package dev.sysboot.executor;
 
 import dev.sysboot.core.ProcessResult;
 import dev.sysboot.core.ShellRunner;
+import java.nio.file.Path;
 import java.time.Duration;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.function.Consumer;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -26,13 +28,44 @@ public final class DefaultShellRunner implements ShellRunner {
       Duration timeout,
       Consumer<String> outputSink) {
     log.debug("Executing: {}", maskSensitive(command));
-    return ProcessExecution.run(
-        ProcessExecution.Request.of(command, env, timeout).withOutputSink(outputSink));
+    List<String> effect = SudoCommand.forEffect(command);
+    ProcessExecution.Request request =
+        ProcessExecution.Request.of(effect, env, timeout).withOutputSink(outputSink);
+    return ProcessExecution.run(sharedSudoSession(effect, request));
   }
 
-  private List<String> maskSensitive(List<String> command) {
-    return command.stream()
-        .map(arg -> redactor.redact(arg, List.of()))
+  @Override
+  public ProcessResult run(
+      List<String> command,
+      Map<String, String> env,
+      Optional<Path> workingDirectory,
+      Duration timeout) {
+    return run(command, env, workingDirectory, timeout, ExecutionOutput.sink());
+  }
+
+  @Override
+  public ProcessResult run(
+      List<String> command,
+      Map<String, String> env,
+      Optional<Path> workingDirectory,
+      Duration timeout,
+      Consumer<String> outputSink) {
+    log.debug("Executing: {}", maskSensitive(command));
+    List<String> effect = SudoCommand.forEffect(command);
+    ProcessExecution.Request request =
+        ProcessExecution.Request.of(effect, env, timeout)
+            .withWorkingDirectory(workingDirectory)
+            .withOutputSink(outputSink);
+    return ProcessExecution.run(sharedSudoSession(effect, request));
+  }
+
+  private ProcessExecution.Request sharedSudoSession(
+      List<String> command, ProcessExecution.Request request) {
+    return SudoCommand.isInvocation(command) ? request.inSharedSession() : request;
+  }
+
+  List<String> maskSensitive(List<String> command) {
+    return redactor.redactCommand(command, ExecutionOutput.sensitiveEnvironment()).stream()
         .map(this::truncate)
         .toList();
   }

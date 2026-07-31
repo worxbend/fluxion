@@ -65,6 +65,22 @@ class TuiSelectionPromptTest {
         .contains("when.distribution expected fedora");
   }
 
+  @Test
+  void select_whenNamesContainTerminalControls_rendersOnlySanitizedText() {
+    var out = new ByteArrayOutputStream();
+    var prompt =
+        new TuiSelectionPrompt(
+            new ScriptedLineReader("s 1", "run"),
+            new PrintStream(out, true, StandardCharsets.UTF_8),
+            new BootstrapConfigSelectionFilter());
+
+    prompt.select(configWithHostileDisplayText()).orElseThrow();
+
+    assertThat(out.toString(StandardCharsets.UTF_8))
+        .contains("profile", "manifest-plan", "module", "PASSWORD=<redacted>")
+        .doesNotContain("\nFORGED", "\u001B", "\u0007", "hunter2", "https://evil.test");
+  }
+
   private TuiSelectionPrompt prompt(String... commands) {
     return new TuiSelectionPrompt(
         new ScriptedLineReader(commands),
@@ -117,6 +133,31 @@ class TuiSelectionPromptTest {
                 List.of(
                     new PackageModule(
                         new ModuleName("selected"),
+                        PackageManagerKind.DNF,
+                        List.of(new PackageName("git")),
+                        false)),
+                List.of(),
+                new RestartPolicy.None()))
+        .build();
+  }
+
+  private BootstrapConfig configWithHostileDisplayText() {
+    return BootstrapConfig.builder()
+        .profileName(new ProfileName("profile\nFORGED\u001B[2J"))
+        .target(new OsTarget.FedoraTarget("40"))
+        .skippedPlanEntries(
+            List.of(
+                new SkippedPlanEntry(
+                    "skipped\u001B[31m",
+                    "kind\u001B]8;;https://evil.test\u0007",
+                    "PASSWORD=hunter2")))
+        .addPhase(
+            new Phase(
+                new PhaseName("manifest-plan"),
+                "description",
+                List.of(
+                    new PackageModule(
+                        new ModuleName("module\u001B[31m"),
                         PackageManagerKind.DNF,
                         List.of(new PackageName("git")),
                         false)),

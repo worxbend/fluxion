@@ -168,7 +168,7 @@ public final class ToolsCommand implements Runnable {
     private String selector;
 
     @Option(
-        names = "--version",
+        names = "--release",
         description = "Release tag to install instead of the pinned default")
     private String version;
 
@@ -181,7 +181,13 @@ public final class ToolsCommand implements Runnable {
                       new CliFailureException(
                           ExitCode.INVALID_INPUT,
                           "Unknown tool '" + selector + "'. Known tools: " + selectors()));
-      ToolSpec tool = version == null ? pinned : pinned.withVersion(version);
+      ToolSpec tool;
+      try {
+        tool = version == null ? pinned : pinned.withVersion(version);
+      } catch (IllegalArgumentException e) {
+        throw new CliFailureException(
+            ExitCode.INVALID_INPUT, "Invalid tool version: " + e.getMessage(), e);
+      }
 
       PrintWriter out = spec.commandLine().getOut();
       var broker = new ToolBroker();

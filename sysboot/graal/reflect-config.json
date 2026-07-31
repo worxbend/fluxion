@@ -12,6 +12,28 @@
     "allDeclaredConstructors": true
   },
   {
+    "name": "ch.qos.logback.classic.util.DefaultJoranConfigurator",
+    "allDeclaredConstructors": true
+  },
+  {
+    "name": "ch.qos.logback.classic.BasicConfigurator",
+    "allDeclaredConstructors": true
+  },
+  {
+    "name": "ch.qos.logback.core.ConsoleAppender",
+    "allDeclaredConstructors": true,
+    "allPublicMethods": true
+  },
+  {
+    "name": "ch.qos.logback.classic.encoder.PatternLayoutEncoder",
+    "allDeclaredConstructors": true,
+    "allPublicMethods": true
+  },
+  {
+    "name": "dev.sysboot.executor.ErrorOnlyLogbackStatusListener",
+    "allDeclaredConstructors": true
+  },
+  {
     "name": "dev.sysboot.cli.command.SysbootCommand",
     "allDeclaredFields": true,
     "allDeclaredMethods": true,

@@ -17,39 +17,93 @@ on:
         type: boolean
 
 permissions:
-  contents: write
+  contents: read
 
 concurrency:
   group: release-${{ github.event_name == 'workflow_dispatch' && inputs.version || github.ref_name }}
   cancel-in-progress: false
 
 jobs:
+  policy:
+    name: Verify Release Policy
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+
+      - name: Check CI and native-image policy
+        run: |
+          python3 scripts/test_ci_policy.py
+          python3 scripts/check_ci_policy.py
+          python3 scripts/check-native-metadata.py
+
+  known-tool-bytes:
+    name: Verify Trusted Tool Bytes
+    needs: policy
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+
+      - name: Set up Java 25
+        uses: actions/setup-java@c1e323688fd81a25caa38c78aa6df2d33d3e20d9 # v4
+        with:
+          distribution: temurin
+          java-version: "25"
+
+      - name: Compare catalog digests with release bytes
+        working-directory: sysboot
+        env:
+          SYSBOOT_VERIFY_KNOWN_TOOL_BYTES: "true"
+        run: ./mill integration-tests.test.testOnly dev.sysboot.integration.KnownToolReleaseIT
+
   build:
     name: Build Release Assets
-    runs-on: ubuntu-latest
+    needs: [policy, known-tool-bytes]
+    runs-on: ubuntu-22.04
     outputs:
       version: ${{ steps.version.outputs.version }}
+      commit: ${{ steps.commit.outputs.commit }}
     steps:
       - name: Resolve release version
         id: version
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          INPUT_VERSION: ${{ inputs.version }}
+          REF_NAME: ${{ github.ref_name }}
         run: |
           set -eu
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            version="${{ inputs.version }}"
+          if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
+            version="$INPUT_VERSION"
           else
-            version="${GITHUB_REF_NAME}"
+            version="$REF_NAME"
           fi
           case "$version" in
             v*) ;;
             *) version="v${version}" ;;
           esac
+          if ! printf '%s\n' "$version" |
+            grep -Eq '^v[0-9A-Za-z][0-9A-Za-z._+-]*$'; then
+            echo "Invalid release version: ${version}" >&2
+            exit 1
+          fi
           echo "version=$version" >> "$GITHUB_OUTPUT"
 
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+
+      - name: Resolve release commit
+        id: commit
+        run: echo "commit=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
 
       - name: Set up GraalVM Java 25
-        uses: graalvm/setup-graalvm@v1
+        uses: graalvm/setup-graalvm@0def53c0fd8534bc13416c9469f5be45265824fd # v1
         with:
           distribution: graalvm
           java-version: "25"
@@ -57,10 +111,12 @@ jobs:
           native-image-job-reports: true
 
       - name: Check release version metadata
+        env:
+          EXPECTED_VERSION: ${{ steps.version.outputs.version }}
         run: |
           set -eu
-          expected="${{ steps.version.outputs.version }}"
-          actual="v$(sed -n 's/.*VERSION = \"\\([^\"]*\\)\".*/\\1/p' sysboot/cli/src/dev/sysboot/cli/command/VersionProvider.java)"
+          expected="$EXPECTED_VERSION"
+          actual="v$(sed -n 's/.*CURRENT = \"\\([^\"]*\\)\".*/\\1/p' sysboot/core/src/dev/sysboot/core/FluxionVersion.java)"
           if [ "$actual" != "$expected" ]; then
             echo "Version metadata mismatch: expected ${expected}, found ${actual}" >&2
             exit 1
@@ -68,6 +124,9 @@ jobs:
 
       - name: Check native-image metadata
         run: python3 scripts/check-native-metadata.py
+
+      - name: Run Java static analysis
+        run: ./scripts/run-java-quality.sh
 
       - name: Run tests
         working-directory: sysboot
@@ -81,24 +140,45 @@ jobs:
         working-directory: sysboot
         run: ./mill cli.assembly
 
+      - name: Smoke test JVM assembly
+        env:
+          EXPECTED_VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          set -eu
+          expected="${EXPECTED_VERSION#v}"
+          test "$(java -jar sysboot/out/cli/assembly.dest/out.jar --version)" = "fluxion ${expected}"
+          for f in sysboot/config/*.yaml; do
+            java -jar sysboot/out/cli/assembly.dest/out.jar validate --no-tui -c "$f"
+          done
+
       - name: Build native image
         working-directory: sysboot
         run: ./mill cli.nativeImage
 
       - name: Smoke test native image
-        run: |
-          sysboot/out/cli/nativeImage.dest/native-executable --help >/dev/null
-          expected="${{ steps.version.outputs.version }}"
-          expected="${expected#v}"
-          test "$(sysboot/out/cli/nativeImage.dest/native-executable --version)" = "fluxion ${expected}"
-          for f in sysboot/config/*.yaml; do
-            sysboot/out/cli/nativeImage.dest/native-executable validate --no-tui -c "$f"
-          done
-
-      - name: Package release assets
+        env:
+          EXPECTED_VERSION: ${{ steps.version.outputs.version }}
         run: |
           set -eu
-          version="${{ steps.version.outputs.version }}"
+          executable=sysboot/out/cli/nativeImage.dest/native-executable
+          generated="${RUNNER_TEMP}/fluxion-native-smoke.yaml"
+          "$executable" --help >/dev/null
+          expected="$EXPECTED_VERSION"
+          expected="${expected#v}"
+          test "$("$executable" --version)" = "fluxion ${expected}"
+          for f in sysboot/config/*.yaml; do
+            "$executable" validate --no-tui -c "$f"
+          done
+          "$executable" generate --os debian --profile smoke --output "$generated"
+          "$executable" validate --no-tui -c "$generated"
+          "$executable" doctor --skip-network -c "$generated"
+
+      - name: Package release assets
+        env:
+          RELEASE_VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          set -eu
+          version="$RELEASE_VERSION"
           mkdir -p dist/pkg
           cp sysboot/out/cli/assembly.dest/out.jar "dist/fluxion-${version}-all.jar"
           cp sysboot/out/cli/nativeImage.dest/native-executable dist/pkg/fluxion
@@ -108,11 +188,14 @@ jobs:
           cp -R sysboot/docs/. dist/pkg/docs/
           cp -R sysboot/config/. dist/pkg/config/
           [ ! -f LICENSE ] || cp LICENSE dist/pkg/LICENSE
-          tar -C dist/pkg -czf "dist/fluxion-${version}-linux-amd64.tar.gz" .
+          source_date_epoch="$(git log -1 --format=%ct)"
+          tar --sort=name --mtime="@${source_date_epoch}" --owner=0 --group=0 \
+            --numeric-owner -C dist/pkg -cf - . |
+            gzip -n > "dist/fluxion-${version}-linux-amd64.tar.gz"
           (cd dist && sha256sum "fluxion-${version}-all.jar" "fluxion-${version}-linux-amd64.tar.gz" > "fluxion-${version}-checksums.sha256")
 
       - name: Upload release assets as workflow artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: fluxion-release-${{ steps.version.outputs.version }}
           path: |
@@ -125,36 +208,48 @@ jobs:
     name: Publish GitHub Release
     needs: build
     runs-on: ubuntu-latest
+    permissions:
+      actions: read
+      contents: write
     steps:
       - name: Checkout release ref
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           fetch-depth: 0
 
       - name: Download release assets
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
           name: fluxion-release-${{ needs.build.outputs.version }}
           path: dist
 
       - name: Ensure release tag exists
+        env:
+          RELEASE_COMMIT: ${{ needs.build.outputs.commit }}
+          RELEASE_TAG: ${{ needs.build.outputs.version }}
         run: |
           set -eu
-          tag="${{ needs.build.outputs.version }}"
-          git fetch --tags origin
-          if git rev-parse -q --verify "refs/tags/${tag}" >/dev/null; then
-            echo "Tag ${tag} already exists"
+          tag="$RELEASE_TAG"
+          requested_commit="$RELEASE_COMMIT"
+          if git ls-remote --exit-code --refs origin "refs/tags/${tag}" >/dev/null 2>&1; then
+            git fetch --force origin "refs/tags/${tag}:refs/tags/${tag}"
+            tagged_commit="$(git rev-parse "refs/tags/${tag}^{commit}")"
+            if [ "$tagged_commit" != "$requested_commit" ]; then
+              echo "Tag ${tag} resolves to ${tagged_commit}, not ${requested_commit}" >&2
+              exit 1
+            fi
+            echo "Tag ${tag} already resolves to the release commit"
           else
-            git tag "${tag}" "${GITHUB_SHA}"
+            git tag "${tag}" "$requested_commit"
             git push origin "refs/tags/${tag}"
           fi
 
       - name: Publish GitHub release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2
         with:
           tag_name: ${{ needs.build.outputs.version }}
           name: fluxion ${{ needs.build.outputs.version }}
-          target_commitish: ${{ github.sha }}
+          target_commitish: ${{ needs.build.outputs.commit }}
           generate_release_notes: true
           prerelease: ${{ github.event_name == 'workflow_dispatch' && inputs.prerelease || false }}
           files: |

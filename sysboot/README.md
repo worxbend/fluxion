@@ -106,7 +106,7 @@ State moves:
 ```bash
 fluxion state show default
 fluxion state path default
-fluxion state forget --profile default --item git
+fluxion state forget --profile default --item git --module core-packages --type package
 fluxion state reset default --force
 ```
 
@@ -151,8 +151,12 @@ jobs:
       - type: compiled-binary
         name: lazygit
         binaryName: lazygit
-        url: https://github.com/jesseduffield/lazygit/releases/download/v0.61.0/lazygit_0.61.0_Linux_x86_64.tar.gz
+        url: https://github.com/jesseduffield/lazygit/releases/download/v0.61.0/lazygit_0.61.0_linux_x86_64.tar.gz
+        checksum:
+          algorithm: SHA-256
+          value: 4a9702b346283a23a6919c9424617e14788ac00e9cd3c9be266bac48cc6de8eb
         installPath: /usr/local/bin/lazygit
+        archivePath: lazygit
 ```
 
 The same CLI commands also load `WorkstationProfile` manifests:
@@ -179,6 +183,9 @@ spec:
           remote: flathub
           url: https://flathub.org/repo/flathub.flatpakrepo
           system: true
+          checksum:
+            algorithm: sha256
+            value: 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
   plan:
     - name: base-cli
       kind: dnf-packages
@@ -229,6 +236,7 @@ More docs:
 
 - `docs/commands.md`
 - `docs/architecture.md`
+- `docs/prompt-hardening-audit.md` — prompt-by-prompt code quality and security evaluation
 - `docs/tool-integration.md` — how Fluxion delegates to binstaller, dotbot, and nerd-fonts-installer
 - `docs/enhancements.md`
 - `docs/workstation-profile.md`
@@ -248,6 +256,7 @@ From `sysboot/`, use the checked-in Mill wrapper:
 ```bash
 cd sysboot
 ./mill __.test
+just quality-check
 ./mill cli.test
 ./mill executor.test.testOnly dev.sysboot.executor.DnfPackageInstallerTest
 ./mill cli.assembly

@@ -5,14 +5,9 @@ import dev.sysboot.core.StepResult;
 import dev.sysboot.core.ToolchainKind;
 import dev.sysboot.core.ToolchainModule;
 import java.io.IOException;
-import java.io.InputStream;
 import java.net.URI;
-import java.net.http.HttpClient;
-import java.net.http.HttpRequest;
-import java.net.http.HttpResponse;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.attribute.PosixFilePermissions;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
@@ -23,15 +18,22 @@ public final class ToolchainExecutor {
   private static final Duration INSTALL_TIMEOUT = Duration.ofMinutes(15);
 
   private final ShellRunner shellRunner;
+  private final ScriptDownloadClient downloadClient;
 
   public ToolchainExecutor(ShellRunner shellRunner) {
+    this(shellRunner, new VerifiedScriptDownloader());
+  }
+
+  ToolchainExecutor(ShellRunner shellRunner, ScriptDownloadClient downloadClient) {
     this.shellRunner = shellRunner;
+    this.downloadClient = downloadClient;
   }
 
   public StepResult execute(ToolchainModule module) {
     Path scriptPath = null;
     try {
-      scriptPath = downloadToTemp(module.installScript(), module.name().value());
+      scriptPath =
+          downloadClient.download(URI.create(module.installScript()), module.installScriptSha256());
       Map<String, String> env = buildEnv(module.kind());
       List<String> command = buildCommand(scriptPath, module.installArgs());
 
@@ -52,6 +54,7 @@ public final class ToolchainExecutor {
         try {
           Files.deleteIfExists(scriptPath);
         } catch (IOException ignored) {
+          // Preserve the authoritative install result after best-effort temporary-file cleanup.
         }
       }
     }
@@ -76,25 +79,5 @@ public final class ToolchainExecutor {
       case SDKMAN -> Map.of("SDKMAN_DIR", home + "/.sdkman");
       default -> Map.of();
     };
-  }
-
-  private Path downloadToTemp(String url, String prefix) throws IOException {
-    try {
-      var client = HttpClient.newHttpClient();
-      var request = HttpRequest.newBuilder(URI.create(url)).timeout(Duration.ofSeconds(30)).build();
-      var response = client.send(request, HttpResponse.BodyHandlers.ofInputStream());
-      if (response.statusCode() != 200) {
-        throw new IOException("HTTP " + response.statusCode() + " downloading " + url);
-      }
-      Path tmp = Files.createTempFile("sysboot-" + prefix + "-", ".sh");
-      try (InputStream in = response.body()) {
-        Files.write(tmp, in.readAllBytes());
-      }
-      Files.setPosixFilePermissions(tmp, PosixFilePermissions.fromString("rwx------"));
-      return tmp;
-    } catch (InterruptedException e) {
-      Thread.currentThread().interrupt();
-      throw new IOException("Download interrupted", e);
-    }
   }
 }

@@ -27,6 +27,7 @@ import java.util.function.Consumer;
 final class InterruptibleRun {
 
   private static final Duration DRAIN_LIMIT = Duration.ofSeconds(30);
+  private static final Duration TERMINATION_LIMIT = Duration.ofSeconds(5);
 
   private InterruptibleRun() {}
 
@@ -38,13 +39,14 @@ final class InterruptibleRun {
   static void run(Consumer<CancellationSignal> action, Runnable onCancelRequested) {
     var cancellation = new CancellationSignal();
     var finished = new CountDownLatch(1);
+    Thread actionThread = Thread.currentThread();
     Thread hook =
         new Thread(
             () -> {
               if (cancellation.cancel()) {
                 onCancelRequested.run();
               }
-              awaitQuietly(finished);
+              awaitOrInterrupt(finished, actionThread, DRAIN_LIMIT);
             },
             "fluxion-cancel");
     Runtime.getRuntime().addShutdownHook(hook);
@@ -56,11 +58,20 @@ final class InterruptibleRun {
     }
   }
 
-  private static void awaitQuietly(CountDownLatch finished) {
+  static void awaitOrInterrupt(CountDownLatch finished, Thread actionThread, Duration drainLimit) {
+    if (awaitQuietly(finished, drainLimit)) {
+      return;
+    }
+    actionThread.interrupt();
+    awaitQuietly(finished, TERMINATION_LIMIT);
+  }
+
+  private static boolean awaitQuietly(CountDownLatch finished, Duration limit) {
     try {
-      finished.await(DRAIN_LIMIT.toMillis(), TimeUnit.MILLISECONDS);
+      return finished.await(limit.toMillis(), TimeUnit.MILLISECONDS);
     } catch (InterruptedException e) {
       Thread.currentThread().interrupt();
+      return false;
     }
   }
 

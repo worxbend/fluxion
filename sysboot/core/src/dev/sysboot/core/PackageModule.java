@@ -26,9 +26,10 @@ public record PackageModule(
     Objects.requireNonNull(actions, "Package manager action list must not be null");
     packages = List.copyOf(packages);
     actions = List.copyOf(actions);
-    if (packages.isEmpty()) {
+    if (packages.isEmpty() && actions.isEmpty()) {
       throw new IllegalArgumentException(
-          "Package module '" + name.value() + "' must declare at least one package");
+          "Package module '" + name.value() + "' must declare a package or manager action");
     }
+    PackageOperandPolicy.requireSafeActions(packageManager, actions);
   }
 }

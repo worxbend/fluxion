@@ -200,7 +200,8 @@ public final class ConfigValidator {
       addWarning(
           issues,
           path + ".url",
-          "Compiled binary '%s' installs via binstaller, which must be obtainable on the target host: Fluxion cannot extract this archive format itself"
+          ("Compiled binary '%s' installs via binstaller, which must be obtainable on the target"
+                  + " host: Fluxion cannot extract this archive format itself")
               .formatted(module.name().value()));
     }
     if (module.checksum().isPresent() && module.checksumUrl().isPresent()) {
@@ -212,7 +213,7 @@ public final class ConfigValidator {
     }
     module
         .checksum()
-        .filter(checksum -> !"SHA-256".equals(checksum.algorithm()))
+        .filter(checksum -> !checksum.usesSha256())
         .ifPresent(
             checksum ->
                 addError(
@@ -220,13 +221,30 @@ public final class ConfigValidator {
                     path + ".checksum.algorithm",
                     "Compiled binary '%s' uses unsupported checksum algorithm '%s'"
                         .formatted(module.name().value(), checksum.algorithm())));
+    module
+        .checksum()
+        .filter(checksum -> checksum.usesSha256() && !checksum.hasValidSha256Value())
+        .ifPresent(
+            checksum ->
+                addError(
+                    issues,
+                    path + ".checksum.value",
+                    "Compiled binary '%s' must use a 64-character hexadecimal SHA-256 digest"
+                        .formatted(module.name().value())));
     if (module.checksum().isEmpty()
-        && module.checksumUrl().isEmpty()
-        && module.signatureUrl().isEmpty()) {
-      addWarning(
+        && (module.signatureUrl().isEmpty() || module.allowedSignerFingerprint().isEmpty())) {
+      addError(
           issues,
           path + ".checksum",
-          "Compiled binary '%s' has no checksum or detached signature"
+          ("Compiled binary '%s' must declare a literal SHA-256 checksum or a detached signature"
+                  + " bound to an allowed signer fingerprint; checksumUrl is supplemental only")
+              .formatted(module.name().value()));
+    }
+    if (module.signatureUrl().isPresent() != module.allowedSignerFingerprint().isPresent()) {
+      addError(
+          issues,
+          path + ".signatureUrl",
+          "Compiled binary '%s' must configure signatureUrl and allowedSignerFingerprint together"
               .formatted(module.name().value()));
     }
     validateBinaryInstallOptions(module, path, issues);
@@ -234,6 +252,29 @@ public final class ConfigValidator {
 
   private void validateBinaryInstallOptions(
       CompiledBinaryModule module, String path, List<ValidationIssue> issues) {
+    if (!module.installPath().isAbsolute()
+        || !module.installPath().equals(module.installPath().normalize())) {
+      addError(
+          issues,
+          path + ".installPath",
+          "Compiled binary install path must be absolute and normalized");
+    }
+    module
+        .symlinkPath()
+        .filter(link -> !link.isAbsolute() || !link.equals(link.normalize()))
+        .ifPresent(
+            ignored ->
+                addError(
+                    issues,
+                    path + ".symlinkPath",
+                    "Compiled binary symlink path must be absolute and normalized"));
+    if (CompiledBinaryArtifactFormat.isArchive(module.url().value())
+        && module.archivePath().isEmpty()) {
+      addError(
+          issues,
+          path + ".archivePath",
+          "Compiled binary archives must declare an exact archivePath");
+    }
     if (module.stripComponents() < 0) {
       addError(issues, path + ".stripComponents", "Compiled binary stripComponents is negative");
     }

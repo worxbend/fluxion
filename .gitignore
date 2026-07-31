@@ -79,3 +79,6 @@ sysboot/out/
 
 # Agent Loop runtime
 .agent-loop/
+
+# Vendored third-party review prompts (not Fluxion source)
+prompts/

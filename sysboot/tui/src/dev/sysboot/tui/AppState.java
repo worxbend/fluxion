@@ -33,8 +33,7 @@ public sealed interface AppState
 
   record Logs(ExecutionScreenState screen) implements AppState {}
 
-  record SudoPrompt(AppState previousState, String prompt, char[] inputBuffer, int cursorPos)
-      implements AppState {}
+  record SudoPrompt(AppState previousState, String prompt) implements AppState {}
 
   record Completed(ExecutionScreenState finalScreen) implements AppState {}
 

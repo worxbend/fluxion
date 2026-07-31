@@ -27,6 +27,9 @@ spec:
           repoFile: /etc/yum.repos.d/docker-ce.repo
           gpgKeyUrl: https://download.docker.com/linux/fedora/gpg
           gpgCheck: true
+          checksum:
+            algorithm: sha256
+            value: e6c650e0700b1bf4868b693b30761b926844befc8a0acb7ac0dd9b1faf1b7423
     rpm:
       - name: rpmfusion-free
         kind: rpm-repository
@@ -36,6 +39,9 @@ spec:
           repoFile: /etc/yum.repos.d/rpmfusion-free.repo
           gpgKeyUrl: https://rpmfusion.org/keys?action=AttachFile&do=get&target=RPM-GPG-KEY-rpmfusion-free-fedora
           gpgCheck: true
+          checksum:
+            algorithm: sha256
+            value: a409544c0eb39b55b1f44c19bcc7ff7844af4533e4aca831d8bac185e35a4961
     flatpak:
       - name: flathub
         kind: flatpak-remote
@@ -43,6 +49,9 @@ spec:
           remote: flathub
           url: https://flathub.org/repo/flathub.flatpakrepo
           system: true
+          checksum:
+            algorithm: sha256
+            value: 3371dd250e61d9e1633630073fefda153cd4426f72f4afa0c3373ae2e8fea03a
   plan:
     - name: dnf-foundation
       kind: dnf-packages
@@ -107,7 +116,7 @@ spec:
       kind: dotfiles-apply
       spec:
         config: ${HOME}/.dotfiles/install.conf.yaml
-        installerVersion: v0.2.1
+        installerVersion: v0.4.2
         dotbotBinary: dotbot
 
     - name: workstation-files

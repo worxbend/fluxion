@@ -23,9 +23,15 @@ public final class ToolPackagesExecutor {
   private static final Duration TIMEOUT = Duration.ofMinutes(30);
 
   private final ShellRunner shellRunner;
+  private final ToolBroker.PathLookup pathLookup;
 
   public ToolPackagesExecutor(ShellRunner shellRunner) {
+    this(shellRunner, shellPathLookup(shellRunner));
+  }
+
+  public ToolPackagesExecutor(ShellRunner shellRunner, ToolBroker.PathLookup pathLookup) {
     this.shellRunner = shellRunner;
+    this.pathLookup = pathLookup;
   }
 
   public StepResult execute(ToolPackagesModule module) {
@@ -50,16 +56,51 @@ public final class ToolPackagesExecutor {
     return StepOutcome.of(module.name(), failures, module.continueOnError());
   }
 
+  StepResult executeItem(ToolPackagesModule module, ToolPackagesModule.ToolPackage pkg) {
+    String itemKey = pkg.name();
+    if (!backendAvailable(module.backend())) {
+      return new StepResult.Failure(
+          itemKey,
+          module.backend().binary()
+              + " is not on PATH; install it before this step (see docs/config-schema.md)",
+          1,
+          Duration.ZERO);
+    }
+    ProcessResult result = shellRunner.run(installCommand(module, pkg), Map.of(), TIMEOUT);
+    return result.isSuccess()
+        ? new StepResult.Success(itemKey, result.elapsed())
+        : new StepResult.Failure(
+            itemKey, StepOutcome.detail(result), result.exitCode(), result.elapsed());
+  }
+
   public List<String> commandPreview(ToolPackagesModule module) {
     var preview = new ArrayList<String>();
     module.packages().forEach(pkg -> preview.addAll(installCommand(module, pkg)));
     return List.copyOf(preview);
   }
 
+  List<String> commandPreview(ToolPackagesModule module, ToolPackagesModule.ToolPackage pkg) {
+    return installCommand(module, pkg);
+  }
+
   private boolean backendAvailable(ToolPackageBackend backend) {
-    return shellRunner
-        .run(List.of("command", "-v", backend.binary()), Map.of(), Duration.ofSeconds(15))
-        .isSuccess();
+    return pathLookup.find(backend.binary()).isPresent();
+  }
+
+  private static ToolBroker.PathLookup shellPathLookup(ShellRunner shellRunner) {
+    return executable -> {
+      ProcessResult result =
+          shellRunner.run(
+              List.of(
+                  "/bin/sh",
+                  "-c",
+                  "command -v -- \"$1\" >/dev/null 2>&1",
+                  "sysboot-path-lookup",
+                  executable),
+              Map.of(),
+              Duration.ofSeconds(15));
+      return result.isSuccess() ? Optional.of(java.nio.file.Path.of(executable)) : Optional.empty();
+    };
   }
 
   private List<String> installCommand(

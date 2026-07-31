@@ -21,4 +21,7 @@ public final class RpmRepositoryModuleDocument extends ModuleDocument {
 
   @JsonProperty("gpgCheck")
   public Boolean gpgCheck;
+
+  @JsonProperty("checksum")
+  public ChecksumDocument checksum;
 }

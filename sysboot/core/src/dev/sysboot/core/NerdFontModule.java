@@ -27,11 +27,12 @@ public record NerdFontModule(
     Objects.requireNonNull(config);
     Objects.requireNonNull(configPath);
     Objects.requireNonNull(probeCommand);
-    if (installerVersion.isBlank()) {
-      throw new IllegalArgumentException("installerVersion must not be blank");
-    }
+    ReleaseTagPolicy.requireExact("installerVersion", installerVersion);
     if (nerdfontBinary.isBlank()) {
       throw new IllegalArgumentException("nerdfontBinary must not be blank");
+    }
+    if (configPath.isEmpty()) {
+      ReleaseTagPolicy.requireExact("inline nerd-fonts config release", config.release());
     }
   }
 

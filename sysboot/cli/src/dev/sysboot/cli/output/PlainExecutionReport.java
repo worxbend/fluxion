@@ -1,5 +1,6 @@
 package dev.sysboot.cli.output;
 
+import dev.sysboot.core.DisplayTextSanitizer;
 import dev.sysboot.core.HostFacts;
 import dev.sysboot.core.ModuleItem;
 import dev.sysboot.core.SkippedPlanEntry;
@@ -12,6 +13,8 @@ import java.util.stream.Collectors;
 
 public final class PlainExecutionReport {
 
+  private static final DisplayTextSanitizer SANITIZER = new DisplayTextSanitizer();
+
   private PlainExecutionReport() {}
 
   public static void writeHeader(
@@ -21,11 +24,11 @@ public final class PlainExecutionReport {
       String profileName,
       HostFacts hostFacts,
       Optional<Path> statePath) {
-    out.println("Operation: " + operation);
-    out.println("Mode: " + mode);
-    out.println("Manifest/Profile: " + profileName);
+    out.println("Operation: " + safe(operation));
+    out.println("Mode: " + safe(mode));
+    out.println("Manifest/Profile: " + safe(profileName));
     out.println("Host: " + hostFacts(hostFacts));
-    statePath.ifPresent(path -> out.println("State: " + path));
+    statePath.ifPresent(path -> out.println("State: " + safe(path)));
   }
 
   public static void writeWorkstationSelection(PrintWriter out, ExecutionPlan plan) {
@@ -57,7 +60,7 @@ public final class PlainExecutionReport {
     }
     out.println("Source setup entries:");
     for (ExecutionPlan.Module entry : entries) {
-      out.printf("  - %s type=%s items=%s%n", entry.name(), entry.type(), items(entry));
+      out.printf("  - %s type=%s items=%s%n", safe(entry.name()), safe(entry.type()), items(entry));
     }
   }
 
@@ -67,7 +70,7 @@ public final class PlainExecutionReport {
     }
     out.println("Selected WorkstationProfile entries:");
     for (ExecutionPlan.Module entry : entries) {
-      out.printf("  - %s type=%s items=%s%n", entry.name(), entry.type(), items(entry));
+      out.printf("  - %s type=%s items=%s%n", safe(entry.name()), safe(entry.type()), items(entry));
     }
   }
 
@@ -77,7 +80,9 @@ public final class PlainExecutionReport {
     }
     out.println("Skipped WorkstationProfile entries:");
     for (SkippedPlanEntry entry : entries) {
-      out.printf("  - %s type=%s reason=%s%n", entry.name(), entry.kind(), entry.reason());
+      out.printf(
+          "  - %s type=%s reason=%s%n",
+          safe(entry.name()), safe(entry.kind()), safe(entry.reason()));
     }
   }
 
@@ -102,19 +107,25 @@ public final class PlainExecutionReport {
     return module.items().stream()
         .map(ExecutionPlan.Item::item)
         .map(ModuleItem::displayName)
+        .map(PlainExecutionReport::safe)
         .collect(Collectors.joining(", "));
   }
 
   private static String hostFacts(HostFacts facts) {
-    return "os="
-        + facts.osFamily()
-        + " distribution="
-        + facts.distribution().orElse("unknown")
-        + " version="
-        + facts.version().orElse("unknown")
-        + " codename="
-        + facts.codename().orElse("unknown")
-        + " arch="
-        + facts.architecture();
+    return safe(
+        "os="
+            + facts.osFamily()
+            + " distribution="
+            + facts.distribution().orElse("unknown")
+            + " version="
+            + facts.version().orElse("unknown")
+            + " codename="
+            + facts.codename().orElse("unknown")
+            + " arch="
+            + facts.architecture());
+  }
+
+  private static String safe(Object value) {
+    return SANITIZER.sanitizeLine(String.valueOf(value));
   }
 }

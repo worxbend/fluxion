@@ -7,6 +7,7 @@ import dev.sysboot.cli.output.JsonOutput;
 import dev.sysboot.cli.output.OutputFormat;
 import dev.sysboot.core.BootstrapConfig;
 import dev.sysboot.core.BootstrapState;
+import dev.sysboot.core.DisplayTextSanitizer;
 import dev.sysboot.executor.JsonStateRepository;
 import dev.sysboot.executor.PhaseExecutionPlanner;
 import dev.sysboot.executor.StatusReport;
@@ -23,6 +24,8 @@ import picocli.CommandLine.Spec;
 
 @Command(name = "status", description = "Show installation status for all items in a profile")
 public final class StatusCommand implements Runnable {
+
+  private final DisplayTextSanitizer sanitizer = new DisplayTextSanitizer();
 
   @Mixin private GlobalOptions options;
 
@@ -73,7 +76,7 @@ public final class StatusCommand implements Runnable {
     }
 
     var plan = context.executionPlanBuilder().build(config);
-    var liveResults = context.parallelProbeRunner().probeAll(config.modules(), ignored -> {});
+    var liveResults = context.parallelProbeRunner().probeAll(plan, ignored -> {});
     StatusReport report = new StatusReportBuilder().build(plan, state, liveResults);
     List<StatusReport.Item> items = filteredItems(report);
 
@@ -100,10 +103,10 @@ public final class StatusCommand implements Runnable {
         item ->
             out.printf(
                 "%-45s  %-15s  %-20s  %s%n",
-                truncate(item.key(), 45),
-                item.type(),
+                truncate(safe(item.moduleName() + "/" + item.key()), 45),
+                safe(item.type()),
                 statusKind(item.classification()),
-                item.detail()));
+                safe(item.detail())));
   }
 
   private List<StatusReport.Item> filteredItems(StatusReport report) {
@@ -139,6 +142,7 @@ public final class StatusCommand implements Runnable {
 
   private Map<String, Object> jsonStatusItem(StatusReport.Item item) {
     var output = new LinkedHashMap<String, Object>();
+    output.put("moduleName", item.moduleName());
     output.put("key", item.key());
     output.put("displayName", item.displayName());
     output.put("type", item.type());
@@ -173,7 +177,7 @@ public final class StatusCommand implements Runnable {
   private void writeSummary(StatusReport report) {
     var out = spec.commandLine().getOut();
     StatusReport.Summary counts = report.summary();
-    out.printf("Profile: %s%n", report.profileName());
+    out.printf("Profile: %s%n", safe(report.profileName()));
     out.printf("Total: %d%n", counts.total());
     out.printf("Configured installed: %d%n", counts.configuredInstalled());
     out.printf("Configured missing: %d%n", counts.configuredMissing());
@@ -198,7 +202,8 @@ public final class StatusCommand implements Runnable {
     }
     spec.commandLine()
         .getOut()
-        .println(ResumeCommandFormatter.command(options.resolvedConfigFile(), profile, nextPhase));
+        .println(
+            safe(ResumeCommandFormatter.command(options.resolvedConfigFile(), profile, nextPhase)));
   }
 
   private Optional<String> nextIncompletePhase(
@@ -226,5 +231,9 @@ public final class StatusCommand implements Runnable {
                         options.resolvedConfigFile(), profile, nextPhase))
             .orElse(null));
     return output;
+  }
+
+  private String safe(Object value) {
+    return sanitizer.sanitizeLine(String.valueOf(value));
   }
 }

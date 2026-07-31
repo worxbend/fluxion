@@ -48,6 +48,17 @@ public final class SystemdUnitExecutor {
     return StepOutcome.of(module.name(), failures, module.continueOnError());
   }
 
+  StepResult executeItem(SystemdUnitModule module, SystemdUnitModule.SystemdUnit unit) {
+    String itemKey = unit.qualifiedName();
+    if (!systemctlAvailable()) {
+      return new StepResult.Skipped(itemKey, "systemctl is not available");
+    }
+    Optional<String> failure = apply(module, unit);
+    return failure
+        .<StepResult>map(message -> new StepResult.Failure(itemKey, message, 1, Duration.ZERO))
+        .orElseGet(() -> new StepResult.Success(itemKey, Duration.ZERO));
+  }
+
   /** True when the unit is already in the requested enablement and runtime state. */
   public boolean alreadySatisfied(SystemdUnitModule module, SystemdUnitModule.SystemdUnit unit) {
     if (unit.masked()) {
@@ -76,6 +87,22 @@ public final class SystemdUnitExecutor {
     return List.copyOf(preview);
   }
 
+  List<String> commandPreview(SystemdUnitModule module, SystemdUnitModule.SystemdUnit unit) {
+    var preview = new ArrayList<String>();
+    if (unit.masked()) {
+      return systemctl(module, "mask", unit.qualifiedName());
+    }
+    if (unit.enabled()) {
+      preview.addAll(systemctl(module, "enable", unit.qualifiedName()));
+    }
+    switch (unit.state()) {
+      case STARTED -> preview.addAll(systemctl(module, "start", unit.qualifiedName()));
+      case STOPPED -> preview.addAll(systemctl(module, "stop", unit.qualifiedName()));
+      case UNCHANGED -> {}
+    }
+    return List.copyOf(preview);
+  }
+
   private Optional<String> apply(SystemdUnitModule module, SystemdUnitModule.SystemdUnit unit) {
     if (unit.masked()) {
       return runStep(module, "mask", unit);
@@ -92,9 +119,23 @@ public final class SystemdUnitExecutor {
         return failure;
       }
     }
+    return applyRuntimeState(module, unit);
+  }
+
+  private Optional<String> applyRuntimeState(
+      SystemdUnitModule module, SystemdUnitModule.SystemdUnit unit) {
+    if (unit.state() == dev.sysboot.core.SystemdState.UNCHANGED) {
+      return Optional.empty();
+    }
+    RuntimeState state = runtimeState(module, unit);
+    if (state == RuntimeState.UNKNOWN) {
+      return Optional.of("could not determine runtime state for " + unit.qualifiedName());
+    }
     return switch (unit.state()) {
-      case STARTED -> isActive(module, unit) ? Optional.empty() : runStep(module, "start", unit);
-      case STOPPED -> isActive(module, unit) ? runStep(module, "stop", unit) : Optional.empty();
+      case STARTED ->
+          state == RuntimeState.ACTIVE ? Optional.empty() : runStep(module, "start", unit);
+      case STOPPED ->
+          state == RuntimeState.ACTIVE ? runStep(module, "stop", unit) : Optional.empty();
       case UNCHANGED -> Optional.empty();
     };
   }
@@ -109,8 +150,8 @@ public final class SystemdUnitExecutor {
 
   private boolean runtimeSatisfied(SystemdUnitModule module, SystemdUnitModule.SystemdUnit unit) {
     return switch (unit.state()) {
-      case STARTED -> isActive(module, unit);
-      case STOPPED -> !isActive(module, unit);
+      case STARTED -> runtimeState(module, unit) == RuntimeState.ACTIVE;
+      case STOPPED -> runtimeState(module, unit) == RuntimeState.INACTIVE;
       case UNCHANGED -> true;
     };
   }
@@ -128,15 +169,16 @@ public final class SystemdUnitExecutor {
     return word.isBlank() ? Optional.empty() : Optional.of(word);
   }
 
-  private boolean isActive(SystemdUnitModule module, SystemdUnitModule.SystemdUnit unit) {
-    return "active"
-        .equals(
-            run(systemctl(module, "is-active", unit.qualifiedName()))
-                .stdout()
-                .strip()
-                .lines()
-                .findFirst()
-                .orElse(""));
+  private RuntimeState runtimeState(SystemdUnitModule module, SystemdUnitModule.SystemdUnit unit) {
+    ProcessResult result = run(systemctl(module, "is-active", unit.qualifiedName()));
+    String state = result.stdout().strip().lines().findFirst().orElse("");
+    if (result.isSuccess() && "active".equals(state)) {
+      return RuntimeState.ACTIVE;
+    }
+    if (List.of("inactive", "failed").contains(state)) {
+      return RuntimeState.INACTIVE;
+    }
+    return RuntimeState.UNKNOWN;
   }
 
   private boolean systemctlAvailable() {
@@ -154,5 +196,11 @@ public final class SystemdUnitExecutor {
 
   private ProcessResult run(List<String> command) {
     return shellRunner.run(command, Map.of(), TIMEOUT);
+  }
+
+  private enum RuntimeState {
+    ACTIVE,
+    INACTIVE,
+    UNKNOWN
   }
 }

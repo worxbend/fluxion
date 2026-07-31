@@ -3,6 +3,7 @@ set shell := ["bash", "-eu", "-o", "pipefail", "-c"]
 mill := env_var_or_default("MILL", "./mill")
 gjf_version := "1.35.0"
 gjf_jar := ".cache/google-java-format-1.35.0-all-deps.jar"
+gjf_sha256 := "bfb7f9ead6cd328389bc2da53860443bc0e805dfd08cc889bfdf43b26cb2a6e8"
 
 default: verify
 
@@ -21,15 +22,24 @@ compile:
 test:
     cd sysboot && {{mill}} __.test
 
-# Compile with the repo's -Xlint settings. This is the current Java lint gate.
-lint: compile
+# Run Checkstyle, PMD, and SpotBugs over production code.
+quality-check:
+    scripts/run-java-quality.sh
+
+# Compile with -Xlint and run all repository static-analysis gates.
+lint: quality-check
 
 # Download the pinned formatter jar used by format and format-check.
 setup-format:
     mkdir -p .cache
-    test -f {{gjf_jar}} || curl -fsSL \
-      -o {{gjf_jar}} \
-      https://github.com/google/google-java-format/releases/download/v{{gjf_version}}/google-java-format-{{gjf_version}}-all-deps.jar
+    if [ -f {{gjf_jar}} ] && echo "{{gjf_sha256}}  {{gjf_jar}}" | sha256sum -c - >/dev/null; then exit 0; fi; \
+      formatter_temp="$(mktemp .cache/google-java-format.XXXXXX)"; \
+      trap 'rm -f "$formatter_temp"' EXIT; \
+      curl --proto '=https' --tlsv1.2 -fsSL \
+        -o "$formatter_temp" \
+        https://github.com/google/google-java-format/releases/download/v{{gjf_version}}/google-java-format-{{gjf_version}}-all-deps.jar; \
+      echo "{{gjf_sha256}}  $formatter_temp" | sha256sum -c - >/dev/null; \
+      mv -f "$formatter_temp" {{gjf_jar}}
 
 # Format all Java sources.
 format: setup-format
@@ -44,12 +54,17 @@ format-check: setup-format
 native-metadata-check:
     python3 scripts/check-native-metadata.py
 
+# Enforce immutable Actions and release/launcher trust boundaries.
+ci-policy-check:
+    python3 scripts/test_ci_policy.py
+    python3 scripts/check_ci_policy.py
+
 # Validate shipped example configs through the CLI.
 validate-configs: compile
     cd sysboot && for f in config/*.yaml; do {{mill}} cli.run validate --no-tui -c "$f"; done
 
 # Run the normal local verification gate.
-verify: compile native-metadata-check test validate-configs
+verify: lint native-metadata-check ci-policy-check test validate-configs
 
 # CI verification gate. Kept separate so CI can add format-check explicitly.
 ci: doctor verify
@@ -62,7 +77,7 @@ native:
 native-smoke: native
     ./sysboot/out/cli/nativeImage.dest/native-executable --help >/dev/null
     ./sysboot/out/cli/nativeImage.dest/native-executable --version
-    for f in sysboot/config/*.yaml; do ./sysboot/out/cli/nativeImage.dest/native-executable validate --no-tui -c "$f"; done
+    for f in sysboot/config/*.yaml; do output="$(./sysboot/out/cli/nativeImage.dest/native-executable validate --no-tui -c "$f" 2>&1)"; echo "$output"; if echo "$output" | grep -Fq "ch.qos.logback.classic.LoggerContext"; then echo "native logging initialization emitted internal status output" >&2; exit 1; fi; done
 
 # Remove Mill outputs and local formatter cache.
 clean:

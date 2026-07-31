@@ -4,56 +4,119 @@ import dev.sysboot.core.ProcessResult;
 import dev.sysboot.core.ShellRunner;
 import dev.sysboot.core.StepResult;
 import dev.sysboot.core.ZypperRepositorySourceSetup;
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.time.Duration;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 
 public final class ZypperRepositoryInstaller {
 
   private static final Duration INSTALL_TIMEOUT = Duration.ofMinutes(5);
 
   private final ShellRunner shellRunner;
+  private final PrivilegedArtifactPublisher publisher;
 
   public ZypperRepositoryInstaller(ShellRunner shellRunner) {
+    this(shellRunner, new PrivilegedAtomicFilePublisher(shellRunner));
+  }
+
+  ZypperRepositoryInstaller(ShellRunner shellRunner, PrivilegedArtifactPublisher publisher) {
     this.shellRunner = shellRunner;
+    this.publisher = publisher;
   }
 
-  public StepResult add(ZypperRepositorySourceSetup setup) {
-    ProcessResult result = shellRunner.run(addCommand(setup), Map.of(), INSTALL_TIMEOUT);
-    if (result.isSuccess()) {
-      return new StepResult.Success(setup.repoFilePath().toString(), result.elapsed());
+  StepResult addTrusted(ZypperRepositorySourceSetup setup, Optional<Path> verifiedKey) {
+    Path repoFile = null;
+    try {
+      repoFile = Files.createTempFile("sysboot-zypper-", ".repo");
+      Path installedKey = installedKey(setup.repositoryId());
+      byte[] repoContent =
+          trustedRepoFileContent(setup, verifiedKey, installedKey)
+              .getBytes(java.nio.charset.StandardCharsets.UTF_8);
+      Files.write(repoFile, repoContent);
+      ProcessResult result = publish(setup, verifiedKey, installedKey, repoFile, repoContent);
+      return result(setup.repoFilePath().toString(), result);
+    } catch (IOException e) {
+      return new StepResult.Failure(
+          setup.repoFilePath().toString(),
+          "Cannot prepare trusted Zypper source configuration",
+          1,
+          Duration.ZERO);
+    } finally {
+      delete(repoFile);
     }
-    return new StepResult.Failure(
-        setup.repoFilePath().toString(),
-        result.stdout() + result.stderr(),
-        result.exitCode(),
-        result.elapsed());
   }
 
-  public List<String> addCommand(ZypperRepositorySourceSetup setup) {
-    return List.of("/bin/bash", "-lc", script(setup));
+  private ProcessResult publish(
+      ZypperRepositorySourceSetup setup,
+      Optional<Path> verifiedKey,
+      Path installedKey,
+      Path repoFile,
+      byte[] repoContent)
+      throws IOException {
+    ProcessResult result = new ProcessResult(0, "", "", Duration.ZERO);
+    if (verifiedKey.isPresent()) {
+      result =
+          VerifiedRepositoryKeyPublisher.publish(
+              verifiedKey.orElseThrow(),
+              setup.artifactSha256().orElseThrow(),
+              installedKey,
+              publisher);
+    }
+    if (result.isSuccess()) {
+      result =
+          publisher.publish(
+              repoFile, setup.repoFilePath(), "0644", ArtifactDigests.sha256(repoContent));
+    }
+    if (result.isSuccess()) {
+      result = run(List.of("sudo", "zypper", "refresh"));
+    }
+    return result;
   }
 
-  private String script(ZypperRepositorySourceSetup setup) {
-    return "printf %s "
-        + shellQuote(repoFileContent(setup))
-        + " | sudo tee "
-        + shellQuote(setup.repoFilePath().toString())
-        + " >/dev/null && sudo zypper refresh";
+  private ProcessResult run(List<String> command) {
+    return shellRunner.run(command, Map.of(), INSTALL_TIMEOUT);
   }
 
-  private String repoFileContent(ZypperRepositorySourceSetup setup) {
+  private String trustedRepoFileContent(
+      ZypperRepositorySourceSetup setup, Optional<Path> verifiedKey, Path installedKey) {
     var builder = new StringBuilder();
     builder.append('[').append(setup.repositoryId()).append("]\n");
     builder.append("name=").append(setup.repositoryId()).append('\n');
     builder.append("baseurl=").append(setup.baseUrl()).append('\n');
     builder.append("enabled=").append(setup.enabled() ? "1" : "0").append('\n');
+    builder.append("autorefresh=").append(setup.autoRefresh() ? "1" : "0").append('\n');
     builder.append("gpgcheck=").append(setup.gpgCheck() ? "1" : "0").append('\n');
-    setup.gpgKeyUrl().ifPresent(url -> builder.append("gpgkey=").append(url).append('\n'));
+    if (verifiedKey.isPresent()) {
+      builder.append("gpgkey=").append(installedKey.toUri()).append('\n');
+    }
     return builder.toString();
   }
 
-  private String shellQuote(String value) {
-    return "'" + value.replace("'", "'\"'\"'") + "'";
+  private Path installedKey(String repositoryId) {
+    String safeName = repositoryId.replaceAll("[^A-Za-z0-9._-]", "_");
+    return Path.of("/etc/zypp/keys/sysboot-" + safeName + ".key");
+  }
+
+  private StepResult result(String item, ProcessResult result) {
+    if (result.isSuccess()) {
+      return new StepResult.Success(item, result.elapsed());
+    }
+    return new StepResult.Failure(
+        item, result.stdout() + result.stderr(), result.exitCode(), result.elapsed());
+  }
+
+  private void delete(Path path) {
+    if (path == null) {
+      return;
+    }
+    try {
+      Files.deleteIfExists(path);
+    } catch (IOException ignored) {
+      // The command result remains authoritative.
+    }
   }
 }

@@ -1,5 +1,6 @@
 package dev.sysboot.tui;
 
+import dev.sysboot.core.DisplayTextSanitizer;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
@@ -14,6 +15,7 @@ public final class CompletedScreen {
   private CompletedScreen() {}
 
   public static String render(AppState.Completed state) {
+    var sanitizer = new DisplayTextSanitizer();
     ExecutionScreenState screen = state.finalScreen();
     List<ItemStatus> items = screen.items();
 
@@ -41,9 +43,14 @@ public final class CompletedScreen {
     sb.append("└────────────────────────────────────────────────┘\n");
 
     if (!failures.isEmpty()) {
-      sb.append("\nFailed items (re-run with --modules to retry):\n");
+      sb.append("\nFailed items (retry with: fluxion apply --skip-already-installed):\n");
       failures.forEach(
-          f -> sb.append("  - ").append(f.name()).append(" [").append(f.module()).append("]\n"));
+          f ->
+              sb.append("  - ")
+                  .append(sanitizer.sanitizeLine(f.name()))
+                  .append(" [")
+                  .append(sanitizer.sanitizeLine(f.module()))
+                  .append("]\n"));
     }
 
     return sb.toString();

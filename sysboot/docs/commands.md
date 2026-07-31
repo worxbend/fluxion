@@ -96,7 +96,7 @@ Reports on and obtains the external tools Fluxion delegates to — `dotbot` for 
 fluxion tools list
 fluxion tools list --format json
 fluxion tools install binstaller
-fluxion tools install nerd-fonts-installer --version v1.0.6
+fluxion tools install nerd-fonts-installer --release v1.0.6
 ```
 
 `list` shows, per tool, the binary name, the pinned release tag, and where it would come from: a
@@ -266,6 +266,17 @@ Useful options:
 When a phase uses `restartPolicy: prompt-logout`, Fluxion records completed state, prints a resume
 command, and stops cleanly.
 
+Without `--skip-already-installed`, `apply` executes the selected work even when saved state marks
+it complete. `--re-probe` ignores prior item, phase, and resume decisions, then replaces them with
+the results of the live run. Phase filters do not change manifest identity, so a generated
+multi-phase resume command is checked against the original complete profile.
+
+Shell command and shell script items with `confirm` require `--yes` for live execution. Fluxion
+does not prompt interactively for these items in either plain or TUI mode. Dry runs, plans, and
+probe-only runs remain available without `--yes`.
+
+Fluxion executes phases in dependency order. `apply` does not offer phase-parallel execution.
+
 `run` remains available as an alias for `apply` for older scripts.
 
 ## `dry-run`
@@ -310,13 +321,15 @@ fluxion state show default
 fluxion state show default --format json
 fluxion state show -c config/example-fedora.yaml default
 fluxion state path default
-fluxion state forget --profile default --item git
+fluxion state forget --profile default --item git --module core-packages --type package
 fluxion state forget --profile default --phase shell-foundation
 fluxion state reset default --force
 ```
 
 State records successful items and phase completion fingerprints. A completed phase is skipped only
-when its stored fingerprint still matches the current config. When `state show` is given `-c`, it
+when its stored fingerprint still matches the current config. Item keys that occur in more than one
+module must be qualified with `--module` and `--type`; Fluxion refuses an ambiguous forget instead
+of deleting multiple entries. When `state show` is given `-c`, it
 also prints `nextPhase`/`Next phase` for the first configured phase that is not completed in state.
 JSON output includes a phase `reason` when Fluxion has recorded why a phase failed or was blocked.
 JSON item output includes persisted provenance fields where available: `version`, `checksum`, and

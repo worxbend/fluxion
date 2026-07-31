@@ -29,9 +29,28 @@ public record SystemUpdateModule(
     Objects.requireNonNull(name);
     Objects.requireNonNull(packageManager);
     Objects.requireNonNull(timeout);
+    if (!packageManager.supportsSystemUpdate()) {
+      throw new IllegalArgumentException(
+          "system-update does not support "
+              + packageManager.name().toLowerCase(java.util.Locale.ROOT));
+    }
     if (distUpgrade && refreshOnly) {
       throw new IllegalArgumentException(
           "system-update cannot be both distUpgrade and refreshOnly");
+    }
+    timeout.ifPresent(SystemUpdateModule::requireValidTimeout);
+  }
+
+  private static void requireValidTimeout(Duration value) {
+    if (value.isZero() || value.isNegative()) {
+      throw new IllegalArgumentException("system-update timeout must be positive");
+    }
+    try {
+      if (value.toNanos() <= 0) {
+        throw new IllegalArgumentException("system-update timeout must be positive");
+      }
+    } catch (ArithmeticException e) {
+      throw new IllegalArgumentException("system-update timeout is too large", e);
     }
   }
 

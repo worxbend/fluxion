@@ -1,242 +1,125 @@
 package dev.sysboot.executor;
 
-import dev.sysboot.core.AptRepositoryModule;
-import dev.sysboot.core.AssertModule;
-import dev.sysboot.core.BinstallerModule;
 import dev.sysboot.core.BootstrapModule;
-import dev.sysboot.core.CompiledBinaryModule;
-import dev.sysboot.core.DefaultShellModule;
-import dev.sysboot.core.DotbotModule;
-import dev.sysboot.core.FileWriteModule;
-import dev.sysboot.core.FlatpakModule;
-import dev.sysboot.core.FlatpakRemoteModule;
-import dev.sysboot.core.GitConfigModule;
-import dev.sysboot.core.GitRepoModule;
-import dev.sysboot.core.GpgKeyModule;
 import dev.sysboot.core.InstallationStatus;
-import dev.sysboot.core.InterruptModule;
-import dev.sysboot.core.ItemType;
-import dev.sysboot.core.ManualModule;
 import dev.sysboot.core.ModuleItem;
-import dev.sysboot.core.NerdFontModule;
-import dev.sysboot.core.OhMyZshModule;
-import dev.sysboot.core.PackageManagerKind;
-import dev.sysboot.core.PackageModule;
-import dev.sysboot.core.PacmanRepositoryModule;
-import dev.sysboot.core.RpmRepositoryModule;
-import dev.sysboot.core.SdkmanModule;
-import dev.sysboot.core.ShellCommandModule;
-import dev.sysboot.core.ShellReloadModule;
-import dev.sysboot.core.ShellScriptModule;
-import dev.sysboot.core.SystemSettingModule;
-import dev.sysboot.core.SystemUpdateModule;
-import dev.sysboot.core.SystemdUnitModule;
-import dev.sysboot.core.ToolPackagesModule;
-import dev.sysboot.core.ToolchainModule;
-import dev.sysboot.core.UserGroupsModule;
-import dev.sysboot.core.ZypperModule;
-import dev.sysboot.core.ZypperRepositoryModule;
+import java.time.Duration;
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
+import java.util.Objects;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
-import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Consumer;
 
 public final class ParallelProbeRunner {
 
-  private static final int GLOBAL_TIMEOUT_SECONDS = 60;
+  private static final int DEFAULT_MAX_CONCURRENCY = 16;
+  private static final Duration DEFAULT_DEADLINE = Duration.ofSeconds(60);
 
   private final InstalledProbeRegistry probeRegistry;
+  private final int maxConcurrency;
+  private final Duration deadline;
 
   public ParallelProbeRunner(InstalledProbeRegistry probeRegistry) {
-    this.probeRegistry = probeRegistry;
+    this(probeRegistry, DEFAULT_MAX_CONCURRENCY, DEFAULT_DEADLINE);
+  }
+
+  public ParallelProbeRunner(
+      InstalledProbeRegistry probeRegistry, int maxConcurrency, Duration deadline) {
+    this.probeRegistry = Objects.requireNonNull(probeRegistry);
+    if (maxConcurrency < 1) {
+      throw new IllegalArgumentException("Probe concurrency must be positive");
+    }
+    this.maxConcurrency = maxConcurrency;
+    this.deadline = Objects.requireNonNull(deadline);
+    if (deadline.isNegative() || deadline.isZero()) {
+      throw new IllegalArgumentException("Probe deadline must be positive");
+    }
   }
 
   public Map<String, InstallationStatus> probeAll(
       List<BootstrapModule> modules, Consumer<String> progressCallback) {
-
-    var results = new ConcurrentHashMap<String, InstallationStatus>();
-    List<ModuleItem> targets = collectProbeTargets(modules);
-
-    try (ExecutorService executor = Executors.newVirtualThreadPerTaskExecutor()) {
-      List<Future<?>> futures = new ArrayList<>();
-      for (ModuleItem target : targets) {
-        futures.add(
-            executor.submit(
-                () -> {
-                  InstallationStatus status = probeRegistry.probe(target);
-                  results.put(target.key(), status);
-                  progressCallback.accept(target.key());
-                }));
-      }
-
-      for (Future<?> future : futures) {
-        try {
-          future.get(GLOBAL_TIMEOUT_SECONDS, TimeUnit.SECONDS);
-        } catch (java.util.concurrent.TimeoutException e) {
-          // probe timed out — result absent, treated as Unknown by caller
-        } catch (java.util.concurrent.ExecutionException e) {
-          // probe threw — result absent
-        } catch (InterruptedException e) {
-          Thread.currentThread().interrupt();
-          break;
-        }
-      }
-    }
-
-    return Collections.unmodifiableMap(results);
+    Objects.requireNonNull(modules);
+    return probeItems(
+        modules.stream().flatMap(module -> ModuleItemCatalog.items(module).stream()).toList(),
+        progressCallback);
   }
 
-  private List<ModuleItem> collectProbeTargets(List<BootstrapModule> modules) {
-    List<ModuleItem> targets = new ArrayList<>();
-    for (BootstrapModule module : modules) {
-      switch (module) {
-        case PackageModule pm ->
-            pm.packages()
-                .forEach(
-                    pkg ->
-                        targets.add(
-                            ModuleItem.packageItem(pm.name(), pkg.value(), pm.packageManager())));
-        case ZypperModule zm ->
-            zm.packages()
-                .forEach(
-                    pkg ->
-                        targets.add(
-                            ModuleItem.packageItem(
-                                zm.name(), pkg.value(), PackageManagerKind.ZYPPER)));
-        case AptRepositoryModule arm ->
-            targets.add(
-                new ModuleItem(
-                    arm.name(), arm.sourceListPath().toString(), ItemType.APT_REPOSITORY));
-        case RpmRepositoryModule rrm ->
-            targets.add(
-                new ModuleItem(rrm.name(), rrm.repoFilePath().toString(), ItemType.RPM_REPOSITORY));
-        case PacmanRepositoryModule prm ->
-            targets.add(
-                new ModuleItem(prm.name(), prm.repositoryName(), ItemType.PACMAN_REPOSITORY));
-        case FileWriteModule fwm ->
-            fwm.items()
-                .forEach(
-                    item ->
-                        targets.add(
-                            new ModuleItem(
-                                fwm.name(),
-                                item.itemKey(),
-                                item.name(),
-                                ItemType.FILE_WRITE,
-                                Optional.empty())));
-        case FlatpakModule fm ->
-            fm.appIds()
-                .forEach(appId -> targets.add(new ModuleItem(fm.name(), appId, ItemType.FLATPAK)));
-        case FlatpakRemoteModule frm ->
-            targets.add(new ModuleItem(frm.name(), frm.remote(), ItemType.FLATPAK_REMOTE));
-        case ShellScriptModule sm ->
-            sm.items()
-                .forEach(
-                    item ->
-                        targets.add(
-                            new ModuleItem(
-                                sm.name(),
-                                item.name(),
-                                item.key(),
-                                ItemType.SHELL_SCRIPT,
-                                Optional.empty())));
-        case CompiledBinaryModule bm ->
-            targets.add(
-                new ModuleItem(bm.name(), bm.installPath().toString(), ItemType.COMPILED_BINARY));
-        case DotbotModule dm ->
-            targets.add(new ModuleItem(dm.name(), dm.config().toString(), ItemType.DOTBOT));
-        case DefaultShellModule dsm ->
-            targets.add(
-                new ModuleItem(dsm.name(), dsm.shellPath().toString(), ItemType.DEFAULT_SHELL));
-        case OhMyZshModule omz ->
-            targets.add(
-                new ModuleItem(omz.name(), omz.installDir().toString(), ItemType.OH_MY_ZSH));
-        case ToolchainModule tm ->
-            targets.add(
-                new ModuleItem(tm.name(), tm.kind().name().toLowerCase(), ItemType.TOOLCHAIN));
-        case NerdFontModule nfm ->
-            targets.add(
-                new ModuleItem(
-                    nfm.name(),
-                    nfm.config().families().isEmpty()
-                        ? nfm.name().value()
-                        : nfm.config().families().get(0),
-                    ItemType.NERD_FONT));
-        case ShellReloadModule srm ->
-            targets.add(
-                new ModuleItem(srm.name(), srm.shell().binaryName(), ItemType.SHELL_RELOAD));
-        case ShellCommandModule sc ->
-            sc.items()
-                .forEach(
-                    item ->
-                        targets.add(
-                            new ModuleItem(sc.name(), item.name(), ItemType.SHELL_COMMAND)));
-        case AssertModule am ->
-            targets.add(new ModuleItem(am.name(), am.name().value(), ItemType.ASSERT));
-        case ManualModule mm ->
-            targets.add(new ModuleItem(mm.name(), mm.name().value(), ItemType.MANUAL));
-        case InterruptModule im ->
-            targets.add(new ModuleItem(im.name(), im.name().value(), ItemType.INTERRUPT));
-        case BinstallerModule bsm ->
-            targets.add(new ModuleItem(bsm.name(), bsm.itemKey(), ItemType.BINSTALLER_PROFILE));
-        case GitConfigModule gcm ->
-            gcm.sortedKeys()
-                .forEach(
-                    key ->
-                        targets.add(
-                            new ModuleItem(gcm.name(), gcm.itemKey(key), ItemType.GIT_CONFIG)));
-        case GitRepoModule grm ->
-            grm.repos()
-                .forEach(
-                    repo ->
-                        targets.add(
-                            new ModuleItem(grm.name(), repo.destination(), ItemType.GIT_REPO)));
-        case SystemdUnitModule sum ->
-            sum.units()
-                .forEach(
-                    unit ->
-                        targets.add(
-                            new ModuleItem(
-                                sum.name(), unit.qualifiedName(), ItemType.SYSTEMD_UNIT)));
-        case SystemSettingModule ssm ->
-            targets.add(new ModuleItem(ssm.name(), ssm.name().value(), ItemType.SYSTEM_SETTING));
-        case SystemUpdateModule sup ->
-            targets.add(new ModuleItem(sup.name(), sup.itemKey(), ItemType.SYSTEM_UPDATE));
-        case GpgKeyModule gkm ->
-            gkm.keys()
-                .forEach(
-                    key ->
-                        targets.add(new ModuleItem(gkm.name(), key.itemKey(), ItemType.GPG_KEY)));
-        case ToolPackagesModule tpm ->
-            tpm.packages()
-                .forEach(
-                    pkg ->
-                        targets.add(new ModuleItem(tpm.name(), pkg.name(), ItemType.TOOL_PACKAGE)));
-        case ZypperRepositoryModule zrm ->
-            targets.add(
-                new ModuleItem(
-                    zrm.name(), zrm.repoFilePath().toString(), ItemType.ZYPPER_REPOSITORY));
-        case UserGroupsModule ugm ->
-            ugm.groups()
-                .forEach(
-                    group ->
-                        targets.add(
-                            new ModuleItem(ugm.name(), ugm.itemKey(group), ItemType.USER_GROUP)));
-        case SdkmanModule sm ->
-            sm.packages()
-                .forEach(
-                    pkg ->
-                        targets.add(
-                            new ModuleItem(sm.name(), pkg.itemKey(), ItemType.SDKMAN_PACKAGE)));
+  public Map<String, InstallationStatus> probeAll(
+      ExecutionPlan plan, Consumer<String> progressCallback) {
+    Objects.requireNonNull(plan);
+    var items = new ArrayList<ModuleItem>();
+    plan.sourceSetups().stream()
+        .flatMap(module -> module.items().stream())
+        .map(ExecutionPlan.Item::item)
+        .forEach(items::add);
+    plan.phases().stream()
+        .flatMap(phase -> phase.modules().stream())
+        .flatMap(module -> module.items().stream())
+        .map(ExecutionPlan.Item::item)
+        .forEach(items::add);
+    return probeItems(List.copyOf(items), progressCallback);
+  }
+
+  private Map<String, InstallationStatus> probeItems(
+      List<ModuleItem> targets, Consumer<String> progressCallback) {
+    Objects.requireNonNull(progressCallback);
+    var results = new ConcurrentHashMap<String, InstallationStatus>();
+    ExecutorService executor =
+        Executors.newFixedThreadPool(
+            Math.min(maxConcurrency, Math.max(1, targets.size())),
+            Thread.ofVirtual().name("sysboot-probe-", 0).factory());
+    try {
+      var tasks =
+          targets.stream()
+              .<java.util.concurrent.Callable<Void>>map(
+                  target ->
+                      () -> {
+                        probe(target, progressCallback, results);
+                        return null;
+                      })
+              .toList();
+      var futures = executor.invokeAll(tasks, deadline.toNanos(), TimeUnit.NANOSECONDS);
+      for (int index = 0; index < futures.size(); index++) {
+        ModuleItem target = targets.get(index);
+        if (!results.containsKey(target.qualifiedKey())) {
+          String reason =
+              futures.get(index).isCancelled()
+                  ? "Probe deadline exceeded"
+                  : "Probe failed without a result";
+          results.putIfAbsent(
+              target.qualifiedKey(), new InstallationStatus.Unknown(target.key(), reason));
+        }
       }
+    } catch (InterruptedException e) {
+      Thread.currentThread().interrupt();
+      addUnknownResults(targets, results, "Probe interrupted");
+    } finally {
+      executor.shutdownNow();
     }
-    return List.copyOf(targets);
+    return Map.copyOf(results);
+  }
+
+  private void addUnknownResults(
+      List<ModuleItem> targets, Map<String, InstallationStatus> results, String reason) {
+    targets.forEach(
+        target ->
+            results.putIfAbsent(
+                target.qualifiedKey(), new InstallationStatus.Unknown(target.key(), reason)));
+  }
+
+  private void probe(
+      ModuleItem target,
+      Consumer<String> progressCallback,
+      Map<String, InstallationStatus> results) {
+    InstallationStatus status = probeRegistry.probe(target);
+    if (Thread.currentThread().isInterrupted()) {
+      return;
+    }
+    results.put(target.qualifiedKey(), status);
+    progressCallback.accept(target.qualifiedKey());
   }
 }

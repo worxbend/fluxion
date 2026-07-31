@@ -3,6 +3,8 @@ package dev.sysboot.executor;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import dev.sysboot.core.ProcessResult;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.time.Duration;
 import java.util.List;
 import java.util.Map;
@@ -12,6 +14,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
 import org.junit.jupiter.api.condition.EnabledOnOs;
 import org.junit.jupiter.api.condition.OS;
+import org.junit.jupiter.api.io.TempDir;
 
 @EnabledOnOs({OS.LINUX, OS.MAC})
 class ProcessExecutionTest {
@@ -111,6 +114,19 @@ class ProcessExecutionTest {
   }
 
   @Test
+  void processLaunchFailureStillErasesOwnedStdinBytes() {
+    byte[] password = "heap-secret".getBytes(java.nio.charset.StandardCharsets.UTF_8);
+    var request =
+        ProcessExecution.Request.of(List.of("/bin/echo", "\0"), Map.of(), Duration.ofSeconds(20))
+            .withStdin(password);
+
+    org.assertj.core.api.Assertions.assertThatThrownBy(() -> ProcessExecution.run(request))
+        .isInstanceOf(ShellExecutionException.class);
+
+    assertThat(password).containsOnly((byte) 0);
+  }
+
+  @Test
   @Timeout(30)
   void propagatesExitCodes() {
     assertThat(run(List.of("sh", "-c", "exit 42"), Duration.ofSeconds(20)).exitCode())
@@ -128,6 +144,60 @@ class ProcessExecutionTest {
                 Duration.ofSeconds(20)));
 
     assertThat(result.stdout().trim()).isEqualTo("present");
+  }
+
+  @Test
+  @Timeout(30)
+  void workingDirectoryControlsPwdAndRelativeFiles(@TempDir Path tempDir) throws Exception {
+    Path first = Files.createDirectory(tempDir.resolve("first"));
+    Path second = Files.createDirectory(tempDir.resolve("second"));
+
+    ProcessResult firstResult =
+        new DefaultShellRunner()
+            .run(
+                List.of("sh", "-c", "pwd; touch relative"),
+                Map.of(),
+                Optional.of(first),
+                Duration.ofSeconds(10));
+    ProcessResult secondResult =
+        new DefaultShellRunner()
+            .run(
+                List.of("sh", "-c", "pwd; touch relative"),
+                Map.of(),
+                Optional.of(second),
+                Duration.ofSeconds(10));
+
+    assertThat(firstResult.stdout().trim()).isEqualTo(first.toString());
+    assertThat(secondResult.stdout().trim()).isEqualTo(second.toString());
+    assertThat(first.resolve("relative")).exists();
+    assertThat(second.resolve("relative")).exists();
+  }
+
+  @Test
+  void missingWorkingDirectoryFailsBeforeProcessLaunch(@TempDir Path tempDir) {
+    Path missing = tempDir.resolve("missing");
+
+    org.assertj.core.api.Assertions.assertThatThrownBy(
+            () ->
+                new DefaultShellRunner()
+                    .run(
+                        List.of("sh", "-c", "true"),
+                        Map.of(),
+                        Optional.of(missing),
+                        Duration.ofSeconds(10)))
+        .isInstanceOf(ShellExecutionException.class)
+        .hasMessageContaining("Working directory does not exist");
+  }
+
+  @Test
+  void timeoutOverflowIsRejectedBeforeProcessLaunch(@TempDir Path tempDir) {
+    Path marker = tempDir.resolve("must-not-launch");
+
+    org.assertj.core.api.Assertions.assertThatThrownBy(
+            () -> run(List.of("sh", "-c", "touch " + marker), Duration.ofSeconds(Long.MAX_VALUE)))
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("too large");
+    assertThat(marker).doesNotExist();
   }
 
   @Test

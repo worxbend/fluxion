@@ -20,11 +20,13 @@ public record PacmanRepositorySourceSetup(
     Objects.requireNonNull(repositoryName, "Pacman repository name must not be null");
     Objects.requireNonNull(server, "Pacman repository server must not be null");
     Objects.requireNonNull(configPath, "Pacman config path must not be null");
-    sigLevel = sigLevel == null ? Optional.empty() : sigLevel;
+    sigLevel = sigLevel == null ? Optional.empty() : sigLevel.map(String::strip);
     include = include == null ? Optional.empty() : include;
-    if (repositoryName.isBlank()) {
-      throw new IllegalArgumentException("Pacman repository name must not be blank");
-    }
+    RepositoryIdentifierPolicy.requireSafe(repositoryName, "Pacman repository name");
+    SourceUrlPolicy.requireHttps(server, "Pacman repository server URL");
+    PacmanRepositoryPolicy.validate(configPath, sigLevel, include, enabled);
+    configPath = RepositoryDestinationPolicy.requirePacmanConfig(configPath);
+    include = include.map(RepositoryDestinationPolicy::requirePacmanInclude);
   }
 
   @Override

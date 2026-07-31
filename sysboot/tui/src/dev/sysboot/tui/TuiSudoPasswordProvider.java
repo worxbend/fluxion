@@ -3,30 +3,37 @@ package dev.sysboot.tui;
 import dev.sysboot.core.SudoPasswordProvider;
 import java.util.Arrays;
 import java.util.Optional;
-import java.util.concurrent.SynchronousQueue;
-import java.util.concurrent.TimeUnit;
 
 public final class TuiSudoPasswordProvider implements SudoPasswordProvider {
 
-  private static final int TIMEOUT_SECONDS = 120;
-
-  private final SynchronousQueue<char[]> passwordQueue = new SynchronousQueue<>();
+  private final PasswordReader passwordReader;
   private volatile String pendingPrompt;
+
+  public TuiSudoPasswordProvider() {
+    this(new ConsolePasswordReader());
+  }
+
+  TuiSudoPasswordProvider(PasswordReader passwordReader) {
+    this.passwordReader = passwordReader;
+  }
 
   @Override
   public Optional<char[]> requestPassword(String prompt) {
-    var console = System.console();
-    if (console != null) {
-      return Optional.ofNullable(console.readPassword("%s ", prompt));
+    if (!passwordReader.isAvailable()) {
+      return Optional.empty();
     }
     this.pendingPrompt = prompt;
+    char[] supplied = null;
     try {
-      char[] password = passwordQueue.poll(TIMEOUT_SECONDS, TimeUnit.SECONDS);
-      return Optional.ofNullable(password).filter(p -> p.length > 0);
-    } catch (InterruptedException e) {
-      Thread.currentThread().interrupt();
-      return Optional.empty();
+      supplied = passwordReader.readPassword(prompt);
+      if (supplied == null || supplied.length == 0) {
+        return Optional.empty();
+      }
+      return Optional.of(Arrays.copyOf(supplied, supplied.length));
     } finally {
+      if (supplied != null) {
+        Arrays.fill(supplied, '\0');
+      }
       this.pendingPrompt = null;
     }
   }
@@ -39,21 +46,24 @@ public final class TuiSudoPasswordProvider implements SudoPasswordProvider {
     return Optional.ofNullable(pendingPrompt);
   }
 
-  public void submitPassword(char[] password) {
-    char[] copy = Arrays.copyOf(password, password.length);
-    try {
-      passwordQueue.offer(copy, 5, TimeUnit.SECONDS);
-    } catch (InterruptedException e) {
-      Thread.currentThread().interrupt();
-      Arrays.fill(copy, '\0');
-    }
+  interface PasswordReader {
+
+    boolean isAvailable();
+
+    char[] readPassword(String prompt);
   }
 
-  public void cancel() {
-    try {
-      passwordQueue.offer(new char[0], 1, TimeUnit.SECONDS);
-    } catch (InterruptedException e) {
-      Thread.currentThread().interrupt();
+  private static final class ConsolePasswordReader implements PasswordReader {
+
+    @Override
+    public boolean isAvailable() {
+      return System.console() != null;
+    }
+
+    @Override
+    public char[] readPassword(String prompt) {
+      var console = System.console();
+      return console == null ? null : console.readPassword("%s ", prompt);
     }
   }
 }

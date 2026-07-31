@@ -15,6 +15,9 @@ public final class ToolchainModuleDocument extends ModuleDocument {
   @JsonProperty("installScript")
   public String installScript;
 
+  @JsonProperty("sha256")
+  public String sha256;
+
   @JsonProperty("installArgs")
   public List<String> installArgs;
 

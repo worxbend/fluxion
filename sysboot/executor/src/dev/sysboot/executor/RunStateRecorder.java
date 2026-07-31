@@ -4,6 +4,7 @@ import dev.sysboot.core.BootstrapConfig;
 import dev.sysboot.core.BootstrapModule;
 import dev.sysboot.core.BootstrapState;
 import dev.sysboot.core.CompiledBinaryModule;
+import dev.sysboot.core.FluxionVersion;
 import dev.sysboot.core.InterruptModule;
 import dev.sysboot.core.InterruptResumeMode;
 import dev.sysboot.core.ItemType;
@@ -21,6 +22,7 @@ import java.time.Clock;
 import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
+import java.util.function.UnaryOperator;
 
 /**
  * Everything the orchestrator writes to, or reads back from, persisted run state.
@@ -35,12 +37,11 @@ import java.util.Optional;
  */
 final class RunStateRecorder {
 
-  private static final String STATE_SCHEMA_VERSION = "1.0.0";
-
   private final Optional<StateRepository> repository;
   private final String profileName;
   private final SkipEvaluator skipEvaluator;
   private final PhaseFingerprintCalculator fingerprintCalculator;
+  private final RunStateMode runStateMode;
   private final Clock clock;
 
   RunStateRecorder(
@@ -61,22 +62,24 @@ final class RunStateRecorder {
     this.profileName = profileName;
     this.skipEvaluator = skipEvaluator;
     this.fingerprintCalculator = fingerprintCalculator;
+    this.runStateMode = skipEvaluator.runStateMode();
     this.clock = clock;
   }
 
-  /** Stamps the run's manifest identity, refusing state left behind by a different profile. */
+  /** Prepares manifest metadata, replacing old decisions for a live re-probe. */
   void prepare(BootstrapConfig config) {
     repository.ifPresent(
         repo -> {
           String identity = config.profileName().value();
           String fingerprint = fingerprintCalculator.manifestFingerprint(config);
-          BootstrapState current = load(repo);
-          rejectStale(current, identity, fingerprint);
-          save(repo, current.withManifestMetadata(identity, fingerprint));
+          update(repo, state -> preparedState(state, identity, fingerprint));
         });
   }
 
   boolean isPhaseAlreadyCompleted(Phase phase, String fingerprint) {
+    if (!runStateMode.skipsRecordedWork()) {
+      return false;
+    }
     return repository
         .flatMap(repo -> repo.load(profileName))
         .map(state -> state.isPhaseCompleted(phase.name().value(), fingerprint))
@@ -90,6 +93,9 @@ final class RunStateRecorder {
    * entry on a later run.
    */
   int resumeStartIndex(List<BootstrapModule> modules) {
+    if (!runStateMode.skipsRecordedWork()) {
+      return 0;
+    }
     Optional<String> nextEntry =
         repository.flatMap(repo -> repo.load(profileName)).flatMap(BootstrapState::nextPlanEntry);
     if (nextEntry.isEmpty()) {
@@ -115,17 +121,17 @@ final class RunStateRecorder {
         itemKey,
         ItemType.COMPILED_BINARY,
         result,
-        Optional.of(module.url().toString()));
+        Optional.of(module.url().stateSource()));
   }
 
   void recordPhase(
       PhaseName phase, PhaseStatus status, String fingerprint, Optional<String> reason) {
     repository.ifPresent(
         repo ->
-            save(
+            update(
                 repo,
-                load(repo)
-                    .withPhaseEntry(
+                state ->
+                    state.withPhaseEntry(
                         new PhaseStateEntry(
                             phase.value(), status, now(), Optional.of(fingerprint), reason))));
   }
@@ -133,21 +139,22 @@ final class RunStateRecorder {
   void recordInterrupt(InterruptModule module, Optional<String> nextEntry) {
     repository.ifPresent(
         repo ->
-            save(
+            update(
                 repo,
-                load(repo)
-                    .withPlanEntry(
-                        new PlanEntryStateEntry(
-                            module.name().value(),
-                            interruptStatus(module),
-                            now(),
-                            Optional.of(module.message())))
-                    .withNextPlanEntry(nextEntry)));
+                state ->
+                    state
+                        .withPlanEntry(
+                            new PlanEntryStateEntry(
+                                module.name().value(),
+                                interruptStatus(module),
+                                now(),
+                                Optional.of(module.message())))
+                        .withNextPlanEntry(nextEntry)));
   }
 
   /** Marks where a cancelled run should pick up. */
   void recordResumePoint(Optional<String> nextEntry) {
-    repository.ifPresent(repo -> save(repo, load(repo).withNextPlanEntry(nextEntry)));
+    repository.ifPresent(repo -> update(repo, state -> state.withNextPlanEntry(nextEntry)));
   }
 
   /** The entry a resume should start from after an interrupt. */
@@ -176,26 +183,23 @@ final class RunStateRecorder {
     }
     repository.ifPresent(
         repo ->
-            skipEvaluator.refreshState(
-                repo.recordSuccess(
-                    profileName,
-                    new StateEntry(
-                        profileName,
-                        moduleName.value(),
-                        itemKey,
-                        itemType,
-                        now(),
-                        success.detectedVersion(),
-                        success.checksum(),
-                        sourceUrl))));
+            update(
+                repo,
+                state ->
+                    state.withEntry(
+                        new StateEntry(
+                            profileName,
+                            moduleName.value(),
+                            itemKey,
+                            itemType,
+                            now(),
+                            success.detectedVersion(),
+                            success.checksum(),
+                            sourceUrl))));
   }
 
   private void clearNextPlanEntry() {
-    repository.ifPresent(
-        repo ->
-            repo.load(profileName)
-                .map(BootstrapState::withoutNextPlanEntry)
-                .ifPresent(updated -> save(repo, updated)));
+    repository.ifPresent(repo -> update(repo, BootstrapState::withoutNextPlanEntry));
   }
 
   private void rejectStale(BootstrapState state, String identity, String fingerprint) {
@@ -210,6 +214,18 @@ final class RunStateRecorder {
     }
   }
 
+  private BootstrapState preparedState(
+      BootstrapState current, String identity, String fingerprint) {
+    if (runStateMode.validatesStoredManifest()) {
+      rejectStale(current, identity, fingerprint);
+    }
+    if (runStateMode.startsFreshState()) {
+      return BootstrapState.empty(profileName, FluxionVersion.current(), now())
+          .withManifestMetadata(identity, fingerprint);
+    }
+    return current.withManifestMetadata(identity, fingerprint);
+  }
+
   private StaleStateException stale(String reason) {
     return new StaleStateException(
         "Saved state is stale: "
@@ -219,15 +235,19 @@ final class RunStateRecorder {
             + " --force` or re-run apply with --reset-state.");
   }
 
-  private BootstrapState load(StateRepository repo) {
-    return repo.load(profileName)
-        .orElseGet(() -> BootstrapState.empty(profileName, STATE_SCHEMA_VERSION));
-  }
-
   /** Every write refreshes the skip evaluator, so a later step cannot decide from stale state. */
-  private void save(StateRepository repo, BootstrapState state) {
-    repo.save(state);
-    skipEvaluator.refreshState(state);
+  private void update(StateRepository repo, UnaryOperator<BootstrapState> transition) {
+    BootstrapState updated =
+        repo.update(
+            profileName,
+            saved ->
+                transition
+                    .apply(
+                        saved.orElseGet(
+                            () ->
+                                BootstrapState.empty(profileName, FluxionVersion.current(), now())))
+                    .withRunMetadata(now(), FluxionVersion.current()));
+    skipEvaluator.refreshState(updated);
   }
 
   private Instant now() {

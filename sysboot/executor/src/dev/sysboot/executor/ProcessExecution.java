@@ -34,8 +34,10 @@ final class ProcessExecution {
 
   static final int TIMEOUT_EXIT_CODE = 124;
 
-  /** A single line longer than this is flushed to the sink rather than buffered indefinitely. */
+  /** A single line longer than this is truncated rather than split across redaction boundaries. */
   private static final int MAX_LINE_LENGTH = 64 * 1024;
+
+  private static final String TRUNCATED_LINE = "[output line truncated]";
 
   private static final Duration TERMINATION_GRACE = Duration.ofSeconds(5);
   private static final Duration DRAIN_GRACE = Duration.ofSeconds(2);
@@ -48,7 +50,8 @@ final class ProcessExecution {
       Optional<Path> workingDirectory,
       Optional<byte[]> stdin,
       Duration timeout,
-      Consumer<String> outputSink) {
+      Consumer<String> outputSink,
+      boolean detachedSession) {
 
     Request {
       command = List.copyOf(command);
@@ -57,20 +60,45 @@ final class ProcessExecution {
 
     static Request of(List<String> command, Map<String, String> environment, Duration timeout) {
       return new Request(
-          command, environment, Optional.empty(), Optional.empty(), timeout, line -> {});
+          command, environment, Optional.empty(), Optional.empty(), timeout, line -> {}, true);
     }
 
     Request withStdin(byte[] bytes) {
       return new Request(
-          command, environment, workingDirectory, Optional.of(bytes), timeout, outputSink);
+          command,
+          environment,
+          workingDirectory,
+          Optional.of(bytes),
+          timeout,
+          outputSink,
+          detachedSession);
     }
 
     Request withOutputSink(Consumer<String> sink) {
-      return new Request(command, environment, workingDirectory, stdin, timeout, sink);
+      return new Request(
+          command, environment, workingDirectory, stdin, timeout, sink, detachedSession);
+    }
+
+    Request withWorkingDirectory(Optional<Path> directory) {
+      return new Request(
+          command, environment, directory, stdin, timeout, outputSink, detachedSession);
+    }
+
+    Request inSharedSession() {
+      return new Request(command, environment, workingDirectory, stdin, timeout, outputSink, false);
     }
   }
 
   static ProcessResult run(Request request) {
+    try {
+      return runOwned(request);
+    } finally {
+      request.stdin().ifPresent(bytes -> Arrays.fill(bytes, (byte) 0));
+    }
+  }
+
+  private static ProcessResult runOwned(Request request) {
+    long timeoutNanos = validatedTimeoutNanos(request.timeout());
     Instant start = Instant.now();
     Process process = start(request);
     var capture = new BoundedTextCapture();
@@ -79,7 +107,7 @@ final class ProcessExecution {
     // before awaitExit has armed the timeout, and hang forever.
     Thread stdin = startStdinWriter(process, request.stdin());
     try {
-      boolean exited = awaitExit(process, request.timeout());
+      boolean exited = awaitExit(process, timeoutNanos);
       joinFor(stdin, DRAIN_GRACE);
       joinPump(pump, process);
       Duration elapsed = Duration.between(start, Instant.now());
@@ -100,44 +128,27 @@ final class ProcessExecution {
     }
   }
 
-  /**
-   * Path to {@code setsid}, when it is available.
-   *
-   * <p>Children started with it get their own session, so a Ctrl-C at the terminal -- which signals
-   * the whole foreground process group -- reaches Fluxion but not the package manager it is
-   * driving. Without this, "the item in flight is allowed to finish" only holds for a signal sent
-   * to the JVM alone, and an interrupted `dnf upgrade` would take the SIGINT directly.
-   */
-  private static final Optional<String> SETSID = locateSetsid();
-
-  private static Optional<String> locateSetsid() {
-    return java.util.stream.Stream.of("/usr/bin/setsid", "/bin/setsid")
-        .filter(path -> java.nio.file.Files.isExecutable(Path.of(path)))
-        .findFirst();
-  }
-
-  private static List<String> detached(List<String> command) {
-    if (SETSID.isEmpty() || command.isEmpty() || command.getFirst().endsWith("setsid")) {
-      return command;
-    }
-    // -w propagates the child's exit status in the rare case setsid has to fork rather than exec.
-    var detached = new java.util.ArrayList<String>(command.size() + 2);
-    detached.add(SETSID.orElseThrow());
-    detached.add("-w");
-    detached.addAll(command);
-    return List.copyOf(detached);
-  }
-
   private static Process start(Request request) {
-    var builder = new ProcessBuilder(detached(request.command()));
+    List<String> command =
+        request.detachedSession()
+            ? DetachedProcessTree.command(request.command())
+            : request.command();
+    var builder = new ProcessBuilder(command);
     builder.redirectErrorStream(true);
     builder.environment().putAll(request.environment());
-    request.workingDirectory().ifPresent(dir -> builder.directory(dir.toFile()));
+    request.workingDirectory().ifPresent(dir -> configureWorkingDirectory(builder, dir));
     try {
       return builder.start();
     } catch (IOException e) {
       throw new ShellExecutionException("Failed to start process: " + firstArgument(request), e);
     }
+  }
+
+  private static void configureWorkingDirectory(ProcessBuilder builder, Path directory) {
+    if (!java.nio.file.Files.isDirectory(directory)) {
+      throw new ShellExecutionException("Working directory does not exist: " + directory);
+    }
+    builder.directory(directory.toFile());
   }
 
   private static Thread startOutputPump(
@@ -149,7 +160,7 @@ final class ProcessExecution {
 
   private static void pumpOutput(
       Process process, BoundedTextCapture capture, Consumer<String> sink) {
-    var line = new StringBuilder();
+    var line = new StreamingLine();
     char[] buffer = new char[8192];
     try (Reader reader = new InputStreamReader(process.getInputStream(), StandardCharsets.UTF_8)) {
       int read;
@@ -160,31 +171,47 @@ final class ProcessExecution {
     } catch (IOException ignored) {
       // The stream closes when the process is destroyed; whatever was captured still stands.
     }
-    if (!line.isEmpty()) {
-      accept(sink, line.toString());
-    }
+    line.finish(sink);
   }
 
   private static void emitLines(
-      char[] buffer, int length, StringBuilder line, Consumer<String> sink) {
+      char[] buffer, int length, StreamingLine line, Consumer<String> sink) {
     for (int i = 0; i < length; i++) {
-      char value = buffer[i];
+      line.accept(buffer[i], sink);
+    }
+  }
+
+  private static final class StreamingLine {
+    private final StringBuilder content = new StringBuilder();
+    private boolean discarding;
+
+    void accept(char value, Consumer<String> sink) {
       if (value == '\n' || value == '\r') {
-        // A bare '\r' terminates a line too. Progress bars redraw with carriage returns and emit no
-        // newline for minutes; treating '\r' as ordinary text meant the line buffer grew unbounded
-        // and defeated the capture limit entirely.
-        if (!line.isEmpty() || value == '\n') {
-          accept(sink, line.toString());
-        }
-        line.setLength(0);
-      } else {
-        line.append(value);
-        if (line.length() >= MAX_LINE_LENGTH) {
-          // Output with no line terminator at all must not grow without bound either.
-          accept(sink, line.toString());
-          line.setLength(0);
-        }
+        finish(sink, value == '\n');
+        return;
       }
+      if (discarding) {
+        return;
+      }
+      content.append(value);
+      if (content.length() >= MAX_LINE_LENGTH) {
+        content.setLength(0);
+        discarding = true;
+      }
+    }
+
+    void finish(Consumer<String> sink) {
+      finish(sink, false);
+    }
+
+    private void finish(Consumer<String> sink, boolean emitEmpty) {
+      if (discarding) {
+        ProcessExecution.accept(sink, TRUNCATED_LINE);
+      } else if (!content.isEmpty() || emitEmpty) {
+        ProcessExecution.accept(sink, content.toString());
+      }
+      content.setLength(0);
+      discarding = false;
     }
   }
 
@@ -216,9 +243,9 @@ final class ProcessExecution {
     }
   }
 
-  private static boolean awaitExit(Process process, Duration timeout) throws InterruptedException {
+  private static boolean awaitExit(Process process, long timeoutNanos) throws InterruptedException {
     try {
-      process.onExit().get(Math.max(timeout.toNanos(), 1L), TimeUnit.NANOSECONDS);
+      process.onExit().get(timeoutNanos, TimeUnit.NANOSECONDS);
       return true;
     } catch (TimeoutException e) {
       terminate(process);
@@ -233,26 +260,7 @@ final class ProcessExecution {
   }
 
   private static void terminate(Process process) {
-    process.descendants().forEach(ProcessHandle::destroy);
-    process.destroy();
-    if (waitForDeath(process)) {
-      return;
-    }
-    // Re-read the descendants rather than reusing the pre-SIGTERM snapshot. A shell defers SIGTERM
-    // until its foreground child finishes, and installer scripts keep spawning helpers, so the
-    // survivors after the grace period are frequently not the processes that existed before it.
-    process.descendants().forEach(ProcessHandle::destroyForcibly);
-    process.destroyForcibly();
-    waitForDeath(process);
-  }
-
-  private static boolean waitForDeath(Process process) {
-    try {
-      return process.waitFor(TERMINATION_GRACE.toMillis(), TimeUnit.MILLISECONDS);
-    } catch (InterruptedException e) {
-      Thread.currentThread().interrupt();
-      return false;
-    }
+    DetachedProcessTree.terminate(process, TERMINATION_GRACE);
   }
 
   /**
@@ -292,5 +300,16 @@ final class ProcessExecution {
 
   private static String firstArgument(Request request) {
     return request.command().isEmpty() ? "<empty command>" : request.command().getFirst();
+  }
+
+  private static long validatedTimeoutNanos(Duration timeout) {
+    if (timeout == null || timeout.isZero() || timeout.isNegative()) {
+      throw new IllegalArgumentException("Process timeout must be positive");
+    }
+    try {
+      return timeout.toNanos();
+    } catch (ArithmeticException e) {
+      throw new IllegalArgumentException("Process timeout is too large", e);
+    }
   }
 }

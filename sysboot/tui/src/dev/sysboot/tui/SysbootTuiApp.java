@@ -2,7 +2,7 @@ package dev.sysboot.tui;
 
 import dev.sysboot.core.BootstrapConfig;
 import dev.sysboot.core.BootstrapOrchestrator;
-import dev.sysboot.core.ExecutionPausedException;
+import dev.sysboot.executor.ExecutionCancelledException;
 import java.io.IOException;
 import java.io.PrintStream;
 import java.time.Duration;
@@ -57,12 +57,43 @@ public final class SysbootTuiApp {
   }
 
   public void run(BootstrapConfig config, boolean dryRun) throws IOException {
-    run(config, dryRun, dev.sysboot.core.CancellationSignal.never());
+    run(config, config, dryRun, dev.sysboot.core.CancellationSignal.never());
   }
 
   /** Enables the live command-output log pane. Off by default; see TuiExecutionEventListener. */
   public void showCommandOutput(boolean enabled) {
     eventListener.showCommandOutput(enabled);
+  }
+
+  public void runPrivilegePreflight(Runnable preflight) {
+    AppState previous = stateRef.get();
+    AtomicReference<Throwable> failure = new AtomicReference<>();
+    Thread runner =
+        Thread.ofVirtual()
+            .name("fluxion-tui-privilege-preflight")
+            .start(
+                () -> {
+                  try {
+                    preflight.run();
+                  } catch (Throwable throwable) {
+                    failure.set(throwable);
+                  }
+                });
+    try {
+      boolean promptRendered = false;
+      while (runner.isAlive()) {
+        Optional<String> prompt = sudoPasswordProvider.pendingPrompt();
+        if (prompt.isPresent() && !promptRendered) {
+          renderSudoPrompt(previous, prompt.orElseThrow());
+          promptRendered = true;
+        }
+        sleepForPreflight();
+      }
+      joinPreflight(runner);
+      rethrowPreflightFailure(failure.get());
+    } finally {
+      stateRef.set(previous);
+    }
   }
 
   /**
@@ -75,18 +106,27 @@ public final class SysbootTuiApp {
   public void run(
       BootstrapConfig config, boolean dryRun, dev.sysboot.core.CancellationSignal cancellation)
       throws IOException {
-    if (config == null) {
+    run(config, config, dryRun, cancellation);
+  }
+
+  public void run(
+      BootstrapConfig manifestConfig,
+      BootstrapConfig selectableConfig,
+      boolean dryRun,
+      dev.sysboot.core.CancellationSignal cancellation)
+      throws IOException {
+    if (selectableConfig == null) {
       out.print(DashboardScreen.render(new AppState.Dashboard(profilePaths, 0), detectOs()));
       return;
     }
     BootstrapConfig selected =
-        selectionPrompt
-            .select(config)
-            .orElseThrow(() -> new IOException("TUI selection cancelled"));
+        selectionPrompt.select(selectableConfig).orElseThrow(ExecutionCancelledException::new);
+    boolean effectiveDryRun = dryRun || selected.policy().dryRunDefault().orElse(false);
     var screen = ExecutionScreenState.initial(selected);
     stateRef.set(new AppState.Executing(screen, selected));
     AtomicReference<Throwable> failure = new AtomicReference<>();
-    Thread runner = runOrchestrator(selected, dryRun, failure, cancellation);
+    Thread runner =
+        runOrchestrator(manifestConfig, selected, effectiveDryRun, failure, cancellation);
     var updated = renderUntilComplete(selected, screen, runner);
     throwIfFailed(failure);
     stateRef.set(new AppState.Completed(updated));
@@ -94,7 +134,8 @@ public final class SysbootTuiApp {
   }
 
   private Thread runOrchestrator(
-      BootstrapConfig config,
+      BootstrapConfig manifestConfig,
+      BootstrapConfig executionConfig,
       boolean dryRun,
       AtomicReference<Throwable> failure,
       dev.sysboot.core.CancellationSignal cancellation) {
@@ -104,35 +145,117 @@ public final class SysbootTuiApp {
             () -> {
               try {
                 if (dryRun) {
-                  orchestrator.dryRun(config, eventListener);
+                  orchestrator.dryRun(executionConfig, eventListener);
                 } else {
-                  orchestrator.execute(config, eventListener, cancellation);
+                  orchestrator.execute(
+                      manifestConfig, executionConfig.phases(), eventListener, cancellation);
                 }
-              } catch (ExecutionPausedException ignored) {
-                // The pause event has already been emitted; render it as a controlled stop.
-              } catch (RuntimeException e) {
-                failure.set(e);
+              } catch (RuntimeException | Error throwable) {
+                failure.set(throwable);
               }
             });
   }
 
   private ExecutionScreenState renderUntilComplete(
       BootstrapConfig config, ExecutionScreenState screen, Thread runner) throws IOException {
-    ExecutionScreenState current = screen;
-    while (runner.isAlive() || eventListener.hasPendingEvents()) {
-      Optional<ExecutionScreenState> updated = eventListener.drainOneInto(current);
-      if (updated.isPresent()) {
-        current = updated.get();
+    try {
+      ExecutionScreenState current = screen;
+      boolean sudoPromptRendered = false;
+      while (runner.isAlive() || eventListener.hasPendingEvents()) {
+        Optional<String> sudoPrompt = sudoPasswordProvider.pendingPrompt();
+        if (sudoPrompt.isPresent()) {
+          if (!sudoPromptRendered) {
+            renderSudoPrompt(current, config, sudoPrompt.orElseThrow());
+            sudoPromptRendered = true;
+          }
+          sleepUntilNextFrame();
+          continue;
+        }
+        if (sudoPromptRendered) {
+          stateRef.set(new AppState.Executing(current, config));
+        }
+        sudoPromptRendered = false;
+        Optional<ExecutionScreenState> updated = eventListener.drainOneInto(current);
+        if (updated.isPresent()) {
+          current = updated.get();
+          stateRef.set(new AppState.Executing(current, config));
+          renderExecution(current);
+          continue;
+        }
         stateRef.set(new AppState.Executing(current, config));
         renderExecution(current);
-        continue;
+        sleepUntilNextFrame();
       }
-      stateRef.set(new AppState.Executing(current, config));
-      renderExecution(current);
-      sleepUntilNextFrame();
+      join(runner);
+      return current;
+    } catch (IOException failure) {
+      if (!Thread.currentThread().isInterrupted()) {
+        throw failure;
+      }
+      interruptWorker(runner);
+      throw new ExecutionCancelledException(failure);
     }
-    join(runner);
-    return current;
+  }
+
+  private void interruptWorker(Thread runner) {
+    boolean restoreInterrupt = Thread.interrupted();
+    runner.interrupt();
+    try {
+      runner.join(Duration.ofSeconds(5));
+    } catch (InterruptedException e) {
+      restoreInterrupt = true;
+    } finally {
+      if (restoreInterrupt) {
+        Thread.currentThread().interrupt();
+      }
+    }
+  }
+
+  private void renderSudoPrompt(
+      ExecutionScreenState screen, BootstrapConfig config, String prompt) {
+    renderSudoPrompt(new AppState.Executing(screen, config), prompt);
+  }
+
+  private void renderSudoPrompt(AppState previous, String prompt) {
+    var state = new AppState.SudoPrompt(previous, prompt);
+    stateRef.set(state);
+    out.print("\u001b[H\u001b[2J");
+    out.print(SudoPromptScreen.render(state));
+    out.flush();
+  }
+
+  AppState currentState() {
+    return stateRef.get();
+  }
+
+  private void sleepForPreflight() {
+    try {
+      Thread.sleep(renderInterval);
+    } catch (InterruptedException e) {
+      Thread.currentThread().interrupt();
+      throw new IllegalStateException("TUI privilege preflight interrupted", e);
+    }
+  }
+
+  private void joinPreflight(Thread runner) {
+    try {
+      runner.join();
+    } catch (InterruptedException e) {
+      Thread.currentThread().interrupt();
+      throw new IllegalStateException("TUI privilege preflight interrupted", e);
+    }
+  }
+
+  private void rethrowPreflightFailure(Throwable failure) {
+    if (failure instanceof RuntimeException runtimeException) {
+      throw runtimeException;
+    }
+    if (failure instanceof Error error) {
+      throw error;
+    }
+    if (failure != null) {
+      throw new IllegalStateException("TUI privilege preflight failed", failure);
+    }
   }
 
   private void renderExecution(ExecutionScreenState screen) {
@@ -167,6 +290,15 @@ public final class SysbootTuiApp {
 
   private void throwIfFailed(AtomicReference<Throwable> failure) throws IOException {
     Throwable cause = failure.get();
+    if (cause instanceof RuntimeException runtimeException) {
+      throw runtimeException;
+    }
+    if (cause instanceof Error error) {
+      throw error;
+    }
+    if (cause instanceof IOException ioException) {
+      throw ioException;
+    }
     if (cause != null) {
       throw new IOException("TUI execution failed", cause);
     }

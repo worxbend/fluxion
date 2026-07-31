@@ -7,6 +7,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import dev.sysboot.core.BootstrapState;
+import dev.sysboot.core.CancellationSignal;
 import dev.sysboot.core.EventKind;
 import dev.sysboot.core.ExecutionEvent;
 import dev.sysboot.core.ModuleName;
@@ -109,6 +110,30 @@ class PackageModuleExecutorTest {
   }
 
   @Test
+  void execute_whenCancelledAfterFirstPackage_stopsBeforeSecondPackage() {
+    var cancellation = new CancellationSignal();
+    when(dnf.supports(PackageManagerKind.DNF)).thenReturn(true);
+    when(dnf.install(any()))
+        .thenAnswer(
+            ignored -> {
+              cancellation.cancel();
+              return new StepResult.Success("git", Duration.ZERO);
+            });
+    var executor = new PackageModuleExecutor(new PackageManagerExecutorRegistry(List.of(dnf)));
+
+    executor.execute(
+        module(true, "git", "curl"),
+        ignored -> {},
+        new ModuleExecutionContext(
+            SkipEvaluator.alwaysRun(),
+            (moduleName, itemKey, itemType, result) -> {},
+            Optional.empty(),
+            cancellation));
+
+    verify(dnf, times(1)).install(any());
+  }
+
+  @Test
   void execute_whenActionFails_attemptsLaterPackagesBeforeReportingFailure() {
     var action = new PackageManagerAction("upgrade", List.of());
     when(dnf.supports(PackageManagerKind.DNF)).thenReturn(true);
@@ -184,6 +209,67 @@ class PackageModuleExecutorTest {
   }
 
   @Test
+  void execute_whenActionIsRecorded_skipsItConsistentlyWithDryRun() {
+    var action = new PackageManagerAction("upgrade", List.of());
+    when(dnf.supports(PackageManagerKind.DNF)).thenReturn(true);
+    when(dnf.install(any())).thenReturn(new StepResult.Success("git", Duration.ZERO));
+    var state =
+        BootstrapState.empty("test", "1.0.0")
+            .withEntry(
+                new StateEntry(
+                    "test",
+                    "tools",
+                    "action[0]",
+                    dev.sysboot.core.ItemType.PACKAGE_ACTION,
+                    java.time.Instant.now(),
+                    Optional.empty(),
+                    Optional.empty()));
+    var skipEvaluator =
+        new SkipEvaluator(Optional.of(state), new InstalledProbeRegistry(List.of()), true, false);
+
+    new PackageModuleExecutor(new PackageManagerExecutorRegistry(List.of(dnf)))
+        .execute(
+            module(List.of(action), "git"),
+            ignored -> {},
+            new ModuleExecutionContext(
+                skipEvaluator, (moduleName, itemKey, itemType, result) -> {}));
+
+    verify(dnf, times(0)).runAction(action);
+    verify(dnf).install(new PackageName("git"));
+  }
+
+  @Test
+  void execute_whenActionSucceeds_recordsPackageActionState() {
+    var action = new PackageManagerAction("upgrade", List.of());
+    when(dnf.supports(PackageManagerKind.DNF)).thenReturn(true);
+    when(dnf.runAction(action)).thenReturn(new StepResult.Success("upgrade", Duration.ZERO));
+    var recorded = new ArrayList<StateEntry>();
+
+    new PackageModuleExecutor(new PackageManagerExecutorRegistry(List.of(dnf)))
+        .execute(
+            module(List.of(action), true),
+            ignored -> {},
+            new ModuleExecutionContext(
+                SkipEvaluator.alwaysRun(),
+                (moduleName, itemKey, itemType, result) ->
+                    recorded.add(
+                        new StateEntry(
+                            "test",
+                            moduleName.value(),
+                            itemKey,
+                            itemType,
+                            java.time.Instant.now(),
+                            Optional.empty(),
+                            Optional.empty()))));
+
+    assertThat(recorded)
+        .extracting(StateEntry::itemKey, StateEntry::itemType)
+        .containsExactly(
+            org.assertj.core.groups.Tuple.tuple(
+                "action[0]", dev.sysboot.core.ItemType.PACKAGE_ACTION));
+  }
+
+  @Test
   void dryRun_usesPackageManagerCommandPreview() {
     when(dnf.supports(PackageManagerKind.DNF)).thenReturn(true);
     when(dnf.installCommand(any())).thenReturn(List.of("sudo", "dnf", "install", "-y", "git"));
@@ -196,6 +282,38 @@ class PackageModuleExecutorTest {
     assertThat(result).isInstanceOf(StepResult.DryRun.class);
     assertThat(((StepResult.DryRun) result).wouldExecute())
         .containsExactly("sudo", "dnf", "install", "-y", "git");
+  }
+
+  @Test
+  void dryRun_withSkipRecorded_usesSameSkipDecisionAsLiveExecution() {
+    when(dnf.supports(PackageManagerKind.DNF)).thenReturn(true);
+    when(dnf.installCommand(any())).thenReturn(List.of("sudo", "dnf", "install", "-y", "git"));
+    var executor = new PackageModuleExecutor(new PackageManagerExecutorRegistry(List.of(dnf)));
+    var state =
+        BootstrapState.empty("test", "1.0.0")
+            .withEntry(
+                new StateEntry(
+                    "test",
+                    "tools",
+                    "git",
+                    dev.sysboot.core.ItemType.PACKAGE,
+                    java.time.Instant.now(),
+                    Optional.empty(),
+                    Optional.empty()));
+    var skipEvaluator =
+        new SkipEvaluator(
+            Optional.of(state), new InstalledProbeRegistry(List.of()), RunStateMode.SKIP_RECORDED);
+    List<ExecutionEvent> events = new ArrayList<>();
+
+    executor.dryRun(
+        module("git"),
+        events::add,
+        (command, environment, timeout) -> {
+          throw new AssertionError("dry run must not invoke the shell");
+        },
+        skipEvaluator);
+
+    assertThat(events.get(1).result().orElseThrow()).isInstanceOf(StepResult.Skipped.class);
   }
 
   @Test

@@ -2,9 +2,12 @@ package dev.sysboot.app;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import dev.sysboot.config.YamlConfigLoader;
+import dev.sysboot.core.BootstrapConfig;
 import dev.sysboot.core.BootstrapOrchestrator;
 import dev.sysboot.core.ConfigLoader;
+import dev.sysboot.core.ExecutionApproval;
 import dev.sysboot.core.HostFactsProvider;
+import dev.sysboot.core.PrivilegeGate;
 import dev.sysboot.core.ShellRunner;
 import dev.sysboot.core.SudoPasswordProvider;
 import dev.sysboot.executor.AptPackageInstaller;
@@ -34,6 +37,7 @@ import dev.sysboot.executor.LinuxHostFactsProvider;
 import dev.sysboot.executor.NerdFontExecutor;
 import dev.sysboot.executor.NerdFontProbe;
 import dev.sysboot.executor.OhMyZshExecutor;
+import dev.sysboot.executor.OncePrivilegeGate;
 import dev.sysboot.executor.PackageManagerExecutorRegistry;
 import dev.sysboot.executor.PacmanPackageInstaller;
 import dev.sysboot.executor.PacmanPackageProbe;
@@ -41,18 +45,23 @@ import dev.sysboot.executor.PacmanRepositoryInstaller;
 import dev.sysboot.executor.PacmanRepositoryProbe;
 import dev.sysboot.executor.ParallelProbeRunner;
 import dev.sysboot.executor.ParuPackageInstaller;
+import dev.sysboot.executor.PolicyPrivilegeOrchestrator;
 import dev.sysboot.executor.PtyShellRunner;
 import dev.sysboot.executor.RpmRepositoryInstaller;
 import dev.sysboot.executor.RpmRepositoryProbe;
+import dev.sysboot.executor.RunStateMode;
 import dev.sysboot.executor.ShellReloadExecutor;
 import dev.sysboot.executor.ShellScriptExecutor;
 import dev.sysboot.executor.ShellScriptProbe;
 import dev.sysboot.executor.SkipEvaluator;
+import dev.sysboot.executor.StateReadException;
+import dev.sysboot.executor.SudoPrivilegePreflight;
 import dev.sysboot.executor.SudoSession;
 import dev.sysboot.executor.ToolchainExecutor;
 import dev.sysboot.executor.YayPackageInstaller;
 import dev.sysboot.executor.ZypperPackageInstaller;
 import dev.sysboot.executor.ZypperPackageProbe;
+import dev.sysboot.executor.ZypperRepositoryProbe;
 import dev.sysboot.tui.SysbootTuiApp;
 import dev.sysboot.tui.TuiExecutionEventListener;
 import dev.sysboot.tui.TuiSudoPasswordProvider;
@@ -69,6 +78,7 @@ public final class ApplicationContext implements AutoCloseable {
   private final ExecutionPlanBuilder executionPlanBuilder;
   private final HostFactsProvider hostFactsProvider;
   private final Optional<SudoSession> sudoSession;
+  private final PrivilegeGate privilegeGate;
 
   private ApplicationContext(
       BootstrapOrchestrator orchestrator,
@@ -77,7 +87,8 @@ public final class ApplicationContext implements AutoCloseable {
       ParallelProbeRunner parallelProbeRunner,
       ExecutionPlanBuilder executionPlanBuilder,
       HostFactsProvider hostFactsProvider,
-      Optional<SudoSession> sudoSession) {
+      Optional<SudoSession> sudoSession,
+      PrivilegeGate privilegeGate) {
     this.orchestrator = orchestrator;
     this.configLoader = configLoader;
     this.tuiApp = tuiApp;
@@ -85,6 +96,7 @@ public final class ApplicationContext implements AutoCloseable {
     this.executionPlanBuilder = executionPlanBuilder;
     this.hostFactsProvider = hostFactsProvider;
     this.sudoSession = sudoSession;
+    this.privilegeGate = privilegeGate;
   }
 
   /**
@@ -123,12 +135,39 @@ public final class ApplicationContext implements AutoCloseable {
     return hostFactsProvider;
   }
 
+  public void preflight(BootstrapConfig config) {
+    if (tuiApp.isPresent()) {
+      tuiApp.orElseThrow().runPrivilegePreflight(() -> privilegeGate.verify(config));
+      return;
+    }
+    privilegeGate.verify(config);
+  }
+
   public static ApplicationContext create(
       boolean noTui, String profile, boolean skipAlreadyInstalled, boolean reProbe) {
+    return create(noTui, profile, skipAlreadyInstalled, reProbe, ExecutionApproval.denyAll());
+  }
+
+  public static ApplicationContext create(
+      boolean noTui,
+      String profile,
+      boolean skipAlreadyInstalled,
+      boolean reProbe,
+      ExecutionApproval approval) {
+    return create(noTui, profile, skipAlreadyInstalled, reProbe, approval, false);
+  }
+
+  public static ApplicationContext create(
+      boolean noTui,
+      String profile,
+      boolean skipAlreadyInstalled,
+      boolean reProbe,
+      ExecutionApproval approval,
+      boolean readOnlyState) {
     if (noTui) {
-      return forCli(profile, skipAlreadyInstalled, reProbe);
+      return forCli(profile, skipAlreadyInstalled, reProbe, approval, readOnlyState);
     }
-    return forTui(profile, skipAlreadyInstalled, reProbe);
+    return forTui(profile, skipAlreadyInstalled, reProbe, approval, readOnlyState);
   }
 
   public static ApplicationContext create(boolean noTui) {
@@ -137,6 +176,20 @@ public final class ApplicationContext implements AutoCloseable {
 
   public static ApplicationContext forTui(
       String profile, boolean skipAlreadyInstalled, boolean reProbe) {
+    return forTui(profile, skipAlreadyInstalled, reProbe, ExecutionApproval.denyAll());
+  }
+
+  public static ApplicationContext forTui(
+      String profile, boolean skipAlreadyInstalled, boolean reProbe, ExecutionApproval approval) {
+    return forTui(profile, skipAlreadyInstalled, reProbe, approval, false);
+  }
+
+  private static ApplicationContext forTui(
+      String profile,
+      boolean skipAlreadyInstalled,
+      boolean reProbe,
+      ExecutionApproval approval,
+      boolean readOnlyState) {
     // The TUI drives the prompt; the session sits between the prompt and the shell runners so a
     // run asks for the sudo password once instead of once per privileged command.
     var sudoPrompt = new TuiSudoPasswordProvider();
@@ -145,16 +198,25 @@ public final class ApplicationContext implements AutoCloseable {
     var ptyRunner = new PtyShellRunner(sudoProvider);
     var baseRunner = new DefaultShellRunner();
     var mapper = new ObjectMapper();
-    var stateRepo = new JsonStateRepository(mapper);
+    var stateRepo = new JsonStateRepository(mapper, readOnlyState);
     var hostFactsProvider = new LinuxHostFactsProvider();
 
     var probeRegistry = buildProbeRegistry(baseRunner);
+    RunStateMode runStateMode = RunStateMode.fromOptions(skipAlreadyInstalled, reProbe);
     var skipEvaluator =
-        buildSkipEvaluator(stateRepo, probeRegistry, profile, skipAlreadyInstalled, reProbe);
+        buildSkipEvaluator(stateRepo, probeRegistry, profile, runStateMode, readOnlyState);
     var registry = buildExecutorRegistry(ptyRunner, sudoProvider);
+    PrivilegeGate privilegeGate =
+        new OncePrivilegeGate(SudoPrivilegePreflight.interactive(sudoProvider));
     var orchestrator =
         buildOrchestrator(
-            registry, ptyRunner, baseRunner, skipEvaluator, Optional.of(stateRepo), profile);
+            registry,
+            ptyRunner,
+            skipEvaluator,
+            Optional.of(stateRepo),
+            profile,
+            approval,
+            privilegeGate);
     var tuiApp = new SysbootTuiApp(orchestrator, eventListener, sudoPrompt, List.of());
 
     return new ApplicationContext(
@@ -164,24 +226,48 @@ public final class ApplicationContext implements AutoCloseable {
         new ParallelProbeRunner(probeRegistry),
         new ExecutionPlanBuilder(registry),
         hostFactsProvider,
-        Optional.of(sudoProvider));
+        Optional.of(sudoProvider),
+        privilegeGate);
   }
 
   public static ApplicationContext forCli(
       String profile, boolean skipAlreadyInstalled, boolean reProbe) {
+    return forCli(profile, skipAlreadyInstalled, reProbe, ExecutionApproval.denyAll());
+  }
+
+  public static ApplicationContext forCli(
+      String profile, boolean skipAlreadyInstalled, boolean reProbe, ExecutionApproval approval) {
+    return forCli(profile, skipAlreadyInstalled, reProbe, approval, false);
+  }
+
+  private static ApplicationContext forCli(
+      String profile,
+      boolean skipAlreadyInstalled,
+      boolean reProbe,
+      ExecutionApproval approval,
+      boolean readOnlyState) {
     SudoPasswordProvider noopSudo = prompt -> Optional.empty();
     var shellRunner = new DefaultShellRunner();
     var mapper = new ObjectMapper();
-    var stateRepo = new JsonStateRepository(mapper);
+    var stateRepo = new JsonStateRepository(mapper, readOnlyState);
     var hostFactsProvider = new LinuxHostFactsProvider();
 
     var probeRegistry = buildProbeRegistry(shellRunner);
+    RunStateMode runStateMode = RunStateMode.fromOptions(skipAlreadyInstalled, reProbe);
     var skipEvaluator =
-        buildSkipEvaluator(stateRepo, probeRegistry, profile, skipAlreadyInstalled, reProbe);
+        buildSkipEvaluator(stateRepo, probeRegistry, profile, runStateMode, readOnlyState);
     var registry = buildExecutorRegistry(shellRunner, noopSudo);
+    PrivilegeGate privilegeGate =
+        new OncePrivilegeGate(SudoPrivilegePreflight.nonInteractive(shellRunner));
     var orchestrator =
         buildOrchestrator(
-            registry, shellRunner, shellRunner, skipEvaluator, Optional.of(stateRepo), profile);
+            registry,
+            shellRunner,
+            skipEvaluator,
+            Optional.of(stateRepo),
+            profile,
+            approval,
+            privilegeGate);
 
     return new ApplicationContext(
         orchestrator,
@@ -190,37 +276,41 @@ public final class ApplicationContext implements AutoCloseable {
         new ParallelProbeRunner(probeRegistry),
         new ExecutionPlanBuilder(registry),
         hostFactsProvider,
-        Optional.empty());
+        Optional.empty(),
+        privilegeGate);
   }
 
-  private static BootstrapOrchestratorImpl buildOrchestrator(
+  private static BootstrapOrchestrator buildOrchestrator(
       PackageManagerExecutorRegistry registry,
-      ShellRunner primaryRunner,
-      DefaultShellRunner baseRunner,
+      ShellRunner effectRunner,
       SkipEvaluator skipEvaluator,
       Optional<JsonStateRepository> stateRepo,
-      String profile) {
-    return new BootstrapOrchestratorImpl(
-        registry,
-        new ShellScriptExecutor(primaryRunner),
-        new CompiledBinaryInstaller(baseRunner),
-        new AptRepositoryInstaller(baseRunner),
-        new RpmRepositoryInstaller(baseRunner),
-        new PacmanRepositoryInstaller(baseRunner),
-        new FileWriteExecutor(primaryRunner),
-        new FlatpakInstaller(baseRunner),
-        new FlatpakRemoteInstaller(baseRunner),
-        new DotbotExecutor(baseRunner),
-        new DefaultShellExecutor(primaryRunner),
-        new OhMyZshExecutor(primaryRunner),
-        new ToolchainExecutor(primaryRunner),
-        new NerdFontExecutor(baseRunner),
-        new ShellReloadExecutor(primaryRunner),
-        skipEvaluator,
-        stateRepo.map(r -> (dev.sysboot.core.StateRepository) r),
-        profile,
-        primaryRunner,
-        baseRunner);
+      String profile,
+      ExecutionApproval approval,
+      PrivilegeGate privilegeGate) {
+    var delegate =
+        new BootstrapOrchestratorImpl(
+            registry,
+            new ShellScriptExecutor(effectRunner, approval),
+            new CompiledBinaryInstaller(effectRunner),
+            new AptRepositoryInstaller(effectRunner),
+            new RpmRepositoryInstaller(effectRunner),
+            new PacmanRepositoryInstaller(effectRunner),
+            new FileWriteExecutor(effectRunner),
+            new FlatpakInstaller(effectRunner),
+            new FlatpakRemoteInstaller(effectRunner),
+            new DotbotExecutor(effectRunner),
+            new DefaultShellExecutor(effectRunner),
+            new OhMyZshExecutor(effectRunner),
+            new ToolchainExecutor(effectRunner),
+            new NerdFontExecutor(effectRunner),
+            new ShellReloadExecutor(effectRunner),
+            skipEvaluator,
+            stateRepo.map(r -> (dev.sysboot.core.StateRepository) r),
+            profile,
+            effectRunner,
+            approval);
+    return new PolicyPrivilegeOrchestrator(delegate, privilegeGate);
   }
 
   private static InstalledProbeRegistry buildProbeRegistry(ShellRunner runner) {
@@ -232,6 +322,7 @@ public final class ApplicationContext implements AutoCloseable {
             new AptRepositoryProbe(runner),
             new RpmRepositoryProbe(runner),
             new PacmanRepositoryProbe(runner),
+            new ZypperRepositoryProbe(runner),
             new ZypperPackageProbe(runner),
             new FlatpakProbe(runner),
             new FlatpakRemoteProbe(runner),
@@ -246,11 +337,26 @@ public final class ApplicationContext implements AutoCloseable {
       JsonStateRepository stateRepo,
       InstalledProbeRegistry probeRegistry,
       String profile,
-      boolean skipAlreadyInstalled,
-      boolean reProbe) {
+      RunStateMode runStateMode,
+      boolean readOnlyState) {
     Optional<dev.sysboot.core.BootstrapState> state =
-        skipAlreadyInstalled && !reProbe ? stateRepo.load(profile) : Optional.empty();
-    return new SkipEvaluator(state, probeRegistry, skipAlreadyInstalled, reProbe);
+        runStateMode == RunStateMode.SKIP_RECORDED
+            ? loadState(stateRepo, profile, readOnlyState)
+            : Optional.empty();
+    return new SkipEvaluator(state, probeRegistry, runStateMode);
+  }
+
+  private static Optional<dev.sysboot.core.BootstrapState> loadState(
+      JsonStateRepository stateRepo, String profile, boolean readOnlyState) {
+    if (!readOnlyState) {
+      return stateRepo.load(profile);
+    }
+    try {
+      return stateRepo.loadReadOnly(profile);
+    } catch (StateReadException ignored) {
+      // A preview can fall back to live probes, but must not repair state merely to read it.
+      return Optional.empty();
+    }
   }
 
   private static PackageManagerExecutorRegistry buildExecutorRegistry(

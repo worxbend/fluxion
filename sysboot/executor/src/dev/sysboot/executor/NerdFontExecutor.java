@@ -56,7 +56,7 @@ public final class NerdFontExecutor {
           ? new StepResult.Success(ITEM, result.elapsed())
           : new StepResult.Failure(
               ITEM, failureMessage(result), result.exitCode(), result.elapsed());
-    } catch (IOException | ToolResolutionException e) {
+    } catch (IOException | ToolResolutionException | IllegalArgumentException e) {
       return new StepResult.Failure(
           ITEM, "Failed to prepare Nerd Font installer: " + e.getMessage(), 1, Duration.ZERO);
     } finally {
@@ -72,14 +72,7 @@ public final class NerdFontExecutor {
 
   static ToolSpec toolSpec(NerdFontModule module) {
     ToolSpec base = KnownTools.NERD_FONTS_INSTALLER;
-    return new ToolSpec(
-        base.name(),
-        base.repository(),
-        module.installerVersion(),
-        base.assetTemplates(),
-        base.osNaming(),
-        base.checksumPolicy(),
-        Optional.of(module.nerdfontBinary()));
+    return base.withVersion(module.installerVersion()).withBinaryName(module.nerdfontBinary());
   }
 
   private Path resolveConfig(NerdFontModule module) throws IOException {

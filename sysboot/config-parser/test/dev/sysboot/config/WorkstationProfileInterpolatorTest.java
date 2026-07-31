@@ -34,8 +34,9 @@ class WorkstationProfileInterpolatorTest {
         .isEqualTo("/home/runtime/.config/apt/docker.list");
     assertThat(text(result, "/spec/sources/pacman/0/spec/config"))
         .isEqualTo("/home/runtime/.config/pacman.conf");
-    assertThat(text(result, "/spec/plan/0/spec/commands/0"))
-        .isEqualTo("install /home/runtime/.local/bin/tool /home/runtime/bin/tool");
+    assertThat(text(result, "/spec/plan/0/spec/commands/0/1"))
+        .isEqualTo("/home/runtime/.local/bin/tool");
+    assertThat(text(result, "/spec/plan/0/spec/commands/0/2")).isEqualTo("/home/runtime/bin/tool");
     assertThat(text(result, "/spec/plan/0/spec/args/1")).isEqualTo("--arch=amd64");
     assertThat(text(result, "/spec/plan/0/spec/destination"))
         .isEqualTo("/home/runtime/.config/dest");
@@ -88,7 +89,7 @@ class WorkstationProfileInterpolatorTest {
                   kind: commands
                   spec:
                     commands:
-                      - "echo $(whoami) `date` *.txt ${binDir}"
+                      - "echo $(whoami) `date` *.txt $binDir"
             """);
     var interpolator =
         new WorkstationProfileInterpolator(Map.of("HOME", "/home/runtime"), Map.of());
@@ -96,7 +97,130 @@ class WorkstationProfileInterpolatorTest {
     JsonNode result = interpolator.interpolate(root);
 
     assertThat(text(result, "/spec/plan/0/spec/commands/0"))
-        .isEqualTo("echo $(whoami) `date` *.txt /home/runtime/bin");
+        .isEqualTo("echo $(whoami) `date` *.txt $binDir");
+  }
+
+  @Test
+  void interpolate_whenVariableEntersShellExpression_rejectsIt() throws IOException {
+    JsonNode root =
+        readTree(
+            """
+            apiVersion: initkit.io/v1alpha1
+            kind: WorkstationProfile
+            metadata:
+              name: shell-injection-test
+            spec:
+              plan:
+                - name: setup
+                  kind: commands
+                  spec:
+                    sudo: true
+                    commands:
+                      - "printf '%s' ${PAYLOAD}"
+            """);
+    var interpolator =
+        new WorkstationProfileInterpolator(
+            Map.of("PAYLOAD", "'; touch /tmp/root-owned; #"), Map.of());
+
+    assertThatThrownBy(() -> interpolator.interpolate(root))
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("spec.plan[0].spec.commands[0]")
+        .hasMessageContaining("cannot interpolate ${PAYLOAD} inside a shell expression")
+        .hasMessageContaining("use env or structured argv");
+  }
+
+  @Test
+  void interpolate_whenCommandKindIsDynamic_stillRejectsShellInterpolation() throws IOException {
+    JsonNode root =
+        readTree(
+            """
+            apiVersion: initkit.io/v1alpha1
+            kind: WorkstationProfile
+            metadata:
+              name: dynamic-kind-test
+            spec:
+              plan:
+                - name: setup
+                  kind: ${KIND}
+                  spec:
+                    commands:
+                      - "echo ${PAYLOAD}"
+            """);
+    var interpolator =
+        new WorkstationProfileInterpolator(
+            Map.of("KIND", "Commands", "PAYLOAD", "$(touch /tmp/should-not-run)"), Map.of());
+
+    assertThatThrownBy(() -> interpolator.interpolate(root))
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("spec.plan[0].spec.commands[0]")
+        .hasMessageContaining("cannot interpolate ${PAYLOAD} inside a shell expression");
+  }
+
+  @Test
+  void interpolate_whenVariableIsInsideExistingShellQuotes_rejectsBothContexts()
+      throws IOException {
+    JsonNode root =
+        readTree(
+            """
+            apiVersion: initkit.io/v1alpha1
+            kind: WorkstationProfile
+            metadata:
+              name: quoted-shell-injection-test
+            spec:
+              plan:
+                - name: setup
+                  kind: commands
+                  spec:
+                    commands:
+                      - >-
+                        printf '%s' "${PAYLOAD}"
+                      - >-
+                        printf '%s' '${PAYLOAD}'
+            """);
+    var interpolator =
+        new WorkstationProfileInterpolator(Map.of("PAYLOAD", "$(touch marker)"), Map.of());
+
+    assertThatThrownBy(() -> interpolator.interpolate(root))
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("spec.plan[0].spec.commands[0]")
+        .hasMessageContaining("spec.plan[0].spec.commands[1]")
+        .hasMessageContaining("cannot interpolate ${PAYLOAD} inside a shell expression");
+  }
+
+  @Test
+  void interpolate_whenVariablesEnterGuardsProbesAndAssertions_rejectsEveryShellField()
+      throws IOException {
+    JsonNode root =
+        readTree(
+            """
+            apiVersion: initkit.io/v1alpha1
+            kind: WorkstationProfile
+            metadata:
+              name: shell-field-interpolation-test
+            spec:
+              plan:
+                - name: guarded-script
+                  kind: shell-scripts
+                  spec:
+                    script: setup.sh
+                    unless: "test -f ${MARKER}"
+                - name: probed-command
+                  kind: commands
+                  spec:
+                    commands: [[true]]
+                    probeCommand: "test -f ${MARKER}"
+                - name: asserted
+                  kind: assert
+                  spec:
+                    command: "test -f ${MARKER}"
+            """);
+    var interpolator = new WorkstationProfileInterpolator(Map.of("MARKER", "/tmp/value"), Map.of());
+
+    assertThatThrownBy(() -> interpolator.interpolate(root))
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("spec.plan[0].spec.unless")
+        .hasMessageContaining("spec.plan[1].spec.probeCommand")
+        .hasMessageContaining("spec.plan[2].spec.command");
   }
 
   @Test
@@ -162,7 +286,7 @@ class WorkstationProfileInterpolatorTest {
           kind: commands
           spec:
             commands:
-              - install ${binDir}/tool ${HOME}/bin/tool
+              - [install, "${binDir}/tool", "${HOME}/bin/tool"]
             args:
               - --user=${USER}
               - --arch=${host.os.arch}

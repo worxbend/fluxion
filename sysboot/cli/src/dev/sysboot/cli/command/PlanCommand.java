@@ -9,6 +9,8 @@ import dev.sysboot.cli.output.CommandTextRedactor;
 import dev.sysboot.cli.output.JsonOutput;
 import dev.sysboot.cli.output.PlainExecutionReport;
 import dev.sysboot.core.BootstrapConfig;
+import dev.sysboot.core.DisplayTextSanitizer;
+import dev.sysboot.core.ExecutionApproval;
 import dev.sysboot.core.HostFacts;
 import dev.sysboot.core.InstallationStatus;
 import dev.sysboot.core.SkippedPlanEntry;
@@ -53,30 +55,35 @@ public final class PlanCommand implements Runnable {
   private boolean showCommands;
 
   private final CommandTextRedactor redactor = new CommandTextRedactor();
+  private final DisplayTextSanitizer sanitizer = new DisplayTextSanitizer();
 
   @Override
   public void run() {
-    var context = ApplicationContext.create(true, profile, skipAlreadyInstalled, false);
-    BootstrapConfig config = context.configLoader().load(options.resolvedConfigFile());
+    try (var context =
+        ApplicationContext.create(
+            true, profile, skipAlreadyInstalled, false, ExecutionApproval.denyAll(), true)) {
+      BootstrapConfig config = context.configLoader().load(options.resolvedConfigFile());
+      SemanticConfigValidation.requireValid(config);
+      ExecutionPlan plan = buildPlan(context, config);
+      Map<String, InstallationStatus> probeResults =
+          skipAlreadyInstalled
+              ? context.parallelProbeRunner().probeAll(plan, ignored -> {})
+              : Map.of();
+      switch (format) {
+        case JSON -> JsonOutput.write(spec.commandLine().getOut(), jsonPlan(plan, probeResults));
+        case TABLE -> writeTablePlan(plan, probeResults);
+        case TREE -> writeTreePlan(plan, probeResults);
+        case TEXT -> writeTextPlan(plan, probeResults, context.hostFactsProvider().facts());
+      }
+    }
+  }
 
-    ExecutionPlan plan;
+  private ExecutionPlan buildPlan(ApplicationContext context, BootstrapConfig config) {
     try {
-      plan = context.executionPlanBuilder().build(config);
+      return context.executionPlanBuilder().build(config);
     } catch (dev.sysboot.executor.CyclicDependencyException e) {
       throw new CliFailureException(
           ExitCode.CONFIGURATION_ERROR, "Cycle detected: " + e.getMessage(), e);
-    }
-
-    Map<String, InstallationStatus> probeResults =
-        skipAlreadyInstalled
-            ? context.parallelProbeRunner().probeAll(config.modules(), ignored -> {})
-            : Map.of();
-
-    switch (format) {
-      case JSON -> JsonOutput.write(spec.commandLine().getOut(), jsonPlan(plan, probeResults));
-      case TABLE -> writeTablePlan(plan, probeResults);
-      case TREE -> writeTreePlan(plan, probeResults);
-      case TEXT -> writeTextPlan(plan, probeResults, context.hostFactsProvider().facts());
     }
   }
 
@@ -87,18 +94,18 @@ public final class PlanCommand implements Runnable {
     PlainExecutionReport.writeHeader(
         out, "plan", "plan", plan.profileName(), hostFacts, Optional.of(statePath));
     PlainExecutionReport.writeWorkstationSelection(out, plan);
-    out.println("Execution plan for: " + plan.profileName());
+    out.println("Execution plan for: " + safe(plan.profileName()));
     out.println();
-    writeTextSourceSetups(plan);
+    writeTextSourceSetups(plan, probeResults);
 
     for (int i = 0; i < plan.phases().size(); i++) {
       ExecutionPlan.Phase phase = plan.phases().get(i);
-      out.printf("Phase %d: %-25s [%s]%n", i + 1, phase.name(), dependencyLabel(phase));
+      out.printf("Phase %d: %-25s [%s]%n", i + 1, safe(phase.name()), dependencyLabel(phase));
 
       for (ExecutionPlan.Module module : phase.modules()) {
         for (ExecutionPlan.Item item : module.items()) {
-          String skipLabel = computeSkipLabel(item.item().key(), probeResults);
-          out.printf("  • %-35s %s%n", item.item().displayName(), skipLabel);
+          String skipLabel = computeSkipLabel(item.item(), probeResults);
+          out.printf("  • %-35s %s%n", safe(item.item().displayName()), safe(skipLabel));
           if (showCommands && item.commandPreview().isPresent()) {
             out.printf("    $ %s%n", commandPreview(item));
           }
@@ -131,22 +138,22 @@ public final class PlanCommand implements Runnable {
     for (SkippedPlanEntry skipped : plan.skippedEntries()) {
       out.printf(
           "%-22s %-24s %-35s skipped: %s%n",
-          "manifest-plan", skipped.name(), skipped.kind(), skipped.reason());
+          "manifest-plan", safe(skipped.name()), safe(skipped.kind()), safe(skipped.reason()));
     }
   }
 
   private void writeTreePlan(ExecutionPlan plan, Map<String, InstallationStatus> probeResults) {
     var out = spec.commandLine().getOut();
-    out.println("Execution plan for: " + plan.profileName());
+    out.println("Execution plan for: " + safe(plan.profileName()));
     writeTreeSourceSetups(plan, probeResults);
     for (ExecutionPlan.Phase phase : plan.phases()) {
-      out.printf("└─ %s [%s]%n", phase.name(), dependencyLabel(phase));
+      out.printf("└─ %s [%s]%n", safe(phase.name()), dependencyLabel(phase));
       for (ExecutionPlan.Module module : phase.modules()) {
-        out.printf("   └─ %s (%s)%n", module.name(), module.type());
+        out.printf("   └─ %s (%s)%n", safe(module.name()), safe(module.type()));
         for (ExecutionPlan.Item item : module.items()) {
           out.printf(
               "      └─ %s - %s%n",
-              item.item().displayName(), computeSkipLabel(item.item().key(), probeResults));
+              safe(item.item().displayName()), safe(computeSkipLabel(item.item(), probeResults)));
           if (showCommands && item.commandPreview().isPresent()) {
             out.printf("         $ %s%n", commandPreview(item));
           }
@@ -160,11 +167,13 @@ public final class PlanCommand implements Runnable {
     if (phase.dependsOn().isEmpty()) {
       return "no deps";
     }
-    return "after: " + String.join(", ", phase.dependsOn());
+    return safe("after: " + String.join(", ", phase.dependsOn()));
   }
 
   private String commandPreview(ExecutionPlan.Item item) {
-    return String.join(" ", redactor.redactCommand(item.commandPreview().orElseThrow()));
+    return String.join(
+        " ",
+        sanitizer.sanitizeCommand(redactor.redactCommand(item.commandPreview().orElseThrow())));
   }
 
   private Map<String, Object> jsonPlan(
@@ -187,12 +196,13 @@ public final class PlanCommand implements Runnable {
     }
     out.println("Skipped WorkstationProfile entries:");
     for (SkippedPlanEntry skipped : skippedEntries) {
-      out.printf("  • %-35s %s%n", skipped.name(), skipped.reason());
+      out.printf("  • %-35s %s%n", safe(skipped.name()), safe(skipped.reason()));
     }
     out.println();
   }
 
-  private void writeTextSourceSetups(ExecutionPlan plan) {
+  private void writeTextSourceSetups(
+      ExecutionPlan plan, Map<String, InstallationStatus> probeResults) {
     var out = spec.commandLine().getOut();
     if (plan.sourceSetups().isEmpty()) {
       return;
@@ -200,7 +210,9 @@ public final class PlanCommand implements Runnable {
     out.println("Source setup:");
     for (ExecutionPlan.Module module : plan.sourceSetups()) {
       for (ExecutionPlan.Item item : module.items()) {
-        out.printf("  • %-35s would run%n", item.item().displayName());
+        out.printf(
+            "  • %-35s %s%n",
+            safe(item.item().displayName()), safe(computeSkipLabel(item.item(), probeResults)));
         if (showCommands && item.commandPreview().isPresent()) {
           out.printf("    $ %s%n", commandPreview(item));
         }
@@ -215,10 +227,10 @@ public final class PlanCommand implements Runnable {
     for (ExecutionPlan.Item item : module.items()) {
       out.printf(
           "%-22s %-24s %-35s %s%n",
-          phase,
-          module.name(),
-          item.item().displayName(),
-          computeSkipLabel(item.item().key(), probeResults));
+          safe(phase),
+          safe(module.name()),
+          safe(item.item().displayName()),
+          safe(computeSkipLabel(item.item(), probeResults)));
       if (showCommands && item.commandPreview().isPresent()) {
         out.printf("%-22s %-24s %-35s $ %s%n", "", "", "", commandPreview(item));
       }
@@ -233,11 +245,11 @@ public final class PlanCommand implements Runnable {
     }
     out.println("└─ source setup");
     for (ExecutionPlan.Module module : plan.sourceSetups()) {
-      out.printf("   └─ %s (%s)%n", module.name(), module.type());
+      out.printf("   └─ %s (%s)%n", safe(module.name()), safe(module.type()));
       for (ExecutionPlan.Item item : module.items()) {
         out.printf(
             "      └─ %s - %s%n",
-            item.item().displayName(), computeSkipLabel(item.item().key(), probeResults));
+            safe(item.item().displayName()), safe(computeSkipLabel(item.item(), probeResults)));
         if (showCommands && item.commandPreview().isPresent()) {
           out.printf("         $ %s%n", commandPreview(item));
         }
@@ -252,7 +264,9 @@ public final class PlanCommand implements Runnable {
     }
     out.println("└─ skipped WorkstationProfile entries");
     for (SkippedPlanEntry skipped : skippedEntries) {
-      out.printf("   └─ %s (%s) - %s%n", skipped.name(), skipped.kind(), skipped.reason());
+      out.printf(
+          "   └─ %s (%s) - %s%n",
+          safe(skipped.name()), safe(skipped.kind()), safe(skipped.reason()));
     }
   }
 
@@ -295,16 +309,21 @@ public final class PlanCommand implements Runnable {
     output.put(
         "packageManager",
         item.item().packageManager().map(kind -> kind.name().toLowerCase()).orElse(null));
-    output.put("status", computeSkipLabel(item.item().key(), probeResults));
+    output.put("status", computeSkipLabel(item.item(), probeResults));
     output.put(
         "commandPreview", item.commandPreview().map(redactor::redactCommand).orElse(List.of()));
     return output;
   }
 
-  private String computeSkipLabel(String item, Map<String, InstallationStatus> probeResults) {
-    if (!skipAlreadyInstalled) return "would run";
-    InstallationStatus status = probeResults.get(item);
-    if (status == null) return "would run";
+  private String computeSkipLabel(
+      dev.sysboot.core.ModuleItem item, Map<String, InstallationStatus> probeResults) {
+    if (!skipAlreadyInstalled) {
+      return "would run";
+    }
+    InstallationStatus status = probeResults.get(item.qualifiedKey());
+    if (status == null) {
+      return "would run";
+    }
     return switch (status) {
       case InstallationStatus.InstalledByProbe p ->
           "○ would skip (probe: installed"
@@ -315,6 +334,10 @@ public final class PlanCommand implements Runnable {
       case InstallationStatus.NotInstalled ignored -> "would run";
       case InstallationStatus.Unknown ignored -> "would run (probe unknown)";
     };
+  }
+
+  private String safe(Object value) {
+    return sanitizer.sanitizeLine(String.valueOf(value));
   }
 
   private enum PlanFormat {

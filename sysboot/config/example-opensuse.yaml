@@ -10,11 +10,11 @@ jobs:
       type: none
     continueOnModuleError: true
     steps:
-      - type: shell-command
+      - type: system-update
         name: refresh-system
-        commands:
-          - "sudo zypper --non-interactive refresh"
-          - "sudo zypper --non-interactive update"
+        packageManager: zypper
+        distUpgrade: false
+        refreshOnly: false
         continueOnError: false
 
       - type: packages
@@ -86,6 +86,8 @@ jobs:
       - type: oh-my-zsh
         name: oh-my-zsh
         installDir: "~/.oh-my-zsh"
+        revision: c5ba74cf02cce4c342153f79089100194f30940f
+        sha256: 95118b50d062198597e2b73d3a57b609fd95ca68cdc86faf4460d955f0172b61
         probeCommand: "test -d ~/.oh-my-zsh"
 
   - name: desktop-apps
@@ -100,6 +102,9 @@ jobs:
         name: flathub-remote
         remote: flathub
         url: https://flathub.org/repo/flathub.flatpakrepo
+        checksum:
+          algorithm: sha256
+          value: 3371dd250e61d9e1633630073fefda153cd4426f72f4afa0c3373ae2e8fea03a
 
       - type: flatpak
         name: desktop-flatpaks

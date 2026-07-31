@@ -40,7 +40,7 @@ class DefaultShellExecutorTest {
     when(runner.run(any(), any(), any()))
         .thenReturn(new ProcessResult(0, "", "", Duration.ofSeconds(1)));
 
-    var executor = new DefaultShellExecutor(runner);
+    var executor = new DefaultShellExecutor(runner, Optional.of("alice"));
     var module = new DefaultShellModule(new ModuleName("default-shell"), zsh, Optional.empty());
     StepResult result = executor.execute(module);
 
@@ -49,7 +49,7 @@ class DefaultShellExecutorTest {
     @SuppressWarnings("unchecked")
     ArgumentCaptor<List<String>> captor = ArgumentCaptor.forClass(List.class);
     verify(runner).run(captor.capture(), any(), any());
-    assertThat(captor.getValue()).contains("chsh", "-s", zsh.toString());
+    assertThat(captor.getValue()).containsExactly("sudo", "chsh", "-s", zsh.toString(), "alice");
   }
 
   @Test
@@ -82,5 +82,52 @@ class DefaultShellExecutorTest {
 
     StepResult result = executor.execute(module);
     assertThat(result).isInstanceOf(StepResult.Failure.class);
+  }
+
+  @Test
+  void commandPreview_usesSameStructuredPrivilegedArgv() throws IOException {
+    Path zsh = Files.createFile(tempDir.resolve("zsh"));
+    var executor = new DefaultShellExecutor(runner, Optional.of("developer"));
+    var module = new DefaultShellModule(new ModuleName("default-shell"), zsh, Optional.empty());
+
+    assertThat(executor.commandPreview(module))
+        .containsExactly("sudo", "chsh", "-s", zsh.toString(), "developer");
+  }
+
+  @Test
+  void commandPreview_whenTargetUserIsUnsafe_refusesBeforeBuildingArgv() throws IOException {
+    Path zsh = Files.createFile(tempDir.resolve("zsh"));
+    var executor = new DefaultShellExecutor(runner, Optional.of("root;touch-pwned"));
+    var module = new DefaultShellModule(new ModuleName("default-shell"), zsh, Optional.empty());
+
+    org.assertj.core.api.Assertions.assertThatThrownBy(() -> executor.commandPreview(module))
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("safe Linux account name");
+  }
+
+  @Test
+  void execute_whenShellPathIsRelative_refusesBeforeRunningChsh() {
+    var executor = new DefaultShellExecutor(runner, Optional.of("alice"));
+    var module =
+        new DefaultShellModule(
+            new ModuleName("default-shell"), Path.of("bin/zsh"), Optional.empty());
+
+    StepResult result = executor.execute(module);
+
+    assertThat(result).isInstanceOf(StepResult.Failure.class);
+    assertThat(((StepResult.Failure) result).errorMessage()).contains("must be absolute");
+    verify(runner, never()).run(any(), any(), any());
+  }
+
+  @Test
+  void commandPreview_whenShellPathIsRelative_refusesBeforeBuildingArgv() {
+    var executor = new DefaultShellExecutor(runner, Optional.of("alice"));
+    var module =
+        new DefaultShellModule(
+            new ModuleName("default-shell"), Path.of("bin/zsh"), Optional.empty());
+
+    org.assertj.core.api.Assertions.assertThatThrownBy(() -> executor.commandPreview(module))
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("must be absolute");
   }
 }

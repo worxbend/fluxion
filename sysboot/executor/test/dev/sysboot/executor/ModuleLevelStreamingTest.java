@@ -115,7 +115,7 @@ class ModuleLevelStreamingTest {
         Optional.empty(),
         "test",
         runner,
-        new DefaultShellRunner());
+        dev.sysboot.core.ExecutionApproval.denyAll());
   }
 
   private BootstrapConfig configWith(BootstrapModule... modules) {

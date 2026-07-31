@@ -44,9 +44,7 @@ public record BinstallerModule(
     Objects.requireNonNull(probeCommand);
     only = List.copyOf(Objects.requireNonNull(only));
     skip = List.copyOf(Objects.requireNonNull(skip));
-    if (installerVersion.isBlank()) {
-      throw new IllegalArgumentException("installerVersion must not be blank");
-    }
+    ReleaseTagPolicy.requireExact("installerVersion", installerVersion);
     if (binstallerBinary.isBlank()) {
       throw new IllegalArgumentException("binstallerBinary must not be blank");
     }

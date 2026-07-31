@@ -1,6 +1,7 @@
 package dev.sysboot.executor;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import dev.sysboot.core.AptRepositoryModule;
 import dev.sysboot.core.BinaryUrl;
@@ -19,6 +20,7 @@ import dev.sysboot.core.PhaseName;
 import dev.sysboot.core.ProfileName;
 import dev.sysboot.core.RestartPolicy;
 import dev.sysboot.core.RpmRepositoryModule;
+import dev.sysboot.core.Sha256Digest;
 import java.net.URI;
 import java.nio.file.Path;
 import java.util.List;
@@ -60,12 +62,12 @@ class ConfigValidatorTest {
   }
 
   @Test
-  void validate_whenCompiledBinaryHasNoChecksum_reportsWarning() throws Exception {
+  void validate_whenCompiledBinaryHasNoTrustMetadata_reportsError() throws Exception {
     var module =
         new CompiledBinaryModule(
             new ModuleName("ripgrep"),
             "rg",
-            new BinaryUrl(new URI("https://example.test/rg.tar.gz")),
+            new BinaryUrl(new URI("https://example.test/rg")),
             Optional.empty(),
             Optional.empty(),
             Path.of("/usr/local/bin/rg"),
@@ -73,14 +75,13 @@ class ConfigValidatorTest {
 
     ValidationReport report = validator.validate(config(phase("base", List.of(module))));
 
-    assertThat(report.hasErrors()).isFalse();
-    assertThat(report.hasWarnings()).isTrue();
+    assertThat(report.hasErrors()).isTrue();
     assertThat(report.issues())
         .anySatisfy(
             issue -> {
-              assertThat(issue.severity()).isEqualTo(ValidationIssue.Severity.WARNING);
+              assertThat(issue.severity()).isEqualTo(ValidationIssue.Severity.ERROR);
               assertThat(issue.path()).isEqualTo("jobs[0].steps[0].checksum");
-              assertThat(issue.message()).contains("no checksum");
+              assertThat(issue.message()).contains("must declare a literal SHA-256 checksum");
             });
   }
 
@@ -109,12 +110,12 @@ class ConfigValidatorTest {
   }
 
   @Test
-  void validate_whenCompiledBinaryHasChecksumUrl_doesNotReportMissingChecksum() throws Exception {
+  void validate_whenCompiledBinaryHasOnlyChecksumUrl_reportsMissingTrustAnchor() throws Exception {
     var module =
         new CompiledBinaryModule(
             new ModuleName("ripgrep"),
             "rg",
-            new BinaryUrl(new URI("https://example.test/rg.tar.gz")),
+            new BinaryUrl(new URI("https://example.test/rg")),
             Optional.empty(),
             Optional.of(new BinaryUrl(new URI("https://example.test/rg.sha256"))),
             Path.of("/usr/local/bin/rg"),
@@ -122,28 +123,63 @@ class ConfigValidatorTest {
 
     ValidationReport report = validator.validate(config(phase("base", List.of(module))));
 
+    assertThat(report.hasErrors()).isTrue();
     assertThat(report.issues())
-        .noneMatch(issue -> issue.path().equals("jobs[0].steps[0].checksum"));
+        .anySatisfy(
+            issue -> {
+              assertThat(issue.path()).isEqualTo("jobs[0].steps[0].checksum");
+              assertThat(issue.message()).contains("literal SHA-256").contains("supplemental");
+            });
   }
 
   @Test
-  void validate_whenCompiledBinaryHasSignatureUrl_doesNotReportMissingIntegrityMetadata()
-      throws Exception {
+  void validate_whenCompiledBinaryHasSignatureWithoutSigner_reportsError() throws Exception {
     var module =
         new CompiledBinaryModule(
             new ModuleName("ripgrep"),
             "rg",
-            new BinaryUrl(new URI("https://example.test/rg.tar.gz")),
+            new BinaryUrl(new URI("https://example.test/rg")),
             Optional.empty(),
             Optional.empty(),
-            Optional.of(new BinaryUrl(new URI("https://example.test/rg.tar.gz.asc"))),
+            Optional.of(new BinaryUrl(new URI("https://example.test/rg.asc"))),
             Path.of("/usr/local/bin/rg"),
             false);
 
     ValidationReport report = validator.validate(config(phase("base", List.of(module))));
 
+    assertThat(report.hasErrors()).isTrue();
     assertThat(report.issues())
-        .noneMatch(issue -> issue.path().equals("jobs[0].steps[0].checksum"));
+        .anyMatch(issue -> issue.path().equals("jobs[0].steps[0].signatureUrl"));
+  }
+
+  @Test
+  void validate_whenCompiledBinaryHasSignatureAndAllowedSigner_acceptsTrustMetadata()
+      throws Exception {
+    var module =
+        new CompiledBinaryModule(
+            new ModuleName("ripgrep"),
+            "rg",
+            new BinaryUrl(new URI("https://example.test/rg")),
+            Optional.empty(),
+            Optional.empty(),
+            Optional.of(new BinaryUrl(new URI("https://example.test/rg.asc"))),
+            Path.of("/usr/local/bin/rg"),
+            Optional.empty(),
+            0,
+            Optional.of("0755"),
+            Optional.empty(),
+            false,
+            Optional.empty(),
+            Optional.empty(),
+            Optional.of("A".repeat(40)));
+
+    ValidationReport report = validator.validate(config(phase("base", List.of(module))));
+
+    assertThat(report.issues())
+        .noneMatch(
+            issue ->
+                issue.path().equals("jobs[0].steps[0].checksum")
+                    || issue.path().equals("jobs[0].steps[0].signatureUrl"));
   }
 
   @Test
@@ -152,7 +188,7 @@ class ConfigValidatorTest {
         new CompiledBinaryModule(
             new ModuleName("ripgrep"),
             "rg",
-            new BinaryUrl(new URI("https://example.test/rg.tar.gz")),
+            new BinaryUrl(new URI("https://example.test/rg")),
             Optional.of(new Checksum("SHA-256", "a".repeat(64))),
             Optional.of(new BinaryUrl(new URI("https://example.test/rg.sha256"))),
             Path.of("/usr/local/bin/rg"),
@@ -176,7 +212,7 @@ class ConfigValidatorTest {
         new CompiledBinaryModule(
             new ModuleName("ripgrep"),
             "rg",
-            new BinaryUrl(new URI("https://example.test/rg.tar.gz")),
+            new BinaryUrl(new URI("https://example.test/rg")),
             Optional.of(new Checksum("SHA-1", "a".repeat(40))),
             Optional.empty(),
             Path.of("/usr/local/bin/rg"),
@@ -191,6 +227,47 @@ class ConfigValidatorTest {
               assertThat(issue.severity()).isEqualTo(ValidationIssue.Severity.ERROR);
               assertThat(issue.path()).isEqualTo("jobs[0].steps[0].checksum.algorithm");
               assertThat(issue.message()).contains("unsupported checksum algorithm");
+            });
+  }
+
+  @Test
+  void validate_whenCompiledBinaryUsesSha256Alias_acceptsCanonicalChecksum() throws Exception {
+    var module =
+        new CompiledBinaryModule(
+            new ModuleName("ripgrep"),
+            "rg",
+            new BinaryUrl(new URI("https://example.test/rg")),
+            Optional.of(new Checksum("sha256", "a".repeat(64))),
+            Optional.empty(),
+            Path.of("/usr/local/bin/rg"),
+            false);
+
+    ValidationReport report = validator.validate(config(phase("base", List.of(module))));
+
+    assertThat(report.issues())
+        .noneMatch(issue -> issue.path().startsWith("jobs[0].steps[0].checksum"));
+  }
+
+  @Test
+  void validate_whenCompiledBinarySha256DigestMalformed_reportsValueError() throws Exception {
+    var module =
+        new CompiledBinaryModule(
+            new ModuleName("ripgrep"),
+            "rg",
+            new BinaryUrl(new URI("https://example.test/rg")),
+            Optional.of(new Checksum("SHA-256", "not-a-digest")),
+            Optional.empty(),
+            Path.of("/usr/local/bin/rg"),
+            false);
+
+    ValidationReport report = validator.validate(config(phase("base", List.of(module))));
+
+    assertThat(report.issues())
+        .anySatisfy(
+            issue -> {
+              assertThat(issue.severity()).isEqualTo(ValidationIssue.Severity.ERROR);
+              assertThat(issue.path()).isEqualTo("jobs[0].steps[0].checksum.value");
+              assertThat(issue.message()).contains("64-character hexadecimal");
             });
   }
 
@@ -220,7 +297,8 @@ class ConfigValidatorTest {
                 + " bookworm stable",
             Path.of("/etc/apt/sources.list.d/docker.list"),
             Optional.of(URI.create("https://download.docker.com/linux/debian/gpg")),
-            Optional.of(Path.of("/etc/apt/keyrings/docker.gpg")));
+            Optional.of(Path.of("/etc/apt/keyrings/docker.gpg")),
+            Optional.of(new Sha256Digest("a".repeat(64))));
 
     ValidationReport report =
         validator.validate(
@@ -234,10 +312,11 @@ class ConfigValidatorTest {
     var module =
         new AptRepositoryModule(
             new ModuleName("docker"),
-            "deb https://download.docker.com/linux/debian bookworm stable",
+            "deb [signed-by=/etc/apt/keyrings/docker.gpg]"
+                + " https://download.docker.com/linux/debian bookworm stable",
             Path.of("/etc/apt/sources.list.d/docker.list"),
             Optional.empty(),
-            Optional.empty());
+            Optional.of(Path.of("/etc/apt/keyrings/docker.gpg")));
 
     ValidationReport report = validator.validate(config(phase("repos", List.of(module))));
 
@@ -261,7 +340,8 @@ class ConfigValidatorTest {
             Path.of("/etc/yum.repos.d/docker.repo"),
             Optional.of(URI.create("https://download.docker.com/linux/fedora/gpg")),
             true,
-            true);
+            true,
+            Optional.of(new Sha256Digest("a".repeat(64))));
 
     ValidationReport report = validator.validate(config(phase("repos", List.of(module))));
 
@@ -277,7 +357,7 @@ class ConfigValidatorTest {
             URI.create("https://download.docker.com/linux/fedora/$releasever/stable"),
             Path.of("/etc/yum.repos.d/docker.repo"),
             Optional.empty(),
-            true,
+            false,
             false);
 
     ValidationReport report =
@@ -295,27 +375,19 @@ class ConfigValidatorTest {
   }
 
   @Test
-  void validate_whenRpmRepositoryChecksGpgWithoutKey_reportsWarning() {
-    var module =
-        new RpmRepositoryModule(
-            new ModuleName("docker"),
-            "docker",
-            URI.create("https://download.docker.com/linux/fedora/$releasever/stable"),
-            Path.of("/etc/yum.repos.d/docker.repo"),
-            Optional.empty(),
-            true,
-            true);
-
-    ValidationReport report = validator.validate(config(phase("repos", List.of(module))));
-
-    assertThat(report.hasWarnings()).isTrue();
-    assertThat(report.issues())
-        .anySatisfy(
-            issue -> {
-              assertThat(issue.severity()).isEqualTo(ValidationIssue.Severity.WARNING);
-              assertThat(issue.path()).isEqualTo("jobs[0].steps[0].gpgKeyUrl");
-              assertThat(issue.message()).contains("no GPG key URL");
-            });
+  void validate_whenRpmRepositoryChecksGpgWithoutKey_isRejectedBeforeValidation() {
+    assertThatThrownBy(
+            () ->
+                new RpmRepositoryModule(
+                    new ModuleName("docker"),
+                    "docker",
+                    URI.create("https://download.docker.com/linux/fedora/$releasever/stable"),
+                    Path.of("/etc/yum.repos.d/docker.repo"),
+                    Optional.empty(),
+                    true,
+                    true))
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("gpgCheck");
   }
 
   @Test
@@ -326,7 +398,7 @@ class ConfigValidatorTest {
             "chaotic-aur",
             URI.create("https://cdn-mirror.chaotic.cx/$repo/$arch"),
             Path.of("/etc/pacman.conf"),
-            Optional.of("Required DatabaseOptional"),
+            Optional.of("Required TrustedOnly"),
             Optional.empty(),
             true);
 
@@ -344,7 +416,7 @@ class ConfigValidatorTest {
             "chaotic-aur",
             URI.create("https://cdn-mirror.chaotic.cx/$repo/$arch"),
             Path.of("/etc/pacman.conf"),
-            Optional.of("Required DatabaseOptional"),
+            Optional.of("Required TrustedOnly"),
             Optional.empty(),
             true);
 

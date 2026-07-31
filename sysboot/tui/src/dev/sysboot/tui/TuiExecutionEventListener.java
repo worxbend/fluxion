@@ -1,18 +1,28 @@
 package dev.sysboot.tui;
 
+import dev.sysboot.core.DisplayTextSanitizer;
+import dev.sysboot.core.EventKind;
 import dev.sysboot.core.ExecutionEvent;
 import dev.sysboot.core.ExecutionEventListener;
 import dev.sysboot.core.StepResult;
 import java.time.Duration;
+import java.util.Map;
 import java.util.Optional;
-import java.util.concurrent.LinkedBlockingQueue;
+import java.util.concurrent.ArrayBlockingQueue;
+import java.util.concurrent.BlockingQueue;
+import java.util.concurrent.ConcurrentHashMap;
 
 public final class TuiExecutionEventListener implements ExecutionEventListener {
 
   private static final int MAX_DRAIN_PER_TICK = 50;
+  static final int EVENT_QUEUE_CAPACITY = 512;
+  static final int STRUCTURAL_EVENT_RESERVE = 64;
 
-  private final LinkedBlockingQueue<ExecutionEvent> eventQueue = new LinkedBlockingQueue<>();
-  private final dev.sysboot.core.SecretRedactor redactor = new dev.sysboot.core.SecretRedactor();
+  private final BlockingQueue<ExecutionEvent> eventQueue =
+      new ArrayBlockingQueue<>(EVENT_QUEUE_CAPACITY);
+  private final DisplayTextSanitizer sanitizer = new DisplayTextSanitizer();
+  private final Map<OutputKey, DisplayTextSanitizer.StreamingLineSanitizer> outputSanitizers =
+      new ConcurrentHashMap<>();
   private volatile boolean showCommandOutput;
 
   /** Enables the live command-output log pane, off by default. */
@@ -23,7 +33,21 @@ public final class TuiExecutionEventListener implements ExecutionEventListener {
 
   @Override
   public void onEvent(ExecutionEvent event) {
-    eventQueue.offer(event);
+    if (event.kind() == EventKind.ITEM_OUTPUT) {
+      String safeLine = event.outputLine().map(line -> displayOutput(event, line)).orElse("");
+      enqueueOutput(event, safeLine);
+      return;
+    }
+    if (event.kind() == EventKind.ITEM_STARTED) {
+      outputSanitizers.put(outputKey(event), sanitizer.streamingLines());
+    }
+    if (event.kind() == EventKind.ITEM_COMPLETED) {
+      flushOutput(event);
+    }
+    enqueueStructural(event);
+    if (event.kind() == EventKind.ITEM_COMPLETED) {
+      outputSanitizers.remove(outputKey(event));
+    }
   }
 
   public ExecutionScreenState drainInto(ExecutionScreenState state) {
@@ -49,28 +73,77 @@ public final class TuiExecutionEventListener implements ExecutionEventListener {
     return !eventQueue.isEmpty();
   }
 
+  int pendingEventCount() {
+    return eventQueue.size();
+  }
+
+  private void flushOutput(ExecutionEvent event) {
+    Optional.ofNullable(outputSanitizers.get(outputKey(event)))
+        .map(DisplayTextSanitizer.StreamingLineSanitizer::finish)
+        .ifPresent(line -> enqueueOutput(event, line));
+  }
+
+  private void enqueueOutput(ExecutionEvent event, String safeLine) {
+    if (showCommandOutput
+        && !safeLine.isBlank()
+        && eventQueue.remainingCapacity() > STRUCTURAL_EVENT_RESERVE) {
+      if (!eventQueue.offer(
+          ExecutionEvent.itemOutput(event.moduleName(), event.item(), safeLine))) {
+        return;
+      }
+    }
+  }
+
+  private void enqueueStructural(ExecutionEvent event) {
+    boolean interrupted = Thread.interrupted();
+    while (!eventQueue.offer(event)) {
+      if (discardQueuedOutput()) {
+        continue;
+      }
+      try {
+        eventQueue.put(event);
+      } catch (InterruptedException ignored) {
+        interrupted = true;
+        continue;
+      }
+      break;
+    }
+    if (interrupted) {
+      Thread.currentThread().interrupt();
+    }
+  }
+
+  private boolean discardQueuedOutput() {
+    for (ExecutionEvent queued : eventQueue) {
+      if (queued.kind() == EventKind.ITEM_OUTPUT && eventQueue.remove(queued)) {
+        return true;
+      }
+    }
+    return false;
+  }
+
   private ExecutionScreenState applyEvent(ExecutionScreenState state, ExecutionEvent event) {
     return switch (event.kind()) {
-      case PHASE_STARTED -> state.withLogLine("[PHASE] " + event.moduleName().value());
-      case PHASE_COMPLETED -> state.withLogLine("[PHASE DONE] " + event.moduleName().value());
-      case PHASE_FAILED -> state.withLogLine("[PHASE FAILED] " + event.moduleName().value());
-      case PHASE_BLOCKED -> state.withLogLine("[PHASE BLOCKED] " + event.moduleName().value());
-      case RESTART_REQUIRED -> state.withLogLine("[RESTART REQUIRED] " + event.item());
+      case PHASE_STARTED -> state.withLogLine("[PHASE] " + displayModule(event));
+      case PHASE_COMPLETED -> state.withLogLine("[PHASE DONE] " + displayModule(event));
+      case PHASE_FAILED -> state.withLogLine("[PHASE FAILED] " + displayModule(event));
+      case PHASE_BLOCKED -> state.withLogLine("[PHASE BLOCKED] " + displayModule(event));
+      case RESTART_REQUIRED -> state.withLogLine("[RESTART REQUIRED] " + display(event.item()));
       case MODULE_STARTED ->
           state
-              .withModule(event.moduleName().value())
+              .withModule(displayModule(event))
               .withItemIfPlanEntry(
                   ItemStatus.running(event.moduleName().value(), event.moduleName().value()))
-              .withLogLine("[START] Module: " + event.moduleName().value());
+              .withLogLine("[START] Module: " + displayModule(event));
       case MODULE_COMPLETED ->
           completeModule(state, event.moduleName().value())
-              .withLogLine("[DONE]  Module: " + event.moduleName().value());
-      case ITEM_STARTED -> startItem(state, event).withLogLine("[RUN]   " + event.item());
+              .withLogLine("[DONE]  Module: " + displayModule(event));
+      case ITEM_STARTED -> startItem(state, event).withLogLine("[RUN]   " + display(event.item()));
       case ITEM_OUTPUT -> applyItemOutput(state, event);
       case ITEM_COMPLETED -> applyItemCompleted(state, event);
       case CANCELLED -> state.withLogLine(cancellationMessage(event));
       case ERROR ->
-          state.withLogLine("[ERROR] " + event.item() + " in " + event.moduleName().value());
+          state.withLogLine("[ERROR] " + display(event.item()) + " in " + displayModule(event));
     };
   }
 
@@ -89,15 +162,15 @@ public final class TuiExecutionEventListener implements ExecutionEventListener {
     return event
         .outputLine()
         .filter(line -> !line.isBlank())
-        .map(redactor::redact)
+        .map(this::display)
         .map(state::withLogLine)
         .orElse(state);
   }
 
   private String cancellationMessage(ExecutionEvent event) {
     return event.item().isBlank()
-        ? "[CANCELLED] stopped before " + event.moduleName().value()
-        : "[CANCELLED] stopped before " + event.item();
+        ? "[CANCELLED] stopped before " + displayModule(event)
+        : "[CANCELLED] stopped before " + display(event.item());
   }
 
   private ExecutionScreenState applyItemCompleted(
@@ -113,7 +186,7 @@ public final class TuiExecutionEventListener implements ExecutionEventListener {
     }
     return state
         .withItem(
-            ItemStatus.running(event.item(), event.moduleName().value())
+            ItemStatus.running(display(event.item()), displayModule(event))
                 .withResult(itemResult, elapsed))
         .withLogLine(formatLogLine(event.item(), result));
   }
@@ -126,7 +199,7 @@ public final class TuiExecutionEventListener implements ExecutionEventListener {
       return state.withItem(
           ItemStatus.running(event.moduleName().value(), event.moduleName().value()));
     }
-    return state.withItem(ItemStatus.running(event.item(), event.moduleName().value()));
+    return state.withItem(ItemStatus.running(display(event.item()), displayModule(event)));
   }
 
   private ExecutionScreenState completeModule(ExecutionScreenState state, String moduleName) {
@@ -207,9 +280,9 @@ public final class TuiExecutionEventListener implements ExecutionEventListener {
 
   private Optional<String> detail(StepResult result) {
     return switch (result) {
-      case StepResult.Failure f -> Optional.of(f.errorMessage());
-      case StepResult.Skipped s -> Optional.of(s.reason());
-      case StepResult.Paused p -> Optional.of(p.message());
+      case StepResult.Failure f -> Optional.of(display(f.errorMessage()));
+      case StepResult.Skipped s -> Optional.of(display(s.reason()));
+      case StepResult.Paused p -> Optional.of(display(p.message()));
       default -> Optional.empty();
     };
   }
@@ -235,15 +308,39 @@ public final class TuiExecutionEventListener implements ExecutionEventListener {
   }
 
   private String formatLogLine(String item, StepResult result) {
+    String safeItem = display(item);
     return switch (result) {
       case StepResult.Success s ->
-          String.format("[OK]    %s (%.1fs)", item, s.elapsed().toMillis() / 1000.0);
+          String.format("[OK]    %s (%.1fs)", safeItem, s.elapsed().toMillis() / 1000.0);
       case StepResult.Failure f ->
-          String.format("[FAIL]  %s (exit %d): %s", item, f.exitCode(), f.errorMessage());
-      case StepResult.Skipped s -> String.format("[SKIP]  %s: %s", item, s.reason());
+          String.format(
+              "[FAIL]  %s (exit %d): %s", safeItem, f.exitCode(), display(f.errorMessage()));
+      case StepResult.Skipped s -> String.format("[SKIP]  %s: %s", safeItem, display(s.reason()));
       case StepResult.DryRun d ->
-          String.format("[DRY]   %s: %s", item, String.join(" ", d.wouldExecute()));
-      case StepResult.Paused p -> String.format("[PAUSE] %s: %s", item, p.message());
+          String.format(
+              "[DRY]   %s: %s",
+              safeItem, String.join(" ", sanitizer.sanitizeCommand(d.wouldExecute())));
+      case StepResult.Paused p -> String.format("[PAUSE] %s: %s", safeItem, display(p.message()));
     };
   }
+
+  private String displayModule(ExecutionEvent event) {
+    return display(event.moduleName().value());
+  }
+
+  private String display(String text) {
+    return sanitizer.sanitizeLine(text);
+  }
+
+  private String displayOutput(ExecutionEvent event, String line) {
+    return outputSanitizers
+        .computeIfAbsent(outputKey(event), ignored -> sanitizer.streamingLines())
+        .sanitizeLine(line);
+  }
+
+  private OutputKey outputKey(ExecutionEvent event) {
+    return new OutputKey(event.moduleName().value(), event.item());
+  }
+
+  private record OutputKey(String module, String item) {}
 }

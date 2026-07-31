@@ -35,7 +35,7 @@ class NerdFontExecutorTest {
             true,
             List.of("JetBrainsMono", "FiraCode"));
     return new NerdFontModule(
-        new ModuleName("nerd-fonts"), "v1.0.5", "nerdfetch", config, Optional.empty());
+        new ModuleName("nerd-fonts"), "v1.0.7", "nerdfetch", config, Optional.empty());
   }
 
   @Test
@@ -76,6 +76,25 @@ class NerdFontExecutorTest {
     assertThat(cmd).contains("--config");
     int configIdx = cmd.indexOf("--config");
     assertThat(cmd.get(configIdx + 1)).endsWith(".yaml");
+  }
+
+  @Test
+  void execute_uncataloguedInstallerVersionFailsBeforeToolResolution() {
+    var current = module();
+    var custom =
+        new NerdFontModule(
+            current.name(),
+            "v9.9.9",
+            current.nerdfontBinary(),
+            current.config(),
+            current.configPath(),
+            current.probeCommand());
+
+    StepResult result = executor().execute(custom);
+
+    assertThat(result).isInstanceOf(StepResult.Failure.class);
+    assertThat(((StepResult.Failure) result).errorMessage())
+        .contains("trusted release-digest catalog");
   }
 
   private NerdFontExecutor executor() {

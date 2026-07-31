@@ -25,8 +25,8 @@ The `cli` module declares `extends: [JavaModule, NativeImageModule]` and
 
 GraalVM CE 25.0.2 is the validated local toolchain. Mill resolves it from
 `jvmVersion: graalvm-community:25`; the system `native-image` does not need to be on `PATH`. By
-default the binary is dynamically linked against the host Linux C library. On mainstream Linux
-distributions this usually means glibc. A fully static or musl binary is not currently configured.
+default the binary is dynamically linked against the host Linux C library. Release binaries are
+built on Ubuntu 22.04 and require glibc 2.35 or newer. A fully static or musl binary is not currently configured.
 Mill writes the task artifact as `native-executable`; release packaging renames it to `fluxion`.
 
 ## Reflection And Resources

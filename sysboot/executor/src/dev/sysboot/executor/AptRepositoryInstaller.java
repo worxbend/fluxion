@@ -1,63 +1,100 @@
 package dev.sysboot.executor;
 
-import dev.sysboot.core.AptRepositoryModule;
+import dev.sysboot.core.AptRepositorySourceSetup;
 import dev.sysboot.core.ProcessResult;
 import dev.sysboot.core.ShellRunner;
 import dev.sysboot.core.StepResult;
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.time.Duration;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 
 public final class AptRepositoryInstaller {
 
   private static final Duration INSTALL_TIMEOUT = Duration.ofMinutes(5);
 
   private final ShellRunner shellRunner;
+  private final PrivilegedArtifactPublisher publisher;
 
   public AptRepositoryInstaller(ShellRunner shellRunner) {
-    this.shellRunner = shellRunner;
+    this(shellRunner, new PrivilegedAtomicFilePublisher(shellRunner));
   }
 
-  public StepResult add(AptRepositoryModule module) {
-    ProcessResult result = shellRunner.run(addCommand(module), Map.of(), INSTALL_TIMEOUT);
+  AptRepositoryInstaller(ShellRunner shellRunner, PrivilegedArtifactPublisher publisher) {
+    this.shellRunner = shellRunner;
+    this.publisher = publisher;
+  }
+
+  StepResult addTrusted(AptRepositorySourceSetup setup, Optional<Path> verifiedKey) {
+    Path sourceFile = null;
+    try {
+      sourceFile = Files.createTempFile("sysboot-apt-", ".list");
+      byte[] sourceContent =
+          (setup.sourceEntry() + System.lineSeparator())
+              .getBytes(java.nio.charset.StandardCharsets.UTF_8);
+      Files.write(sourceFile, sourceContent);
+      ProcessResult result = publish(setup, verifiedKey, sourceFile, sourceContent);
+      return result(setup.sourceListPath().toString(), result);
+    } catch (IOException e) {
+      return new StepResult.Failure(
+          setup.sourceListPath().toString(),
+          "Cannot prepare trusted APT source configuration",
+          1,
+          Duration.ZERO);
+    } finally {
+      delete(sourceFile);
+    }
+  }
+
+  private ProcessResult publish(
+      AptRepositorySourceSetup setup,
+      Optional<Path> verifiedKey,
+      Path sourceFile,
+      byte[] sourceContent)
+      throws IOException {
+    ProcessResult result = new ProcessResult(0, "", "", Duration.ZERO);
+    if (verifiedKey.isPresent()) {
+      result =
+          VerifiedRepositoryKeyPublisher.publish(
+              verifiedKey.orElseThrow(),
+              setup.artifactSha256().orElseThrow(),
+              setup.keyringPath().orElseThrow(),
+              publisher);
+    }
     if (result.isSuccess()) {
-      return new StepResult.Success(module.sourceListPath().toString(), result.elapsed());
+      result =
+          publisher.publish(
+              sourceFile, setup.sourceListPath(), "0644", ArtifactDigests.sha256(sourceContent));
+    }
+    if (result.isSuccess()) {
+      result = run(List.of("sudo", "apt-get", "update"));
+    }
+    return result;
+  }
+
+  private ProcessResult run(List<String> command) {
+    return shellRunner.run(command, Map.of(), INSTALL_TIMEOUT);
+  }
+
+  private StepResult result(String item, ProcessResult result) {
+    if (result.isSuccess()) {
+      return new StepResult.Success(item, result.elapsed());
     }
     return new StepResult.Failure(
-        module.sourceListPath().toString(),
-        result.stdout() + result.stderr(),
-        result.exitCode(),
-        result.elapsed());
+        item, result.stdout() + result.stderr(), result.exitCode(), result.elapsed());
   }
 
-  public List<String> addCommand(AptRepositoryModule module) {
-    return List.of("/bin/bash", "-lc", script(module));
-  }
-
-  private String script(AptRepositoryModule module) {
-    String writeSource =
-        "printf %s\\\\n "
-            + shellQuote(module.sourceEntry())
-            + " | sudo tee "
-            + shellQuote(module.sourceListPath().toString())
-            + " >/dev/null";
-    return module
-        .signingKeyUrl()
-        .map(url -> keyInstallCommand(module) + " && " + writeSource + " && sudo apt-get update")
-        .orElse(writeSource + " && sudo apt-get update");
-  }
-
-  private String keyInstallCommand(AptRepositoryModule module) {
-    String keyring = module.keyringPath().orElseThrow().toString();
-    return "sudo install -d -m 0755 "
-        + shellQuote(module.keyringPath().orElseThrow().getParent().toString())
-        + " && curl -fsSL "
-        + shellQuote(module.signingKeyUrl().orElseThrow().toString())
-        + " | sudo gpg --dearmor -o "
-        + shellQuote(keyring);
-  }
-
-  private String shellQuote(String value) {
-    return "'" + value.replace("'", "'\"'\"'") + "'";
+  private void delete(Path path) {
+    if (path == null) {
+      return;
+    }
+    try {
+      Files.deleteIfExists(path);
+    } catch (IOException ignored) {
+      // The command result remains authoritative.
+    }
   }
 }

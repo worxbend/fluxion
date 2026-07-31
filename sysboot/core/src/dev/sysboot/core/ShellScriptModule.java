@@ -1,6 +1,7 @@
 package dev.sysboot.core;
 
 import java.nio.file.Path;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
@@ -22,6 +23,7 @@ public record ShellScriptModule(
     if (items.isEmpty()) {
       throw new IllegalArgumentException("script items must not be empty");
     }
+    requireUniqueItemNames(items);
   }
 
   public ShellScriptModule(
@@ -59,5 +61,14 @@ public record ShellScriptModule(
 
   public List<String> args() {
     return items.getFirst().args();
+  }
+
+  private static void requireUniqueItemNames(List<ShellScriptItem> items) {
+    var names = new HashSet<String>();
+    for (ShellScriptItem item : items) {
+      if (!names.add(item.name())) {
+        throw new IllegalArgumentException("script item names must be unique: " + item.name());
+      }
+    }
   }
 }

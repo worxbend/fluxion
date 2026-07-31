@@ -4,7 +4,6 @@ import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.util.ArrayList;
-import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -61,11 +60,17 @@ public final class PlanSpecDocument {
   @JsonProperty("signatureUrl")
   private String signatureUrl;
 
+  @JsonProperty("allowedSignerFingerprint")
+  private String allowedSignerFingerprint;
+
   @JsonProperty("binaryName")
   private String binaryName;
 
   @JsonProperty("url")
   private String url;
+
+  @JsonProperty("sha256")
+  private String sha256;
 
   @JsonProperty("installPath")
   private String installPath;
@@ -350,12 +355,20 @@ public final class PlanSpecDocument {
     return DocumentDefaults.optional(signatureUrl);
   }
 
+  public Optional<String> allowedSignerFingerprint() {
+    return DocumentDefaults.optional(allowedSignerFingerprint);
+  }
+
   public Optional<String> binaryName() {
     return DocumentDefaults.optional(binaryName);
   }
 
   public Optional<String> url() {
     return DocumentDefaults.optional(url);
+  }
+
+  public Optional<String> sha256() {
+    return DocumentDefaults.optional(sha256);
   }
 
   public Optional<String> installPath() {
@@ -693,9 +706,8 @@ public final class PlanSpecDocument {
       return List.of();
     }
     var names = new ArrayList<String>();
-    Iterator<Map.Entry<String, JsonNode>> fields = env.fields();
-    while (fields.hasNext()) {
-      names.add(fields.next().getKey());
+    for (Map.Entry<String, JsonNode> field : env.properties()) {
+      names.add(field.getKey());
     }
     return List.copyOf(names);
   }

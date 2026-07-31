@@ -1,8 +1,8 @@
 package dev.sysboot.executor;
 
 import dev.sysboot.core.BootstrapState;
+import dev.sysboot.core.CompiledBinaryModule;
 import dev.sysboot.core.InstallationStatus;
-import dev.sysboot.core.ItemType;
 import dev.sysboot.core.ModuleItem;
 import dev.sysboot.core.SkipDecision;
 import dev.sysboot.core.StateEntry;
@@ -11,40 +11,42 @@ import java.util.Optional;
 /**
  * Central skip-decision logic.
  *
- * <p>Decision precedence when skipAlreadyInstalled=true: 1. State file hit (unless --re-probe) →
- * Skip(InstalledFromState). 2. Live probe InstalledByProbe → Skip(InstalledByProbe). 3. Live probe
- * NotInstalled or Unknown → Run (fail-safe for Unknown).
+ * <p>Skip-recorded mode consults state before probing. Live re-probe mode bypasses state and always
+ * probes. Record-only mode executes without making a skip decision.
  */
 public final class SkipEvaluator {
 
   private Optional<BootstrapState> state;
   private final InstalledProbeRegistry probeRegistry;
-  private final boolean skipAlreadyInstalled;
-  private final boolean reProbe;
+  private final RunStateMode runStateMode;
 
   public SkipEvaluator(
       Optional<BootstrapState> state,
       InstalledProbeRegistry probeRegistry,
       boolean skipAlreadyInstalled,
       boolean reProbe) {
-    this.state = state;
-    this.probeRegistry = probeRegistry;
-    this.skipAlreadyInstalled = skipAlreadyInstalled;
-    this.reProbe = reProbe;
+    this(state, probeRegistry, RunStateMode.fromOptions(skipAlreadyInstalled, reProbe));
   }
 
-  public SkipDecision evaluate(String itemKey, ItemType itemType) {
-    return evaluate(new ModuleItem(new dev.sysboot.core.ModuleName("unknown"), itemKey, itemType));
+  public SkipEvaluator(
+      Optional<BootstrapState> state,
+      InstalledProbeRegistry probeRegistry,
+      RunStateMode runStateMode) {
+    this.state = state;
+    this.probeRegistry = probeRegistry;
+    this.runStateMode = runStateMode;
   }
 
   public SkipDecision evaluate(ModuleItem item) {
-    if (!skipAlreadyInstalled) {
+    if (!runStateMode.probesInstalledItems()) {
       return new SkipDecision.Run(item.key());
     }
 
-    if (!reProbe) {
+    if (runStateMode.skipsRecordedWork()
+        && item.sourceSetup().isEmpty()
+        && item.configuredModule().stream().noneMatch(CompiledBinaryModule.class::isInstance)) {
       Optional<StateEntry> stateEntry =
-          state.flatMap(s -> s.findEntry(item.key(), item.itemType()));
+          state.flatMap(saved -> saved.findEntry(item.moduleName(), item.key(), item.itemType()));
       if (stateEntry.isPresent()) {
         StateEntry entry = stateEntry.get();
         return new SkipDecision.Skip(
@@ -67,8 +69,14 @@ public final class SkipEvaluator {
     this.state = Optional.of(updatedState);
   }
 
+  RunStateMode runStateMode() {
+    return runStateMode;
+  }
+
   public static SkipEvaluator alwaysRun() {
     return new SkipEvaluator(
-        Optional.empty(), new InstalledProbeRegistry(java.util.List.of()), false, false);
+        Optional.empty(),
+        new InstalledProbeRegistry(java.util.List.of()),
+        RunStateMode.RECORD_ONLY);
   }
 }

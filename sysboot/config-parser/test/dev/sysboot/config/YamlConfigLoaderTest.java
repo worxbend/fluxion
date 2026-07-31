@@ -46,6 +46,78 @@ class YamlConfigLoaderTest {
   private final YamlConfigLoader loader = new YamlConfigLoader();
 
   @Test
+  void load_whenConfigIsSpecialFile_rejectsBeforeOpening(@TempDir Path tmpDir) throws IOException {
+    Path fifo = tmpDir.resolve("profile.fifo");
+    Process result = new ProcessBuilder("mkfifo", fifo.toString()).start();
+    try {
+      if (result.waitFor() != 0) {
+        org.junit.jupiter.api.Assumptions.abort("mkfifo is unavailable");
+      }
+    } catch (InterruptedException e) {
+      Thread.currentThread().interrupt();
+      org.junit.jupiter.api.Assumptions.abort("mkfifo interrupted");
+    }
+
+    assertThatThrownBy(() -> loader.load(fifo))
+        .isInstanceOf(ConfigLoadException.class)
+        .hasMessageContaining("regular non-symbolic file");
+  }
+
+  @Test
+  void load_whenItemConfirmationHasWrongType_rejectsInsteadOfDroppingGuard(@TempDir Path tmpDir)
+      throws IOException {
+    for (String entry : List.of(commandWithConfirm("1"), scriptWithConfirm("{level: high}"))) {
+      Path config = writeConfig(tmpDir, entry);
+
+      assertThatThrownBy(() -> loader.load(config))
+          .isInstanceOf(ConfigLoadException.class)
+          .hasMessageContaining(".confirm must be a boolean or non-blank string");
+    }
+  }
+
+  private String commandWithConfirm(String confirm) {
+    return structuredConfirmationProfile(
+        """
+        kind: commands
+        spec:
+          commands:
+            - name: guarded
+              run: [tool, apply]
+              confirm: %s
+        """
+            .formatted(confirm));
+  }
+
+  private String scriptWithConfirm(String confirm) {
+    return structuredConfirmationProfile(
+        """
+        kind: shell-scripts
+        spec:
+          scripts:
+            - name: guarded
+              script: setup.sh
+              confirm: %s
+        """
+            .formatted(confirm));
+  }
+
+  private String structuredConfirmationProfile(String planEntry) {
+    return """
+    apiVersion: initkit.io/v1alpha1
+    kind: WorkstationProfile
+    metadata:
+      name: guarded-profile
+    spec:
+      target:
+        os:
+          distribution: fedora
+      plan:
+        - name: guarded
+    """
+        + planEntry.indent(6);
+  }
+
+  @Test
   void load_whenFedoraConfigValid_parsesAllModulesCorrectly(@TempDir Path tmpDir)
       throws IOException {
     Path config =
@@ -101,6 +173,9 @@ class YamlConfigLoaderTest {
                     remote: flathub
                     url: https://flathub.org/repo/flathub.flatpakrepo
                     system: false
+                    checksum:
+                      algorithm: sha256
+                      value: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
             """);
 
     BootstrapConfig result = loader.load(config);
@@ -129,6 +204,9 @@ class YamlConfigLoaderTest {
                     name: docker
                     source: deb [signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/debian bookworm stable
                     signingKeyUrl: https://download.docker.com/linux/debian/gpg
+                    checksum:
+                      algorithm: sha256
+                      value: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
             """);
 
     BootstrapConfig result = loader.load(config);
@@ -159,6 +237,9 @@ class YamlConfigLoaderTest {
                     name: docker
                     baseUrl: https://download.docker.com/linux/fedora/$releasever/$basearch/stable
                     gpgKeyUrl: https://download.docker.com/linux/fedora/gpg
+                    checksum:
+                      algorithm: sha256
+                      value: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
             """);
 
     BootstrapConfig result = loader.load(config);
@@ -189,7 +270,7 @@ class YamlConfigLoaderTest {
                   - type: pacman-repository
                     name: chaotic-aur
                     server: https://cdn-mirror.chaotic.cx/$repo/$arch
-                    sigLevel: Required DatabaseOptional
+                    sigLevel: Required TrustedOnly
             """);
 
     BootstrapConfig result = loader.load(config);
@@ -197,7 +278,7 @@ class YamlConfigLoaderTest {
     var module = (PacmanRepositoryModule) result.phases().getFirst().modules().getFirst();
     assertThat(module.repositoryName()).isEqualTo("chaotic-aur");
     assertThat(module.configPath()).isEqualTo(Path.of("/etc/pacman.conf"));
-    assertThat(module.sigLevel()).hasValue("Required DatabaseOptional");
+    assertThat(module.sigLevel()).hasValue("Required TrustedOnly");
     assertThat(module.enabled()).isTrue();
   }
 
@@ -504,7 +585,7 @@ class YamlConfigLoaderTest {
                     installerVersion: v1.0.5
                     nerdfontBinary: nerdfont-install
                     config:
-                      release: latest
+                      release: v3.4.0
                       destination: ~/.local/share/fonts/NerdFonts
                       refreshFontCache: true
                       families: [JetBrainsMono, Hack]
@@ -522,6 +603,7 @@ class YamlConfigLoaderTest {
     assertThat(modules).hasSize(5);
     var binary = (CompiledBinaryModule) modules.get(0);
     assertThat(binary.binaryName()).isEqualTo("rg");
+    assertThat(binary.checksum().orElseThrow().algorithm()).isEqualTo("SHA-256");
     assertThat(binary.installPath().toString()).startsWith(System.getProperty("user.home"));
     assertThat(binary.archivePath()).contains("ripgrep/bin/rg");
     assertThat(binary.stripComponents()).isEqualTo(1);
@@ -654,6 +736,7 @@ class YamlConfigLoaderTest {
                     scripts:
                       - name: sdkman
                         url: https://example.test/install.sh
+                        sha256: "0000000000000000000000000000000000000000000000000000000000000000"
                         args: [--batch]
                         cwd: /tmp
                         env:
@@ -687,6 +770,8 @@ class YamlConfigLoaderTest {
     var script = scriptModule.items().getFirst();
     assertThat(script.name()).isEqualTo("sdkman");
     assertThat(script.url()).hasValue(java.net.URI.create("https://example.test/install.sh"));
+    assertThat(script.sha256().orElseThrow().value())
+        .isEqualTo("0000000000000000000000000000000000000000000000000000000000000000");
     assertThat(script.args()).containsExactly("--batch");
     assertThat(script.sudo()).isTrue();
     assertThat(script.allowedExitCodes()).containsExactly(0, 75);
@@ -699,6 +784,277 @@ class YamlConfigLoaderTest {
     assertThat(commandModule.items().get(1).shellCommand())
         .hasValue("cargo binstall --no-confirm eza");
     assertThat(commandModule.items().get(1).environment().getFirst().sensitive()).isTrue();
+  }
+
+  @Test
+  void load_whenWorkstationProfileUsesRelativeLocalPaths_resolvesFromManifestDirectory(
+      @TempDir Path tmpDir) throws IOException {
+    Path manifestDirectory = tmpDir.resolve("profiles");
+    Files.createDirectories(manifestDirectory);
+    Path config =
+        writeConfig(
+            manifestDirectory,
+            """
+            apiVersion: initkit.io/v1alpha1
+            kind: WorkstationProfile
+            metadata:
+              name: relative-local-paths
+            spec:
+              target:
+                os:
+                  distribution: fedora
+                  release: "44"
+              plan:
+                - name: scripts
+                  kind: shell-scripts
+                  spec:
+                    scripts:
+                      - name: setup
+                        script: ../scripts/setup.sh
+                        cwd: work
+                        creates: .state/setup.done
+                - name: commands
+                  kind: commands
+                  spec:
+                    commands:
+                      - name: default-directory
+                        run: pwd
+                      - name: explicit-directory
+                        run: pwd
+                        cwd: ../workspace
+            """);
+
+    BootstrapConfig result = loader.load(config);
+
+    var scriptModule = (ShellScriptModule) result.modules().get(0);
+    var script = scriptModule.items().getFirst();
+    assertThat(script.script().orElseThrow().value()).isEqualTo(tmpDir.resolve("scripts/setup.sh"));
+    assertThat(script.workingDir()).contains(manifestDirectory.resolve("work"));
+    assertThat(script.creates()).contains(manifestDirectory.resolve(".state/setup.done"));
+    assertThat(scriptModule.workingDir()).contains(manifestDirectory);
+    var commandModule = (ShellCommandModule) result.modules().get(1);
+    assertThat(commandModule.items().get(0).workingDir()).contains(manifestDirectory);
+    assertThat(commandModule.items().get(1).workingDir()).contains(tmpDir.resolve("workspace"));
+    assertThat(commandModule.workingDir()).contains(manifestDirectory);
+  }
+
+  @Test
+  void load_whenNestedScriptAndCommandNamesAreDuplicated_reportsDeclarationPaths(
+      @TempDir Path tmpDir) throws IOException {
+    Path config =
+        writeConfig(
+            tmpDir,
+            """
+            apiVersion: initkit.io/v1alpha1
+            kind: WorkstationProfile
+            metadata:
+              name: duplicate-shell-items
+            spec:
+              target:
+                os:
+                  distribution: fedora
+                  release: "44"
+              plan:
+                - name: scripts
+                  kind: shell-scripts
+                  spec:
+                    scripts:
+                      - name: repeated-script
+                        script: first.sh
+                      - name: repeated-script
+                        script: second.sh
+                - name: commands
+                  kind: commands
+                  spec:
+                    commands:
+                      - name: repeated-command
+                        run: echo first
+                      - name: repeated-command
+                        run: echo second
+            """);
+
+    assertThatThrownBy(() -> loader.load(config))
+        .isInstanceOf(ConfigLoadException.class)
+        .hasMessageContaining(
+            "spec.plan[0].spec.scripts[1].name duplicates script item 'repeated-script'")
+        .hasMessageContaining("first declared at spec.plan[0].spec.scripts[0].name")
+        .hasMessageContaining(
+            "spec.plan[1].spec.commands[1].name duplicates command item 'repeated-command'")
+        .hasMessageContaining("first declared at spec.plan[1].spec.commands[0].name");
+  }
+
+  @Test
+  void load_whenRemoteScriptHasNoSha256_rejectsManifest(@TempDir Path tmpDir) throws IOException {
+    Path config = writeConfig(tmpDir, remoteScriptProfile("https://example.test/install.sh", ""));
+
+    assertThatThrownBy(() -> loader.load(config))
+        .isInstanceOf(ConfigLoadException.class)
+        .hasMessageContaining("sha256 is required for a remote script");
+  }
+
+  @Test
+  void load_whenRemoteScriptUrlIsUntrusted_rejectsHttpAndUserInfo(@TempDir Path tmpDir)
+      throws IOException {
+    for (String url :
+        List.of("http://example.test/install.sh", "https://token@example.test/install.sh")) {
+      Path config =
+          writeConfig(tmpDir, remoteScriptProfile(url, "sha256: \"" + "0".repeat(64) + "\""));
+
+      assertThatThrownBy(() -> loader.load(config))
+          .isInstanceOf(ConfigLoadException.class)
+          .hasMessageContaining(url.startsWith("http:") ? "must use https" : "user-info");
+    }
+  }
+
+  @Test
+  void load_whenRemoteScriptSha256IsMalformed_rejectsManifest(@TempDir Path tmpDir)
+      throws IOException {
+    Path config =
+        writeConfig(
+            tmpDir, remoteScriptProfile("https://example.test/install.sh", "sha256: not-a-digest"));
+
+    assertThatThrownBy(() -> loader.load(config))
+        .isInstanceOf(ConfigLoadException.class)
+        .hasMessageContaining("64-character hexadecimal SHA-256");
+  }
+
+  private String remoteScriptProfile(String url, String integrityLine) {
+    return """
+    apiVersion: initkit.io/v1alpha1
+    kind: WorkstationProfile
+    metadata:
+      name: remote-script-trust
+    spec:
+      target:
+        os:
+          distribution: fedora
+          release: "44"
+      plan:
+        - name: remote-script
+          kind: shell-scripts
+          spec:
+            url: %s
+            %s
+    """
+        .formatted(url, integrityLine);
+  }
+
+  @Test
+  void load_whenRpmGpgKeyDeclaresFingerprint_mapsNormalizedTrustConstraint(@TempDir Path tmpDir)
+      throws IOException {
+    Path config =
+        writeConfig(
+            tmpDir,
+            gpgKeyProfile(
+                "", "fingerprint: \"aaaa aaaa aaaa aaaa aaaa aaaa aaaa aaaa aaaa aaaa\""));
+
+    var module =
+        (dev.sysboot.core.GpgKeyModule)
+            loader.load(config).phases().getFirst().modules().getFirst();
+
+    assertThat(module.keys().getFirst().keyring()).isEmpty();
+    assertThat(module.keys().getFirst().fingerprint()).isEqualTo("A".repeat(40));
+  }
+
+  @Test
+  void load_whenRpmGpgKeyOmitsFingerprint_rejectsManifest(@TempDir Path tmpDir) throws IOException {
+    Path config = writeConfig(tmpDir, gpgKeyProfile("", ""));
+
+    assertThatThrownBy(() -> loader.load(config))
+        .isInstanceOf(ConfigLoadException.class)
+        .hasMessageContaining("fingerprint")
+        .hasMessageContaining("must not be blank");
+  }
+
+  @Test
+  void load_whenGpgKeyFingerprintIsNotFull_rejectsManifest(@TempDir Path tmpDir)
+      throws IOException {
+    Path config = writeConfig(tmpDir, gpgKeyProfile("", "fingerprint: DEADBEEF"));
+
+    assertThatThrownBy(() -> loader.load(config))
+        .isInstanceOf(ConfigLoadException.class)
+        .hasMessageContaining("full 40-character hexadecimal OpenPGP fingerprint");
+  }
+
+  @Test
+  void load_whenGpgKeyringIsRelative_rejectsManifest(@TempDir Path tmpDir) throws IOException {
+    Path config =
+        writeConfig(
+            tmpDir,
+            gpgKeyProfile(
+                "keyring: relative/repository.gpg", "fingerprint: \"" + "A".repeat(40) + "\""));
+
+    assertThatThrownBy(() -> loader.load(config))
+        .isInstanceOf(ConfigLoadException.class)
+        .hasMessageContaining("keyring")
+        .hasMessageContaining("absolute");
+  }
+
+  private String gpgKeyProfile(String keyringLine, String fingerprintLine) {
+    return """
+    apiVersion: initkit.io/v1alpha1
+    kind: WorkstationProfile
+    metadata:
+      name: gpg-key-trust
+    spec:
+      target:
+        os:
+          distribution: fedora
+          release: "44"
+      plan:
+        - name: repository-key
+          kind: gpg-key
+          spec:
+            keys:
+              - url: https://example.test/repository.asc
+                %s
+                %s
+    """
+        .formatted(keyringLine, fingerprintLine);
+  }
+
+  @Test
+  void load_whenEnvironmentUsesCredentialKeyNames_marksOnlyCredentialsSensitive(
+      @TempDir Path tmpDir) throws IOException {
+    Path config =
+        writeConfig(
+            tmpDir,
+            """
+            apiVersion: initkit.io/v1alpha1
+            kind: WorkstationProfile
+            metadata:
+              name: sensitive-environment
+            spec:
+              target:
+                os:
+                  distribution: fedora
+                  release: "44"
+              plan:
+                - name: commands
+                  kind: commands
+                  spec:
+                    commands:
+                      - name: credential-check
+                        run: [tool, check]
+                        env:
+                          API_KEY: api-value
+                          accessKey: access-value
+                          SSH_PRIVATE_KEY: private-value
+                          MONKEY: banana
+                          KEYSTONE_URL: https://example.test
+            """);
+
+    var module = (ShellCommandModule) loader.load(config).phases().getFirst().modules().getFirst();
+    var environment = module.items().getFirst().environment();
+
+    assertThat(environment)
+        .filteredOn(variable -> variable.sensitive())
+        .extracting(variable -> variable.name())
+        .containsExactly("API_KEY", "accessKey", "SSH_PRIVATE_KEY");
+    assertThat(environment)
+        .filteredOn(variable -> !variable.sensitive())
+        .extracting(variable -> variable.name())
+        .containsExactly("MONKEY", "KEYSTONE_URL");
   }
 
   @Test
@@ -721,7 +1077,7 @@ class YamlConfigLoaderTest {
                 apt:
                   - name: docker-apt
                     spec:
-                      source: deb [arch=amd64] https://download.docker.com/linux/debian bookworm stable
+                      source: deb [arch=amd64 signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/debian bookworm stable
                       sourceList: /etc/apt/sources.list.d/docker.list
                       signingKeyUrl: https://download.docker.com/linux/debian/gpg
                       keyring: /etc/apt/keyrings/docker.gpg
@@ -736,6 +1092,9 @@ class YamlConfigLoaderTest {
                       repoFile: /etc/yum.repos.d/docker.repo
                       gpgKeyUrl: https://download.docker.com/linux/fedora/gpg
                       gpgCheck: true
+                      checksum:
+                        algorithm: sha256
+                        value: "1111111111111111111111111111111111111111111111111111111111111111"
                 rpm:
                   - name: rpmfusion
                     spec:
@@ -743,6 +1102,9 @@ class YamlConfigLoaderTest {
                       baseUrl: https://download1.rpmfusion.org/free/fedora/releases/$releasever/Everything/$basearch/os/
                       gpgKeyUrl: https://rpmfusion.org/keys?action=AttachFile&do=get&target=RPM-GPG-KEY-rpmfusion-free-fedora
                       gpgCheck: true
+                      checksum:
+                        algorithm: sha256
+                        value: "2222222222222222222222222222222222222222222222222222222222222222"
                 zypper:
                   - name: packman
                     spec:
@@ -750,12 +1112,18 @@ class YamlConfigLoaderTest {
                       baseUrl: https://ftp.gwdg.de/pub/linux/misc/packman/suse/openSUSE_Tumbleweed/
                       repoFile: /etc/zypp/repos.d/packman.repo
                       gpgKeyUrl: https://example.com/packman.asc
+                      checksum:
+                        algorithm: sha256
+                        value: "3333333333333333333333333333333333333333333333333333333333333333"
                 flatpak:
                   - name: flathub
                     spec:
                       remote: flathub
                       url: https://flathub.org/repo/flathub.flatpakrepo
                       system: false
+                      checksum:
+                        algorithm: sha256
+                        value: "4444444444444444444444444444444444444444444444444444444444444444"
               plan:
                 - name: apt-base
                   kind: apt-packages
@@ -817,17 +1185,26 @@ class YamlConfigLoaderTest {
                       id: docker
                       baseUrl: https://download.docker.com/linux/fedora/$releasever/stable
                       gpgKeyUrl: https://download.docker.com/linux/fedora/gpg
+                      checksum:
+                        algorithm: sha256
+                        value: "1111111111111111111111111111111111111111111111111111111111111111"
                 zypper:
                   - name: packman
                     spec:
                       id: packman
                       baseUrl: https://ftp.gwdg.de/pub/linux/misc/packman/suse/openSUSE_Tumbleweed/
                       gpgKeyUrl: https://example.com/packman.asc
+                      checksum:
+                        algorithm: sha256
+                        value: "2222222222222222222222222222222222222222222222222222222222222222"
                 flatpak:
                   - name: flathub
                     spec:
                       remote: flathub
                       url: https://flathub.org/repo/flathub.flatpakrepo
+                      checksum:
+                        algorithm: sha256
+                        value: "3333333333333333333333333333333333333333333333333333333333333333"
               plan:
                 - name: apt-base
                   kind: apt-packages
@@ -1204,6 +1581,237 @@ class YamlConfigLoaderTest {
   }
 
   @Test
+  void load_whenWorkstationBinaryHasNoTrustMetadata_rejectsProfile(@TempDir Path tmpDir)
+      throws IOException {
+    Path config =
+        writeConfig(
+            tmpDir,
+            """
+            apiVersion: initkit.io/v1alpha1
+            kind: WorkstationProfile
+            metadata:
+              name: binary-trust-test
+            spec:
+              target:
+                os:
+                  distribution: fedora
+                  release: "44"
+              plan:
+                - name: ripgrep
+                  kind: binary-downloads
+                  spec:
+                    binaryName: rg
+                    url: https://example.test/rg.tar.gz
+                    installPath: /usr/local/bin/rg
+            """);
+
+    assertThatThrownBy(() -> loader.load(config))
+        .isInstanceOf(ConfigLoadException.class)
+        .hasMessageContaining("SHA-256 checksum")
+        .hasMessageContaining("allowedSignerFingerprint");
+  }
+
+  @Test
+  void load_whenWorkstationBinaryHasOnlyChecksumUrl_rejectsProfile(@TempDir Path tmpDir)
+      throws IOException {
+    Path config =
+        writeConfig(
+            tmpDir,
+            """
+            apiVersion: initkit.io/v1alpha1
+            kind: WorkstationProfile
+            metadata:
+              name: binary-checksum-url-test
+            spec:
+              target:
+                os:
+                  distribution: fedora
+                  release: "44"
+              plan:
+                - name: ripgrep
+                  kind: binary-downloads
+                  spec:
+                    binaryName: rg
+                    url: https://example.test/rg.tar.gz
+                    checksumUrl: https://example.test/rg.sha256
+                    installPath: /usr/local/bin/rg
+                    archivePath: rg
+            """);
+
+    assertThatThrownBy(() -> loader.load(config))
+        .isInstanceOf(ConfigLoadException.class)
+        .hasMessageContaining("literal SHA-256 checksum")
+        .hasMessageContaining("allowedSignerFingerprint");
+  }
+
+  @Test
+  void load_whenWorkstationArchiveHasNoArchivePath_rejectsProfile(@TempDir Path tmpDir)
+      throws IOException {
+    Path config =
+        writeConfig(
+            tmpDir,
+            """
+            apiVersion: initkit.io/v1alpha1
+            kind: WorkstationProfile
+            metadata:
+              name: binary-archive-test
+            spec:
+              target:
+                os:
+                  distribution: fedora
+                  release: "44"
+              plan:
+                - name: ripgrep
+                  kind: binary-downloads
+                  spec:
+                    binaryName: rg
+                    url: https://example.test/rg.tar.gz
+                    checksum:
+                      algorithm: sha256
+                      value: "0000000000000000000000000000000000000000000000000000000000000000"
+                    installPath: /usr/local/bin/rg
+            """);
+
+    assertThatThrownBy(() -> loader.load(config))
+        .isInstanceOf(ConfigLoadException.class)
+        .hasMessageContaining("spec.plan[0].spec.archivePath")
+        .hasMessageContaining("required for archive downloads");
+  }
+
+  @Test
+  void load_whenWorkstationBinaryPathIsNotNormalized_rejectsProfile(@TempDir Path tmpDir)
+      throws IOException {
+    Path config =
+        writeConfig(
+            tmpDir,
+            """
+            apiVersion: initkit.io/v1alpha1
+            kind: WorkstationProfile
+            metadata:
+              name: binary-path-test
+            spec:
+              target:
+                os:
+                  distribution: fedora
+                  release: "44"
+              plan:
+                - name: ripgrep
+                  kind: binary-downloads
+                  spec:
+                    binaryName: rg
+                    url: https://example.test/rg
+                    checksum:
+                      algorithm: sha256
+                      value: "0000000000000000000000000000000000000000000000000000000000000000"
+                    installPath: /usr/local/../bin/rg
+            """);
+
+    assertThatThrownBy(() -> loader.load(config))
+        .isInstanceOf(ConfigLoadException.class)
+        .hasMessageContaining("spec.plan[0].spec.installPath")
+        .hasMessageContaining("normalized");
+  }
+
+  @Test
+  void load_whenWorkstationBinarySignatureHasNoSigner_rejectsProfile(@TempDir Path tmpDir)
+      throws IOException {
+    Path config =
+        writeConfig(
+            tmpDir,
+            """
+            apiVersion: initkit.io/v1alpha1
+            kind: WorkstationProfile
+            metadata:
+              name: binary-signature-test
+            spec:
+              target:
+                os:
+                  distribution: fedora
+                  release: "44"
+              plan:
+                - name: ripgrep
+                  kind: binary-downloads
+                  spec:
+                    binaryName: rg
+                    url: https://example.test/rg.tar.gz
+                    signatureUrl: https://example.test/rg.tar.gz.asc
+                    installPath: /usr/local/bin/rg
+            """);
+
+    assertThatThrownBy(() -> loader.load(config))
+        .isInstanceOf(ConfigLoadException.class)
+        .hasMessageContaining("signatureUrl")
+        .hasMessageContaining("allowedSignerFingerprint");
+  }
+
+  @Test
+  void load_whenWorkstationBinarySignatureHasAllowedSigner_mapsTrustPolicy(@TempDir Path tmpDir)
+      throws IOException {
+    Path config =
+        writeConfig(
+            tmpDir,
+            """
+            apiVersion: initkit.io/v1alpha1
+            kind: WorkstationProfile
+            metadata:
+              name: binary-signature-test
+            spec:
+              target:
+                os:
+                  distribution: fedora
+                  release: "44"
+              plan:
+                - name: ripgrep
+                  kind: binary-downloads
+                  spec:
+                    binaryName: rg
+                    url: https://example.test/rg.tar.gz
+                    signatureUrl: https://example.test/rg.tar.gz.asc
+                    allowedSignerFingerprint: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+                    installPath: /usr/local/bin/rg
+                    archivePath: rg
+            """);
+
+    BootstrapConfig result = loader.load(config);
+
+    var module = (CompiledBinaryModule) result.phases().getFirst().modules().getFirst();
+    assertThat(module.allowedSignerFingerprint()).contains("A".repeat(40));
+  }
+
+  @Test
+  void load_whenWorkstationBinaryUrlContainsUserInfo_rejectsProfile(@TempDir Path tmpDir)
+      throws IOException {
+    Path config =
+        writeConfig(
+            tmpDir,
+            """
+            apiVersion: initkit.io/v1alpha1
+            kind: WorkstationProfile
+            metadata:
+              name: binary-url-test
+            spec:
+              target:
+                os:
+                  distribution: fedora
+                  release: "44"
+              plan:
+                - name: ripgrep
+                  kind: binary-downloads
+                  spec:
+                    binaryName: rg
+                    url: https://token@example.test/rg.tar.gz
+                    checksum:
+                      algorithm: sha256
+                      value: "0000000000000000000000000000000000000000000000000000000000000000"
+                    installPath: /usr/local/bin/rg
+            """);
+
+    assertThatThrownBy(() -> loader.load(config))
+        .isInstanceOf(ConfigLoadException.class)
+        .hasMessageContaining("user-info");
+  }
+
+  @Test
   void load_whenWorkstationProfileStatePathEqualsManifest_reportsFieldPath(@TempDir Path tmpDir)
       throws IOException {
     Path config =
@@ -1443,6 +2051,72 @@ class YamlConfigLoaderTest {
   }
 
   @Test
+  void load_whenRemoteShellScriptModulePresent_mapsRequiredIntegrity(@TempDir Path tmpDir)
+      throws IOException {
+    Path config =
+        writeConfig(
+            tmpDir,
+            """
+            profile: remote-script
+            os:
+              type: fedora
+            modules:
+              - type: shell-script
+                name: verified
+                url: https://example.test/install.sh
+                sha256: "0000000000000000000000000000000000000000000000000000000000000000"
+            """);
+
+    var module = (ShellScriptModule) loader.load(config).modules().getFirst();
+
+    assertThat(module.items().getFirst().url().orElseThrow().toString())
+        .isEqualTo("https://example.test/install.sh");
+    assertThat(module.items().getFirst().sha256().orElseThrow().value()).isEqualTo("0".repeat(64));
+  }
+
+  @Test
+  void load_whenToolchainSha256Missing_rejectsModule(@TempDir Path tmpDir) throws IOException {
+    Path config =
+        writeConfig(
+            tmpDir,
+            """
+            profile: toolchain
+            os:
+              type: fedora
+            modules:
+              - type: toolchain
+                name: rustup
+                kind: RUSTUP
+                installScriptUrl: https://sh.rustup.rs
+            """);
+
+    assertThatThrownBy(() -> loader.load(config))
+        .isInstanceOf(ConfigLoadException.class)
+        .hasMessageContaining("toolchain.sha256");
+  }
+
+  @Test
+  void load_whenOhMyZshRevisionMutable_rejectsModule(@TempDir Path tmpDir) throws IOException {
+    Path config =
+        writeConfig(
+            tmpDir,
+            """
+            profile: oh-my-zsh
+            os:
+              type: fedora
+            modules:
+              - type: oh-my-zsh
+                name: oh-my-zsh
+                revision: master
+                sha256: "0000000000000000000000000000000000000000000000000000000000000000"
+            """);
+
+    assertThatThrownBy(() -> loader.load(config))
+        .isInstanceOf(ConfigLoadException.class)
+        .hasMessageContaining("full 40-character commit");
+  }
+
+  @Test
   void load_whenAssertAndManualSteps_parsesCorrectly(@TempDir Path tmpDir) throws IOException {
     Path config =
         writeConfig(
@@ -1580,6 +2254,7 @@ class YamlConfigLoaderTest {
                 binaryName: zoxide
                 url: https://example.com/zoxide.tar.gz
                 installPath: ~/.local/bin/zoxide
+                archivePath: zoxide
             """);
 
     BootstrapConfig result = loader.load(config);
@@ -1606,6 +2281,7 @@ class YamlConfigLoaderTest {
                 url: https://example.com/zoxide.tar.gz
                 checksumUrl: https://example.com/zoxide.sha256
                 installPath: ~/.local/bin/zoxide
+                archivePath: zoxide
             """);
 
     BootstrapConfig result = loader.load(config);
@@ -1632,7 +2308,9 @@ class YamlConfigLoaderTest {
                 binaryName: zoxide
                 url: https://example.com/zoxide.tar.gz
                 signatureUrl: https://example.com/zoxide.tar.gz.asc
+                allowedSignerFingerprint: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
                 installPath: ~/.local/bin/zoxide
+                archivePath: zoxide
             """);
 
     BootstrapConfig result = loader.load(config);
@@ -1640,6 +2318,7 @@ class YamlConfigLoaderTest {
     var module = (CompiledBinaryModule) result.modules().getFirst();
     assertThat(module.signatureUrl())
         .hasValueSatisfying(url -> assertThat(url.toString()).endsWith(".asc"));
+    assertThat(module.allowedSignerFingerprint()).contains("A".repeat(40));
   }
 
   @Test
@@ -1781,6 +2460,8 @@ class YamlConfigLoaderTest {
                 assertThat(url.toString())
                     .isEqualTo("https://download.docker.com/linux/debian/gpg"));
     assertThat(source.keyringPath()).hasValue(Path.of("/etc/apt/keyrings/docker.gpg"));
+    assertThat(source.artifactSha256())
+        .hasValueSatisfying(digest -> assertThat(digest.value()).isEqualTo("0".repeat(64)));
   }
 
   private static void assertRpmSource(
@@ -1793,6 +2474,7 @@ class YamlConfigLoaderTest {
     assertThat(source.gpgKeyUrl()).isPresent();
     assertThat(source.enabled()).isTrue();
     assertThat(source.gpgCheck()).isTrue();
+    assertThat(source.artifactSha256()).isPresent();
   }
 
   private static void assertZypperSource(BootstrapConfig result, int index) {
@@ -1802,6 +2484,7 @@ class YamlConfigLoaderTest {
     assertThat(source.repositoryId()).isEqualTo("packman");
     assertThat(source.repoFilePath().toString()).isEqualTo("/etc/zypp/repos.d/packman.repo");
     assertThat(source.gpgKeyUrl()).isPresent();
+    assertThat(source.artifactSha256()).isPresent();
   }
 
   private static void assertFlatpakSource(BootstrapConfig result, int index) {
@@ -1811,6 +2494,7 @@ class YamlConfigLoaderTest {
     assertThat(source.remote()).isEqualTo("flathub");
     assertThat(source.url().toString()).isEqualTo("https://flathub.org/repo/flathub.flatpakrepo");
     assertThat(source.system()).isFalse();
+    assertThat(source.artifactSha256()).isPresent();
   }
 
   private static String workstationProfileWithAllPackageKinds() {

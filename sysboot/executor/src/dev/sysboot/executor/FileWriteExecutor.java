@@ -6,6 +6,7 @@ import dev.sysboot.core.ProcessResult;
 import dev.sysboot.core.ShellRunner;
 import dev.sysboot.core.StepResult;
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.time.Instant;
@@ -20,14 +21,26 @@ public final class FileWriteExecutor {
 
   private final ShellRunner shellRunner;
   private final FileWriteFileSystem fileSystem;
+  private final PrivilegedArtifactPublisher publisher;
 
   public FileWriteExecutor(ShellRunner shellRunner) {
-    this(shellRunner, new DefaultFileWriteFileSystem());
+    this(
+        shellRunner,
+        new DefaultFileWriteFileSystem(),
+        new PrivilegedAtomicFilePublisher(shellRunner));
   }
 
   FileWriteExecutor(ShellRunner shellRunner, FileWriteFileSystem fileSystem) {
+    this(shellRunner, fileSystem, new PrivilegedAtomicFilePublisher(shellRunner));
+  }
+
+  FileWriteExecutor(
+      ShellRunner shellRunner,
+      FileWriteFileSystem fileSystem,
+      PrivilegedArtifactPublisher publisher) {
     this.shellRunner = shellRunner;
     this.fileSystem = fileSystem;
+    this.publisher = publisher;
   }
 
   public StepResult write(FileWriteItem item) {
@@ -75,62 +88,120 @@ public final class FileWriteExecutor {
   }
 
   private void writeWithoutSudo(FileWriteItem item) throws IOException {
+    fileSystem.requireSafeDestination(item.destination(), false);
     createParent(item.destination());
-    if (item.content().isPresent()) {
-      fileSystem.writeString(item.destination(), item.content().orElseThrow());
-    } else {
-      fileSystem.copy(item.source().orElseThrow(), item.destination());
+    fileSystem.requireSafeDestination(item.destination(), false);
+    Path staged =
+        fileSystem.createTempFile(item.destination().getParent(), ".fluxion-file-write-", ".tmp");
+    try {
+      populateStage(item, staged);
+      fileSystem.preserveMode(item.destination(), staged);
+      applyLocalMode(item, staged);
+      applyOwnership(item, false, staged);
+      fileSystem.requireSafeDestination(item.destination(), false);
+      fileSystem.atomicReplace(staged, item.destination());
+    } finally {
+      deleteLocalStage(staged);
     }
-    applyLocalMode(item);
-    applyOwnership(item, false);
   }
 
   private void writeWithSudo(FileWriteItem item) throws IOException {
     Path staged = stageSource(item);
     try {
-      Path parent = item.destination().getParent();
-      if (parent != null) {
-        runCommand(sudo("mkdir", "-p", parent.toString()));
+      fileSystem.requireSafeDestination(item.destination(), true);
+      ProcessResult result =
+          publisher.consumeVerified(
+              staged,
+              item.destination(),
+              item.mode().orElse("0600"),
+              approvedDigest(item),
+              rootStage -> commitPrivileged(item, rootStage));
+      if (!result.isSuccess()) {
+        throw new IOException("Privileged file publication failed");
       }
-      runCommand(sudo("cp", staged.toString(), item.destination().toString()));
-      if (item.mode().isPresent()) {
-        runCommand(sudo("chmod", item.mode().orElseThrow(), item.destination().toString()));
-      }
-      applyOwnership(item, true);
     } finally {
-      if (item.source().filter(staged::equals).isEmpty()) {
-        fileSystem.deleteIfExists(staged);
-      }
+      deleteLocalStage(staged);
+    }
+  }
+
+  private void populateStage(FileWriteItem item, Path staged) throws IOException {
+    if (item.source().isPresent()) {
+      fileSystem.copyReadableRegularFile(item.source().orElseThrow(), staged);
+    } else {
+      fileSystem.writeString(staged, item.content().orElseThrow());
+    }
+  }
+
+  private ProcessResult commitPrivileged(FileWriteItem item, Path rootStage) throws IOException {
+    applyStagedOwnership(item, rootStage);
+    fileSystem.requireSafeDestination(item.destination(), true);
+    return runCommand(
+        sudo(
+            TrustedSystemExecutable.move().toString(),
+            "-f",
+            "-T",
+            "--",
+            rootStage.toString(),
+            item.destination().toString()));
+  }
+
+  private void applyStagedOwnership(FileWriteItem item, Path rootStage) throws IOException {
+    if (item.owner().isEmpty() && item.group().isEmpty()) {
+      return;
+    }
+    runCommand(chownCommand(item, true, rootStage));
+  }
+
+  private dev.sysboot.core.Sha256Digest approvedDigest(FileWriteItem item) throws IOException {
+    if (item.content().isPresent()) {
+      return ArtifactDigests.sha256(item.content().orElseThrow().getBytes(StandardCharsets.UTF_8));
+    }
+    return ArtifactDigests.sha256(item.source().orElseThrow());
+  }
+
+  private void deleteLocalStage(Path staged) {
+    try {
+      fileSystem.deleteIfExists(staged);
+    } catch (IOException ignored) {
+      // Cleanup must not replace the authoritative publication result.
     }
   }
 
   private Path stageSource(FileWriteItem item) throws IOException {
-    if (item.source().isPresent()) {
-      return item.source().orElseThrow();
-    }
     Path staged = fileSystem.createTempFile("fluxion-file-write-", ".tmp");
-    fileSystem.writeString(staged, item.content().orElseThrow());
-    return staged;
-  }
-
-  private void applyLocalMode(FileWriteItem item) throws IOException {
-    if (item.mode().isPresent()) {
-      fileSystem.setMode(item.destination(), item.mode().orElseThrow());
+    try {
+      if (item.source().isPresent()) {
+        fileSystem.copyReadableRegularFile(item.source().orElseThrow(), staged);
+      } else {
+        fileSystem.writeString(staged, item.content().orElseThrow());
+      }
+      fileSystem.setMode(staged, "0600");
+      return staged;
+    } catch (IOException e) {
+      deleteLocalStage(staged);
+      throw e;
     }
   }
 
-  private void applyOwnership(FileWriteItem item, boolean sudo) throws IOException {
+  private void applyLocalMode(FileWriteItem item, Path destination) throws IOException {
+    if (item.mode().isPresent()) {
+      fileSystem.setMode(destination, item.mode().orElseThrow());
+    }
+  }
+
+  private void applyOwnership(FileWriteItem item, boolean sudo, Path destination)
+      throws IOException {
     if (item.owner().isEmpty() && item.group().isEmpty()) {
       return;
     }
-    runCommand(chownCommand(item, sudo));
+    runCommand(chownCommand(item, sudo, destination));
   }
 
-  private List<String> chownCommand(FileWriteItem item, boolean sudo) {
+  private List<String> chownCommand(FileWriteItem item, boolean sudo, Path destination) {
     String ownerGroup = item.owner().orElse("") + item.group().map(group -> ":" + group).orElse("");
     return sudo
-        ? sudo("chown", ownerGroup, item.destination().toString())
-        : List.of("chown", ownerGroup, item.destination().toString());
+        ? sudo("chown", ownerGroup, destination.toString())
+        : List.of("chown", ownerGroup, destination.toString());
   }
 
   private void createParent(Path destination) throws IOException {
@@ -140,11 +211,12 @@ public final class FileWriteExecutor {
     }
   }
 
-  private void runCommand(List<String> command) throws IOException {
+  private ProcessResult runCommand(List<String> command) throws IOException {
     ProcessResult result = shellRunner.run(command, Map.of(), SUDO_TIMEOUT);
     if (result.exitCode() != 0) {
       throw new IOException("Command failed: " + String.join(" ", command));
     }
+    return result;
   }
 
   private List<String> sudo(String command, String... args) {

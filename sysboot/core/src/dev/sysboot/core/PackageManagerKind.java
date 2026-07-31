@@ -8,5 +8,12 @@ public enum PackageManagerKind {
   APT,
   FLATPAK,
   ZYPPER,
-  CARGO
+  CARGO;
+
+  public boolean supportsSystemUpdate() {
+    return switch (this) {
+      case DNF, PACMAN, PARU, YAY, APT, ZYPPER -> true;
+      case CARGO, FLATPAK -> false;
+    };
+  }
 }

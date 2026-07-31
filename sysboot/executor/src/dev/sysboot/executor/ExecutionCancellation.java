@@ -14,6 +14,7 @@ import java.util.function.Supplier;
 public final class ExecutionCancellation {
 
   private static final ScopedValue<CancellationSignal> SIGNAL = ScopedValue.newInstance();
+  private static final ScopedValue<Boundary> BOUNDARY = ScopedValue.newInstance();
 
   private ExecutionCancellation() {}
 
@@ -21,8 +22,24 @@ public final class ExecutionCancellation {
     return ScopedValue.where(SIGNAL, signal).call(action::get);
   }
 
+  static <T> BoundaryResult<T> withBoundary(CancellationSignal signal, Supplier<T> action) {
+    var boundary = new Boundary();
+    T value = ScopedValue.where(SIGNAL, signal).where(BOUNDARY, boundary).call(action::get);
+    return new BoundaryResult<>(value, boundary.stopped);
+  }
+
   /** True when the run has been asked to stop and the current loop should break. */
   public static boolean isCancelled() {
-    return SIGNAL.isBound() && SIGNAL.get().isCancelled();
+    boolean cancelled = SIGNAL.isBound() && SIGNAL.get().isCancelled();
+    if (cancelled && BOUNDARY.isBound()) {
+      BOUNDARY.get().stopped = true;
+    }
+    return cancelled;
+  }
+
+  record BoundaryResult<T>(T value, boolean stoppedAtBoundary) {}
+
+  private static final class Boundary {
+    private boolean stopped;
   }
 }

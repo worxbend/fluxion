@@ -2,11 +2,13 @@ package dev.sysboot.tui;
 
 import dev.sysboot.core.BootstrapConfig;
 import dev.sysboot.core.BootstrapModule;
+import dev.sysboot.core.DisplayTextSanitizer;
 import dev.sysboot.core.Phase;
 import dev.sysboot.core.SkippedPlanEntry;
 import java.io.Console;
 import java.io.OutputStream;
 import java.io.PrintStream;
+import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.Optional;
 
@@ -15,6 +17,7 @@ final class TuiSelectionPrompt {
   private final LineReader reader;
   private final PrintStream out;
   private final BootstrapConfigSelectionFilter filter;
+  private final DisplayTextSanitizer sanitizer = new DisplayTextSanitizer();
 
   TuiSelectionPrompt() {
     this(new ConsoleLineReader(), System.out, new BootstrapConfigSelectionFilter());
@@ -39,7 +42,7 @@ final class TuiSelectionPrompt {
             return "run";
           }
         },
-        new PrintStream(OutputStream.nullOutputStream()),
+        new PrintStream(OutputStream.nullOutputStream(), false, StandardCharsets.UTF_8),
         new BootstrapConfigSelectionFilter());
   }
 
@@ -134,7 +137,7 @@ final class TuiSelectionPrompt {
 
   private void renderJobs(BootstrapConfig config, BootstrapSelection selection) {
     out.println();
-    out.printf("Select jobs for profile '%s'%n", config.profileName().value());
+    out.printf("Select jobs for profile '%s'%n", display(config.profileName().value()));
     out.println("Commands: j N toggle job, s N select steps, run, q");
     for (int i = 0; i < config.phases().size(); i++) {
       Phase phase = config.phases().get(i);
@@ -142,7 +145,7 @@ final class TuiSelectionPrompt {
           "%2d. [%s] %s  (%d step(s))%n",
           i + 1,
           mark(selection.phaseSelected(phase)),
-          phase.name().value(),
+          display(phase.name().value()),
           phase.modules().size());
     }
   }
@@ -150,7 +153,7 @@ final class TuiSelectionPrompt {
   private void renderSteps(
       Phase phase, List<SkippedPlanEntry> skippedEntries, BootstrapSelection selection) {
     out.println();
-    out.printf("Job '%s' steps%n", phase.name().value());
+    out.printf("Job '%s' steps%n", display(phase.name().value()));
     out.println("Commands: t N toggle step, e N select entries, b, run, q");
     for (int i = 0; i < phase.modules().size(); i++) {
       BootstrapModule module = phase.modules().get(i);
@@ -158,7 +161,7 @@ final class TuiSelectionPrompt {
           "%2d. [%s] %s  (%d entr%s)%n",
           i + 1,
           mark(selection.moduleSelected(module)),
-          module.name().value(),
+          display(module.name().value()),
           SelectionEntryCatalog.entries(module).size(),
           SelectionEntryCatalog.entries(module).size() == 1 ? "y" : "ies");
     }
@@ -170,11 +173,12 @@ final class TuiSelectionPrompt {
   private void renderEntries(
       BootstrapModule module, List<String> entries, BootstrapSelection selection) {
     out.println();
-    out.printf("Step '%s' entries%n", module.name().value());
+    out.printf("Step '%s' entries%n", display(module.name().value()));
     out.println("Commands: t N toggle entry, b, run, q");
     for (int i = 0; i < entries.size(); i++) {
       String entry = entries.get(i);
-      out.printf("%2d. [%s] %s%n", i + 1, mark(selection.entrySelected(module, entry)), entry);
+      out.printf(
+          "%2d. [%s] %s%n", i + 1, mark(selection.entrySelected(module, entry)), display(entry));
     }
   }
 
@@ -182,10 +186,15 @@ final class TuiSelectionPrompt {
     return selected ? "x" : " ";
   }
 
+  private String display(String text) {
+    return sanitizer.sanitizeLine(text);
+  }
+
   private void renderSkippedSteps(List<SkippedPlanEntry> skippedEntries) {
     for (SkippedPlanEntry skipped : skippedEntries) {
       out.printf(
-          "    [-] %s  (%s skipped: %s)%n", skipped.name(), skipped.kind(), skipped.reason());
+          "    [-] %s  (%s skipped: %s)%n",
+          display(skipped.name()), display(skipped.kind()), display(skipped.reason()));
     }
   }
 

@@ -22,10 +22,10 @@ import org.slf4j.LoggerFactory;
  * <p>A forty-step profile used to produce up to forty password prompts, which is a worse experience
  * than the shell scripts Fluxion is meant to replace. The password is requested once, validated so
  * a typo is caught before any work starts, and then kept warm by refreshing sudo's timestamp in the
- * background for as long as the run lasts.
+ * background for as long as the run lasts. Password bytes are never retained after validation.
  *
- * <p>The session is {@link AutoCloseable}: closing it stops the refresher and zeroes the cached
- * password.
+ * <p>The session is {@link AutoCloseable}: closing it stops the refresher and invalidates the sudo
+ * timestamp that this run established or prolonged.
  */
 public final class SudoSession implements SudoPasswordProvider, AutoCloseable {
 
@@ -40,9 +40,10 @@ public final class SudoSession implements SudoPasswordProvider, AutoCloseable {
   private final Duration refreshInterval;
   private final AtomicBoolean closed = new AtomicBoolean();
 
-  private char[] cached;
+  private boolean authenticated;
   private boolean promptFree;
   private boolean declined;
+  private boolean ticketEstablished;
   private Thread refresher;
 
   public SudoSession(SudoPasswordProvider delegate) {
@@ -63,8 +64,8 @@ public final class SudoSession implements SudoPasswordProvider, AutoCloseable {
     if (promptFree) {
       return Optional.empty();
     }
-    if (cached != null) {
-      return Optional.of(copyOf(cached));
+    if (authenticated) {
+      return Optional.empty();
     }
     return switch (validator.availability()) {
       case NOT_PERMITTED -> {
@@ -78,39 +79,47 @@ public final class SudoSession implements SudoPasswordProvider, AutoCloseable {
         // cases: it keeps a warm timestamp warm for the whole run instead of letting it lapse
         // mid-flight, and is harmless under NOPASSWD.
         promptFree = true;
+        authenticated = true;
+        ticketEstablished = true;
         startRefresher();
         log.debug("sudo currently needs no password; keeping the timestamp warm");
         yield Optional.empty();
       }
-      case PASSWORD_REQUIRED -> Optional.ofNullable(authenticate(prompt)).map(SudoSession::copyOf);
+      case PASSWORD_REQUIRED -> {
+        authenticate(prompt);
+        yield Optional.empty();
+      }
     };
   }
 
-  private char[] authenticate(String prompt) {
+  private void authenticate(String prompt) {
     for (int attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
       Optional<char[]> supplied = delegate.requestPassword(promptFor(prompt, attempt));
       if (supplied.isEmpty()) {
         // The provider returns empty for an explicit cancel, a prompt timeout, and a closed
         // console alike. Latching on the first of those made every later privileged step fail
         // without ever asking again, so give up on this step but let the next one try.
-        return null;
+        return;
       }
       char[] candidate = supplied.orElseThrow();
       try {
         switch (validator.check(candidate)) {
           case ACCEPTED -> {
-            cached = copyOf(candidate);
+            if (!validator.refresh()) {
+              declined = true;
+              log.error(
+                  "sudo accepted the password but cannot reuse authentication non-interactively");
+              return;
+            }
+            authenticated = true;
+            ticketEstablished = true;
             startRefresher();
-            return cached;
+            return;
           }
           case INDETERMINATE -> {
-            // Validation timed out or could not run. Treating that as a wrong password would
-            // discard a correct one and tell the user it was rejected, so trust it instead and let
-            // the first real privileged command be the judge.
-            log.warn("Could not verify the sudo password; continuing with it anyway");
-            cached = copyOf(candidate);
-            startRefresher();
-            return cached;
+            declined = true;
+            log.error("Could not verify the sudo password; refusing privileged effects");
+            return;
           }
           case REJECTED ->
               log.warn("sudo rejected the password (attempt {} of {})", attempt, MAX_ATTEMPTS);
@@ -120,7 +129,6 @@ public final class SudoSession implements SudoPasswordProvider, AutoCloseable {
       }
     }
     declined = true;
-    return null;
   }
 
   private String promptFor(String prompt, int attempt) {
@@ -134,7 +142,17 @@ public final class SudoSession implements SudoPasswordProvider, AutoCloseable {
 
   /** Whether a password has been supplied and accepted, or none is needed. */
   public synchronized boolean isAuthenticated() {
-    return promptFree || cached != null;
+    return authenticated;
+  }
+
+  public synchronized void ensureAuthenticated(String prompt) {
+    if (!authenticated) {
+      requestPassword(prompt);
+    }
+    if (!authenticated) {
+      throw new ShellExecutionException(
+          "Privileged effect refused because sudo authentication is unavailable");
+    }
   }
 
   private void startRefresher() {
@@ -177,10 +195,10 @@ public final class SudoSession implements SudoPasswordProvider, AutoCloseable {
    * sudo every sixty seconds for the life of the run and still lose privilege mid-flight.
    */
   private synchronized void onRefreshFailed() {
-    if (promptFree && cached == null) {
-      promptFree = false;
-      log.debug("sudo no longer runs without a password; will prompt on the next privileged step");
-    }
+    authenticated = false;
+    promptFree = false;
+    refresher = null;
+    log.debug("sudo authentication expired; will prompt before the next privileged effect");
   }
 
   @Override
@@ -191,18 +209,31 @@ public final class SudoSession implements SudoPasswordProvider, AutoCloseable {
     Thread toInterrupt;
     synchronized (this) {
       toInterrupt = refresher;
-      if (cached != null) {
-        Arrays.fill(cached, '\0');
-        cached = null;
-      }
     }
     if (toInterrupt != null) {
       toInterrupt.interrupt();
+      joinRefresher(toInterrupt);
+    }
+    synchronized (this) {
+      if (ticketEstablished) {
+        try {
+          validator.invalidate();
+        } catch (RuntimeException e) {
+          log.debug("Failed to invalidate sudo authentication while closing the session", e);
+        }
+        ticketEstablished = false;
+      }
+      authenticated = false;
+      promptFree = false;
     }
   }
 
-  private static char[] copyOf(char[] value) {
-    return Arrays.copyOf(value, value.length);
+  private void joinRefresher(Thread thread) {
+    try {
+      thread.join(Duration.ofSeconds(2));
+    } catch (InterruptedException e) {
+      Thread.currentThread().interrupt();
+    }
   }
 
   /** How sudo behaves on this host right now. */
@@ -234,6 +265,8 @@ public final class SudoSession implements SudoPasswordProvider, AutoCloseable {
      * @return false when the timestamp could not be refreshed
      */
     boolean refresh();
+
+    void invalidate();
   }
 
   static final class SudoCommandValidator implements Validator {
@@ -250,8 +283,12 @@ public final class SudoSession implements SudoPasswordProvider, AutoCloseable {
                       .map(
                           bytes ->
                               ProcessExecution.Request.of(command, Map.of(), timeout)
-                                  .withStdin(bytes))
-                      .orElseGet(() -> ProcessExecution.Request.of(command, Map.of(), timeout))));
+                                  .withStdin(bytes)
+                                  .inSharedSession())
+                      .orElseGet(
+                          () ->
+                              ProcessExecution.Request.of(command, Map.of(), timeout)
+                                  .inSharedSession())));
     }
 
     SudoCommandValidator(ShellRunnerPort runner) {
@@ -262,7 +299,7 @@ public final class SudoSession implements SudoPasswordProvider, AutoCloseable {
     public Availability availability() {
       // -n makes sudo fail rather than prompt, so this never blocks waiting for input.
       ProcessResult result =
-          runner.run(List.of("sudo", "-n", "-v"), Optional.empty(), VALIDATE_TIMEOUT);
+          runner.run(SudoCommand.validateWithoutPrompt(), Optional.empty(), VALIDATE_TIMEOUT);
       if (result.isSuccess()) {
         return Availability.NO_PROMPT_NEEDED;
       }
@@ -281,7 +318,7 @@ public final class SudoSession implements SudoPasswordProvider, AutoCloseable {
     public AuthResult check(char[] password) {
       byte[] stdin = encodeWithNewline(password);
       ProcessResult result =
-          runner.run(List.of("sudo", "-S", "-p", "", "-v"), Optional.of(stdin), VALIDATE_TIMEOUT);
+          runner.run(SudoCommand.validateWithPassword(), Optional.of(stdin), VALIDATE_TIMEOUT);
       if (result.isSuccess()) {
         return AuthResult.ACCEPTED;
       }
@@ -293,8 +330,13 @@ public final class SudoSession implements SudoPasswordProvider, AutoCloseable {
     @Override
     public boolean refresh() {
       return runner
-          .run(List.of("sudo", "-n", "-v"), Optional.empty(), VALIDATE_TIMEOUT)
+          .run(SudoCommand.validateWithoutPrompt(), Optional.empty(), VALIDATE_TIMEOUT)
           .isSuccess();
+    }
+
+    @Override
+    public void invalidate() {
+      runner.run(SudoCommand.invalidate(), Optional.empty(), VALIDATE_TIMEOUT);
     }
 
     /**

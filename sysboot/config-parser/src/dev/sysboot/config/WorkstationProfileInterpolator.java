@@ -6,7 +6,6 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.fasterxml.jackson.databind.node.TextNode;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
-import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -113,9 +112,7 @@ final class WorkstationProfileInterpolator {
       Map<String, String> variables,
       List<String> errors,
       Optional<PlanContext> plan) {
-    Iterator<Map.Entry<String, JsonNode>> fields = object.fields();
-    while (fields.hasNext()) {
-      Map.Entry<String, JsonNode> field = fields.next();
+    for (Map.Entry<String, JsonNode> field : object.properties()) {
       String childPath = childPath(path, field.getKey());
       JsonNode child = field.getValue();
       if (child.isTextual()) {
@@ -136,7 +133,7 @@ final class WorkstationProfileInterpolator {
     for (int index = 0; index < array.size(); index++) {
       JsonNode child = array.get(index);
       String childPath = path + "[" + index + "]";
-      Optional<PlanContext> childPlan = planContext(path, child, variables).or(() -> plan);
+      Optional<PlanContext> childPlan = planContext(path, child, variables, errors).or(() -> plan);
       if (child.isTextual()) {
         String resolved = resolveText(child.asText(), childPath, childPlan, errors, variables::get);
         array.set(index, TextNode.valueOf(resolved));
@@ -147,7 +144,7 @@ final class WorkstationProfileInterpolator {
   }
 
   private Optional<PlanContext> planContext(
-      String path, JsonNode child, Map<String, String> variables) {
+      String path, JsonNode child, Map<String, String> variables, List<String> errors) {
     if (!"spec.plan".equals(path) || !child.isObject()) {
       return Optional.empty();
     }
@@ -155,7 +152,13 @@ final class WorkstationProfileInterpolator {
     if (name == null || !name.isTextual()) {
       return Optional.empty();
     }
-    return Optional.of(new PlanContext(resolvePlanName(name.asText(), variables)));
+    JsonNode kind = child.get("kind");
+    String rawKind = kind != null && kind.isTextual() ? kind.asText() : "";
+    String planKind =
+        resolveText(rawKind, path + ".kind", Optional.empty(), errors, variables::get)
+            .strip()
+            .toLowerCase(java.util.Locale.ROOT);
+    return Optional.of(new PlanContext(resolvePlanName(name.asText(), variables), planKind));
   }
 
   private String resolveText(
@@ -166,10 +169,14 @@ final class WorkstationProfileInterpolator {
       VariableLookup lookup) {
     Matcher matcher = VARIABLE.matcher(value);
     var resolved = new StringBuilder();
+    boolean shellExpression = isShellExpression(path, plan);
     while (matcher.find()) {
       String name = matcher.group(1).strip();
-      String replacement = name.isEmpty() ? null : lookup.value(name);
-      if (replacement == null) {
+      String replacement = shellExpression ? null : lookup.value(name);
+      if (shellExpression) {
+        errors.add(shellInterpolationMessage(path, plan, matcher.group()));
+        replacement = matcher.group();
+      } else if (name.isEmpty() || replacement == null) {
         errors.add(unresolvedMessage(path, plan, matcher.group(), name));
         replacement = matcher.group();
       }
@@ -177,6 +184,24 @@ final class WorkstationProfileInterpolator {
     }
     matcher.appendTail(resolved);
     return resolved.toString();
+  }
+
+  private boolean isShellExpression(String path, Optional<PlanContext> plan) {
+    if (plan.isEmpty() || !path.startsWith("spec.plan[")) {
+      return false;
+    }
+    if (path.endsWith(".unless") || path.endsWith(".probeCommand")) {
+      return true;
+    }
+    if ("assert".equals(plan.orElseThrow().kind()) && path.endsWith(".spec.command")) {
+      return true;
+    }
+    if (!"commands".equals(plan.orElseThrow().kind())) {
+      return false;
+    }
+    return path.matches(".*\\.spec\\.commands\\[\\d+]")
+        || path.endsWith(".run")
+        || path.endsWith(".shellCommand");
   }
 
   private Map<String, String> variables(Map<String, String> specVars) {
@@ -193,7 +218,7 @@ final class WorkstationProfileInterpolator {
       return Map.of();
     }
     var values = new LinkedHashMap<String, String>();
-    vars.fields().forEachRemaining(field -> readSpecVar(values, field));
+    vars.properties().forEach(field -> readSpecVar(values, field));
     return values;
   }
 
@@ -219,6 +244,15 @@ final class WorkstationProfileInterpolator {
                     + "' references unresolved variable "
                     + variable)
         .orElse(path + " references unresolved variable " + variable);
+  }
+
+  private String shellInterpolationMessage(String path, Optional<PlanContext> plan, String token) {
+    String prefix =
+        plan.map(context -> path + " in plan entry '" + context.name() + "'").orElse(path);
+    return prefix
+        + " cannot interpolate "
+        + token
+        + " inside a shell expression; use env or structured argv";
   }
 
   private String childPath(String parent, String fieldName) {
@@ -254,5 +288,5 @@ final class WorkstationProfileInterpolator {
     String value(String name);
   }
 
-  private record PlanContext(String name) {}
+  private record PlanContext(String name, String kind) {}
 }

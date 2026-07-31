@@ -56,9 +56,14 @@ public record BootstrapState(
         Optional.empty());
   }
 
-  public Optional<StateEntry> findEntry(String itemKey, ItemType type) {
+  public Optional<StateEntry> findEntry(ModuleName moduleName, String itemKey, ItemType type) {
+    Objects.requireNonNull(moduleName);
     return entries.stream()
-        .filter(e -> e.itemKey().equals(itemKey) && e.itemType() == type)
+        .filter(
+            entry ->
+                entry.moduleName().equals(moduleName.value())
+                    && entry.itemKey().equals(itemKey)
+                    && entry.itemType() == type)
         .findFirst();
   }
 
@@ -84,7 +89,8 @@ public record BootstrapState(
         entries.stream()
             .filter(
                 e ->
-                    !(e.itemKey().equals(newEntry.itemKey())
+                    !(e.moduleName().equals(newEntry.moduleName())
+                        && e.itemKey().equals(newEntry.itemKey())
                         && e.itemType() == newEntry.itemType()))
             .collect(Collectors.toCollection(ArrayList::new));
     updated.add(newEntry);
@@ -126,6 +132,21 @@ public record BootstrapState(
     return copy(List.copyOf(updated), phaseEntries, planEntryEntries, nextPlanEntry);
   }
 
+  public BootstrapState withoutItem(ModuleName moduleName, String itemKey, ItemType itemType) {
+    Objects.requireNonNull(moduleName);
+    Objects.requireNonNull(itemKey);
+    Objects.requireNonNull(itemType);
+    List<StateEntry> updated =
+        entries.stream()
+            .filter(
+                entry ->
+                    !(entry.moduleName().equals(moduleName.value())
+                        && entry.itemKey().equals(itemKey)
+                        && entry.itemType() == itemType))
+            .collect(Collectors.toCollection(ArrayList::new));
+    return copy(List.copyOf(updated), phaseEntries, planEntryEntries, nextPlanEntry);
+  }
+
   public BootstrapState withoutPhase(String phaseName) {
     Objects.requireNonNull(phaseName);
     List<PhaseStateEntry> updated =
@@ -147,6 +168,19 @@ public record BootstrapState(
         Optional.of(fingerprint));
   }
 
+  public BootstrapState withRunMetadata(Instant timestamp, String version) {
+    return new BootstrapState(
+        profileName,
+        Objects.requireNonNull(timestamp),
+        Objects.requireNonNull(version),
+        entries,
+        phaseEntries,
+        planEntryEntries,
+        nextPlanEntry,
+        manifestIdentity,
+        manifestFingerprint);
+  }
+
   public boolean hasRecordedWork() {
     return !entries.isEmpty()
         || !phaseEntries.isEmpty()
@@ -156,6 +190,10 @@ public record BootstrapState(
 
   public static BootstrapState empty(String profileName, String version) {
     return new BootstrapState(profileName, Instant.now(), version, List.of());
+  }
+
+  public static BootstrapState empty(String profileName, String version, Instant timestamp) {
+    return new BootstrapState(profileName, timestamp, version, List.of());
   }
 
   private BootstrapState copy(

@@ -16,7 +16,7 @@ final class ToolCache {
   }
 
   ToolCache(Path baseDir) {
-    this.baseDir = Objects.requireNonNull(baseDir);
+    this.baseDir = Objects.requireNonNull(baseDir).toAbsolutePath().normalize();
   }
 
   Path baseDir() {
@@ -25,11 +25,30 @@ final class ToolCache {
 
   /** Directory holding one resolved version of one tool. */
   Path versionDir(ToolSpec spec) {
-    return baseDir.resolve(spec.name()).resolve(spec.version());
+    return requireConfined(baseDir.resolve(spec.name()).resolve(spec.version()));
   }
 
   /** Path the executable is cached at once installed. */
   Path executable(ToolSpec spec) {
-    return versionDir(spec).resolve(spec.executableName());
+    return requireConfined(versionDir(spec).resolve(spec.executableName()));
+  }
+
+  Path installLock(ToolSpec spec) {
+    Path executable = executable(spec);
+    return requireConfined(
+        executable.resolveSibling("." + executable.getFileName() + ".install.lock"));
+  }
+
+  Path integrityProof(ToolSpec spec) {
+    Path executable = executable(spec);
+    return requireConfined(executable.resolveSibling("." + executable.getFileName() + ".sha256"));
+  }
+
+  Path requireConfined(Path candidate) {
+    Path normalized = Objects.requireNonNull(candidate).toAbsolutePath().normalize();
+    if (normalized.equals(baseDir) || !normalized.startsWith(baseDir)) {
+      throw new IllegalArgumentException("Tool cache path escapes the configured cache root");
+    }
+    return normalized;
   }
 }

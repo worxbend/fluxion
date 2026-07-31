@@ -1,10 +1,13 @@
 package dev.sysboot.core;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import dev.sysboot.core.HostPlatform.Architecture;
 import dev.sysboot.core.HostPlatform.OperatingSystem;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 
 /**
  * Asset naming is the one place where a silent typo produces a 404 on a user's machine and nowhere
@@ -28,13 +31,9 @@ class ToolSpecTest {
   }
 
   @Test
-  void nerdFontsInstallerStillResolvesReleasesFromBeforeTheAssetRename() {
-    // v1.0.0 through v1.0.6 publish `nerdfont-install_<tag>_<os>_<arch>.tar.gz`; v1.0.7 renamed it.
-    // A profile that pins an older version must keep working.
-    assertThat(KnownTools.NERD_FONTS_INSTALLER.withVersion("v1.0.5").assetNames(LINUX_AMD64))
-        .containsExactly(
-            "nerd-fonts-installer_v1.0.5_linux_amd64.tar.gz",
-            "nerdfont-install_v1.0.5_linux_amd64.tar.gz");
+  void nerdFontsInstallerDoesNotOfferAnAbsentLegacyCandidateAtThePinnedRelease() {
+    assertThat(KnownTools.NERD_FONTS_INSTALLER.assetNames(LINUX_AMD64))
+        .containsExactly("nerd-fonts-installer_v1.0.7_linux_amd64.tar.gz");
   }
 
   @Test
@@ -66,13 +65,50 @@ class ToolSpecTest {
   }
 
   @Test
-  void versionCanBePinnedWithoutTouchingTheOtherFields() {
-    ToolSpec pinned = KnownTools.NERD_FONTS_INSTALLER.withVersion("latest");
+  void versionMustBePresentInTheTrustedDigestCatalog() {
+    assertThatThrownBy(() -> KnownTools.NERD_FONTS_INSTALLER.withVersion("latest"))
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("trusted release-digest catalog");
+    assertThat(KnownTools.NERD_FONTS_INSTALLER.withVersion("v1.0.7"))
+        .isEqualTo(KnownTools.NERD_FONTS_INSTALLER);
+  }
 
-    assertThat(pinned.isLatest()).isTrue();
-    assertThat(pinned.assetName(LINUX_AMD64))
-        .isEqualTo("nerd-fonts-installer_latest_linux_amd64.tar.gz");
-    assertThat(pinned.repository()).isEqualTo(KnownTools.NERD_FONTS_INSTALLER.repository());
+  @ParameterizedTest
+  @ValueSource(strings = {"latest", "v9.9.9"})
+  void unversionedDotbotAssetsStillRejectUncataloguedReleaseTags(String version) {
+    assertThatThrownBy(() -> KnownTools.DOTBOT_GO.withVersion(version))
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("trusted release-digest catalog");
+    assertThatThrownBy(() -> KnownTools.DOTBOT_SCALA.withVersion(version))
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("trusted release-digest catalog");
+  }
+
+  @ParameterizedTest
+  @ValueSource(
+      strings = {"/tmp/escape", ".", "..", "../escape", "nested/version", "nested\\version"})
+  void versionRejectsAbsoluteDotAndTraversalSegments(String version) {
+    assertThatThrownBy(() -> KnownTools.DOTBOT_GO.withVersion(version))
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("cache-path segment");
+  }
+
+  @ParameterizedTest
+  @ValueSource(strings = {"/tmp/tool", ".", "..", "../tool", "nested/tool", "nested\\tool"})
+  void toolNameAndBinaryNameRejectCachePathEscapes(String value) {
+    assertThatThrownBy(
+            () ->
+                new ToolSpec(
+                    value,
+                    KnownTools.DOTBOT_GO.repository(),
+                    "v1.0.0",
+                    "tool-${os}-${arch}.tar.gz",
+                    ToolSpec.OsNaming.GO,
+                    ToolSpec.ChecksumPolicy.SIDECAR_SHA256,
+                    java.util.Optional.empty()))
+        .isInstanceOf(IllegalArgumentException.class);
+    assertThatThrownBy(() -> KnownTools.DOTBOT_GO.withBinaryName(value))
+        .isInstanceOf(IllegalArgumentException.class);
   }
 
   @Test

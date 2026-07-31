@@ -65,6 +65,28 @@ class ProfileLinterTest {
     assertThat(report.issues()).noneMatch(issue -> issue.path().endsWith(".checksum"));
   }
 
+  @Test
+  void lint_whenCompiledBinaryHasOnlyChecksumUrl_reportsSafetyIssue() throws Exception {
+    var module =
+        new CompiledBinaryModule(
+            new ModuleName("ripgrep"),
+            "rg",
+            new BinaryUrl(new URI("https://example.test/rg")),
+            Optional.empty(),
+            Optional.of(new BinaryUrl(new URI("https://example.test/rg.sha256"))),
+            Path.of("/usr/local/bin/rg"),
+            false);
+
+    var report = linter.lint(config(module));
+
+    assertThat(report.issues())
+        .anySatisfy(
+            issue ->
+                assertThat(issue.message())
+                    .contains("literal checksum")
+                    .contains("signer-bound signature"));
+  }
+
   private static BootstrapConfig config(BootstrapModule module) {
     return BootstrapConfig.builder()
         .profileName(new ProfileName("test"))
@@ -89,11 +111,18 @@ class ProfileLinterTest {
     return new CompiledBinaryModule(
         new ModuleName("ripgrep"),
         "rg",
-        new BinaryUrl(new URI("https://example.test/rg.tar.gz")),
+        new BinaryUrl(new URI("https://example.test/rg")),
         Optional.empty(),
         Optional.empty(),
-        Optional.of(new BinaryUrl(new URI("https://example.test/rg.tar.gz.asc"))),
+        Optional.of(new BinaryUrl(new URI("https://example.test/rg.asc"))),
         Path.of("/usr/local/bin/rg"),
-        false);
+        Optional.empty(),
+        0,
+        Optional.of("0755"),
+        Optional.empty(),
+        false,
+        Optional.empty(),
+        Optional.empty(),
+        Optional.of("A".repeat(40)));
   }
 }

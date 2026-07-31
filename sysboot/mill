@@ -2,7 +2,9 @@
 
 set -e
 
-if [ -z "${DEFAULT_MILL_VERSION}" ] ; then DEFAULT_MILL_VERSION="1.1.6"; fi
+PINNED_MILL_VERSION="1.1.6"
+
+if [ -z "${DEFAULT_MILL_VERSION}" ] ; then DEFAULT_MILL_VERSION="${PINNED_MILL_VERSION}"; fi
 
 if [ -z "${GITHUB_RELEASE_CDN}" ] ; then GITHUB_RELEASE_CDN=""; fi
 
@@ -47,6 +49,15 @@ if [ -z "${MILL_VERSION}" ] ; then
 fi
 
 if [ -z "${MILL_VERSION}" ] ; then MILL_VERSION="${DEFAULT_MILL_VERSION}"; fi
+
+case "${MILL_VERSION}" in
+  "${PINNED_MILL_VERSION}" | "${PINNED_MILL_VERSION}-native" | "${PINNED_MILL_VERSION}-jvm")
+    ;;
+  *)
+    echo "Mill ${MILL_VERSION} is not trusted by this launcher; expected ${PINNED_MILL_VERSION}." 1>&2
+    exit 1
+    ;;
+esac
 
 MILL_USER_CACHE_DIR="${XDG_CACHE_HOME:-${HOME}/.cache}/mill"
 
@@ -119,8 +130,65 @@ esac
 
 MILL="${MILL_FINAL_DOWNLOAD_FOLDER}/$MILL_VERSION$ARTIFACT_SUFFIX"
 
+expected_mill_sha256() {
+  # SHA-256 values were computed from Mill 1.1.6 artifacts on Maven Central
+  # (https://repo1.maven.org/maven2/com/lihaoyi/) after checking each artifact
+  # against the corresponding published .sha1.
+  case "$ARTIFACT_SUFFIX" in
+    "")
+      echo "37922ae8f8b49b4ae345d9b4d764be235c9afd8039e0b3fc513fdd758904649f"
+      ;;
+    "-native-linux-amd64")
+      echo "9fea431da78ddf461e66ed328d868843abf02ca02a9fd8adb43d41c095b68c43"
+      ;;
+    "-native-linux-aarch64")
+      echo "3b2166a388270c9d3e654e0ad6dcf81f3aace5995bb3ed4f250965bf4fda5658"
+      ;;
+    "-native-mac-amd64")
+      echo "dfb5dc0db165c07a80322c1c16f913219d717d573a9b8e8dbdaa9305a01c5d95"
+      ;;
+    "-native-mac-aarch64")
+      echo "5551dba6940a4db5705cb3e482d3e059ec4b6ac0a40c34255d932fff45050f98"
+      ;;
+    *)
+      echo "No trusted checksum for Mill ${MILL_VERSION}${ARTIFACT_SUFFIX}." 1>&2
+      return 1
+      ;;
+  esac
+}
+
+file_sha256() {
+  if command -v sha256sum >/dev/null 2>&1; then
+    sha256sum "$1" | awk '{print $1}'
+  elif command -v shasum >/dev/null 2>&1; then
+    shasum -a 256 "$1" | awk '{print $1}'
+  elif command -v openssl >/dev/null 2>&1; then
+    openssl dgst -sha256 "$1" | sed 's/^.*= //'
+  else
+    echo "A SHA-256 tool (sha256sum, shasum, or openssl) is required." 1>&2
+    return 1
+  fi
+}
+
+verify_mill_artifact() {
+  actual_sha256="$(file_sha256 "$1")" || return 1
+  if [ "$actual_sha256" != "$MILL_EXPECTED_SHA256" ]; then
+    echo "Checksum verification failed for $1." 1>&2
+    return 1
+  fi
+}
+
+MILL_EXPECTED_SHA256="$(expected_mill_sha256)"
+MILL_NEEDS_DOWNLOAD=0
+if [ ! -s "${MILL}" ]; then
+  MILL_NEEDS_DOWNLOAD=1
+elif ! verify_mill_artifact "${MILL}"; then
+  echo "Replacing unverified cached Mill launcher." 1>&2
+  MILL_NEEDS_DOWNLOAD=1
+fi
+
 # If not already downloaded, download it
-if [ ! -s "${MILL}" ] || [ "$MILL_TEST_DRY_RUN_LAUNCHER_SCRIPT" = "1" ] ; then
+if [ "$MILL_NEEDS_DOWNLOAD" = "1" ] || [ "$MILL_TEST_DRY_RUN_LAUNCHER_SCRIPT" = "1" ] ; then
   case $MILL_VERSION in
     0.0.* | 0.1.* | 0.2.* | 0.3.* | 0.4.*)
       MILL_DOWNLOAD_SUFFIX=""
@@ -150,9 +218,6 @@ if [ ! -s "${MILL}" ] || [ "$MILL_TEST_DRY_RUN_LAUNCHER_SCRIPT" = "1" ] ; then
       ;;
   esac
 
-  MILL_TEMP_DOWNLOAD_FILE="${MILL_OUTPUT_DIR:-out}/mill-temp-download"
-  mkdir -p "$(dirname "${MILL_TEMP_DOWNLOAD_FILE}")"
-
   if [ "$MILL_DOWNLOAD_FROM_MAVEN" = "1" ] ; then
     MILL_DOWNLOAD_URL="https://repo1.maven.org/maven2/com/lihaoyi/mill-dist${ARTIFACT_SUFFIX}/${MILL_VERSION}/mill-dist${ARTIFACT_SUFFIX}-${MILL_VERSION}.${MILL_DOWNLOAD_EXT}"
   else
@@ -168,17 +233,31 @@ if [ ! -s "${MILL}" ] || [ "$MILL_TEST_DRY_RUN_LAUNCHER_SCRIPT" = "1" ] ; then
     exit 0
   fi
 
+  mkdir -p "${MILL_FINAL_DOWNLOAD_FOLDER}"
+  MILL_TEMP_DOWNLOAD_FILE="$(mktemp "${MILL_FINAL_DOWNLOAD_FOLDER}/.mill-download.XXXXXX")"
+  cleanup_mill_download() {
+    if [ -n "${MILL_TEMP_DOWNLOAD_FILE:-}" ]; then
+      rm -f -- "${MILL_TEMP_DOWNLOAD_FILE}"
+    fi
+  }
+  trap cleanup_mill_download EXIT HUP INT TERM
+
   echo "Downloading mill ${MILL_VERSION} from ${MILL_DOWNLOAD_URL} ..." 1>&2
-  curl -f -L -o "${MILL_TEMP_DOWNLOAD_FILE}" "${MILL_DOWNLOAD_URL}"
+  curl --proto '=https' --tlsv1.2 --fail --location --show-error --silent \
+    -o "${MILL_TEMP_DOWNLOAD_FILE}" "${MILL_DOWNLOAD_URL}"
+  verify_mill_artifact "${MILL_TEMP_DOWNLOAD_FILE}"
 
   chmod +x "${MILL_TEMP_DOWNLOAD_FILE}"
 
-  mkdir -p "${MILL_FINAL_DOWNLOAD_FOLDER}"
   mv "${MILL_TEMP_DOWNLOAD_FILE}" "${MILL}"
+  MILL_TEMP_DOWNLOAD_FILE=""
+  trap - EXIT HUP INT TERM
 
   unset MILL_TEMP_DOWNLOAD_FILE
   unset MILL_DOWNLOAD_SUFFIX
 fi
+
+verify_mill_artifact "${MILL}"
 
 MILL_FIRST_ARG=""
 if [ "$1" = "--bsp" ] || [ "${1#"-i"}" != "$1" ] || [ "$1" = "--interactive" ] || [ "$1" = "--no-server" ] || [ "$1" = "--no-daemon" ] || [ "$1" = "--help" ] ; then
@@ -192,6 +271,9 @@ unset MILL_OLD_DOWNLOAD_PATH
 unset OLD_MILL
 unset MILL_VERSION
 unset MILL_REPO_URL
+unset MILL_EXPECTED_SHA256
+unset MILL_NEEDS_DOWNLOAD
+unset PINNED_MILL_VERSION
 
 # -D mill.main.cli is for compatibility with Mill 0.10.9 - 0.13.0-M2
 # We don't quote MILL_FIRST_ARG on purpose, so we can expand the empty value without quotes

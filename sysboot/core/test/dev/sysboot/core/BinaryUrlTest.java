@@ -31,4 +31,37 @@ class BinaryUrlTest {
     assertThatThrownBy(() -> new BinaryUrl(URI.create("ftp://example.com/binary")))
         .isInstanceOf(IllegalArgumentException.class);
   }
+
+  @Test
+  void constructor_whenUserInfoPresent_throwsIllegalArgumentException() {
+    assertThatThrownBy(
+            () ->
+                new BinaryUrl(
+                    URI.create(
+                        "https://user:password@example.com/binary?token=query-secret#private")))
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("user-info")
+        .hasMessageContaining("https://example.com/binary")
+        .hasMessageNotContaining("user:password")
+        .hasMessageNotContaining("query-secret")
+        .hasMessageNotContaining("private")
+        .hasMessageNotContaining("token=");
+  }
+
+  @Test
+  void constructor_whenHostMissing_throwsIllegalArgumentException() {
+    assertThatThrownBy(() -> new BinaryUrl(URI.create("https:///binary")))
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("host");
+  }
+
+  @Test
+  void stateSource_whenUrlHasQueryAndFragment_stripsNonPublicComponents() {
+    var url =
+        new BinaryUrl(
+            URI.create("https://downloads.example.test:8443/tool.bin?token=secret#release"));
+
+    assertThat(url.stateSource()).isEqualTo("https://downloads.example.test:8443/tool.bin");
+    assertThat(url.value().getQuery()).isEqualTo("token=secret");
+  }
 }

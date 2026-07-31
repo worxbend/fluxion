@@ -2,6 +2,7 @@ package dev.sysboot.executor;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import dev.sysboot.core.InstallationStatus;
 import dev.sysboot.core.ModuleItem;
 import dev.sysboot.core.ModuleName;
 import dev.sysboot.core.PackageManagerKind;
@@ -62,6 +63,23 @@ class InstalledProbeRegistryTest {
     registry.probe(packageItem(PackageManagerKind.ZYPPER));
 
     assertThat(runner.command()).containsExactly("rpm", "-q", "git");
+  }
+
+  @Test
+  void probe_whenCommandCannotLaunch_reportsUnknownWithoutAbortingCaller() {
+    var registry =
+        new InstalledProbeRegistry(
+            List.of(
+                new DnfPackageProbe(
+                    (command, environment, timeout) -> {
+                      throw new ShellExecutionException("rpm unavailable");
+                    })));
+
+    InstallationStatus result = registry.probe(packageItem(PackageManagerKind.DNF));
+
+    assertThat(result).isInstanceOf(InstallationStatus.Unknown.class);
+    assertThat(((InstallationStatus.Unknown) result).reason())
+        .isEqualTo("Probe command could not be executed");
   }
 
   private static InstalledProbeRegistry packageProbeRegistry(ShellRunner runner) {

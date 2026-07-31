@@ -18,6 +18,7 @@ import java.io.PrintWriter;
 import java.io.StringWriter;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
+import java.nio.file.LinkOption;
 import java.nio.file.Path;
 import java.time.Instant;
 import java.util.Arrays;
@@ -27,6 +28,8 @@ import java.util.concurrent.TimeUnit;
 import org.junit.jupiter.api.Assumptions;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import picocli.CommandLine;
 
 class CliExitCodeTest {
@@ -40,6 +43,24 @@ class CliExitCodeTest {
     assertThat(result.exitCode()).isEqualTo(ExitCode.SUCCESS.value());
     assertThat(result.stdout()).contains("Usage: fluxion");
     assertThat(result.stdout()).contains("apply");
+    assertThat(result.stderr()).isEmpty();
+  }
+
+  @Test
+  void subcommandHelpReturnsSuccess() {
+    CliResult result = execute("apply", "--help");
+
+    assertThat(result.exitCode()).isEqualTo(ExitCode.SUCCESS.value());
+    assertThat(result.stdout()).contains("Usage: fluxion apply");
+    assertThat(result.stderr()).isEmpty();
+  }
+
+  @Test
+  void nestedSubcommandHelpReturnsSuccessEvenWhenCommandHasRequiredParameters() {
+    CliResult result = execute("tools", "install", "--help");
+
+    assertThat(result.exitCode()).isEqualTo(ExitCode.SUCCESS.value());
+    assertThat(result.stdout()).contains("Usage: fluxion tools install").contains("--release");
     assertThat(result.stderr()).isEmpty();
   }
 
@@ -89,6 +110,22 @@ class CliExitCodeTest {
   }
 
   @Test
+  void statePath_whenProfileTraverses_returnsInvalidInput() {
+    CliResult result = execute("state", "path", "../outside");
+
+    assertThat(result.exitCode()).isEqualTo(ExitCode.INVALID_INPUT.value());
+    assertThat(result.stderr()).contains("safe slug").doesNotContain("Exception");
+  }
+
+  @Test
+  void stateReset_whenProfileTraverses_returnsInvalidInput() {
+    CliResult result = execute("state", "reset", "../outside", "--force");
+
+    assertThat(result.exitCode()).isEqualTo(ExitCode.INVALID_INPUT.value());
+    assertThat(result.stderr()).contains("safe slug").doesNotContain("Exception");
+  }
+
+  @Test
   void stateReset_deletesFluxionAndLegacyStateFiles() throws Exception {
     String originalHome = System.getProperty("user.home");
     System.setProperty("user.home", tempDir.toString());
@@ -112,6 +149,74 @@ class CliExitCodeTest {
   }
 
   @Test
+  void stateReset_whenStateFileIsDanglingSymlink_removesLink() throws Exception {
+    String originalHome = System.getProperty("user.home");
+    System.setProperty("user.home", tempDir.toString());
+    try {
+      Path stateFile = tempDir.resolve(".local/share/fluxion/default.state.json");
+      Files.createDirectories(stateFile.getParent());
+      createSymlinkOrSkip(stateFile, tempDir.resolve("missing-state-target"));
+
+      CliResult result = execute("state", "reset", "default", "--force");
+
+      assertThat(result.exitCode()).isEqualTo(ExitCode.SUCCESS.value());
+      assertThat(result.stdout()).contains("State reset for profile: default");
+      assertThat(Files.exists(stateFile, LinkOption.NOFOLLOW_LINKS)).isFalse();
+    } finally {
+      System.setProperty("user.home", originalHome);
+    }
+  }
+
+  @Test
+  void stateForget_whenItemKeyIsAmbiguous_failsWithoutDeletingEitherEntry() {
+    String originalHome = System.getProperty("user.home");
+    System.setProperty("user.home", tempDir.toString());
+    try {
+      var repo = new JsonStateRepository(new ObjectMapper());
+      repo.save(stateWithSharedItemKey());
+
+      CliResult result = execute("state", "forget", "--profile", "default", "--item", "shared");
+
+      assertThat(result.exitCode()).isEqualTo(ExitCode.INVALID_INPUT.value());
+      assertThat(result.stderr()).contains("ambiguous").contains("--module").contains("--type");
+      assertThat(repo.load("default").orElseThrow().entries()).hasSize(2);
+    } finally {
+      System.setProperty("user.home", originalHome);
+    }
+  }
+
+  @Test
+  void stateForget_whenItemIsQualified_deletesOnlyCanonicalIdentity() {
+    String originalHome = System.getProperty("user.home");
+    System.setProperty("user.home", tempDir.toString());
+    try {
+      var repo = new JsonStateRepository(new ObjectMapper());
+      repo.save(stateWithSharedItemKey());
+
+      CliResult result =
+          execute(
+              "state",
+              "forget",
+              "--profile",
+              "default",
+              "--item",
+              "shared",
+              "--module",
+              "core",
+              "--type",
+              "package");
+
+      assertThat(result.exitCode()).isEqualTo(ExitCode.SUCCESS.value());
+      assertThat(result.stdout()).contains("core/shared");
+      assertThat(repo.load("default").orElseThrow().entries())
+          .extracting(StateEntry::moduleName)
+          .containsExactly("desktop");
+    } finally {
+      System.setProperty("user.home", originalHome);
+    }
+  }
+
+  @Test
   void run_whenPhaseDoesNotExist_returnsConfigurationError() throws Exception {
     Path config = writeConfig();
 
@@ -121,6 +226,21 @@ class CliExitCodeTest {
     assertThat(result.exitCode()).isEqualTo(ExitCode.CONFIGURATION_ERROR.value());
     assertThat(result.stderr()).contains("Unknown phase 'missing'");
     assertThat(result.stderr()).contains("base");
+  }
+
+  @Test
+  void run_whenSelectingDependentPhase_removesDependenciesOutsideSelection() throws Exception {
+    Path config = writeDependentPhaseConfig();
+
+    CliResult result =
+        executeCapturingSystemOut(
+            "run", "--no-tui", "--dry-run", "-c", config.toString(), "--phase", "desktop");
+
+    assertThat(result.exitCode()).isEqualTo(ExitCode.SUCCESS.value());
+    assertThat(result.stdout())
+        .contains("org.mozilla.firefox")
+        .doesNotContain("dnf install -y git");
+    assertThat(result.stderr()).isEmpty();
   }
 
   @Test
@@ -155,6 +275,18 @@ class CliExitCodeTest {
   }
 
   @Test
+  void apply_whenExecutedStepFails_returnsDependencyError() throws Exception {
+    Path config = writeFailingShellConfig();
+
+    CliResult result =
+        executeCapturingSystemOut("apply", "--no-tui", "-c", config.toString(), "--yes");
+
+    assertThat(result.exitCode()).isEqualTo(ExitCode.EXTERNAL_DEPENDENCY_ERROR.value());
+    assertThat(result.stdout()).contains("FAILED").contains("failed=1");
+    assertThat(result.stderr()).contains("Bootstrap failed in phase(s): base");
+  }
+
+  @Test
   void applyDryRun_whenConsoleMissing_usesPlainOutput() throws Exception {
     Assumptions.assumeTrue(System.console() == null);
     Path config = writeConfig();
@@ -165,6 +297,145 @@ class CliExitCodeTest {
     assertThat(result.exitCode()).isEqualTo(ExitCode.SUCCESS.value());
     assertThat(result.stdout()).contains("[PHASE").contains("DRY-RUN").contains("git");
     assertThat(result.stderr()).isEmpty();
+  }
+
+  @Test
+  void apply_whenProfileDefaultsToDryRun_usesPlainDryRunWithoutMutation() throws Exception {
+    Path mutation = tempDir.resolve("must-not-exist");
+    Path config = writeDryRunDefaultConfig(mutation);
+
+    CliResult result =
+        executeCapturingSystemOut("apply", "--no-tui", "-c", config.toString(), "--yes");
+
+    assertThat(result.exitCode()).isEqualTo(ExitCode.SUCCESS.value());
+    assertThat(result.stdout()).contains("Mode: dry-run").contains("DRY-RUN");
+    assertThat(mutation).doesNotExist();
+    assertThat(result.stderr()).isEmpty();
+  }
+
+  @Test
+  void apply_whenProfileDefaultsToDryRun_doesNotResetState() throws Exception {
+    Path config = writeDryRunDefaultConfig(tempDir.resolve("must-not-exist"));
+    String originalHome = System.getProperty("user.home");
+    System.setProperty("user.home", tempDir.toString());
+    try {
+      Path stateFile = new JsonStateRepository(new ObjectMapper()).path("default");
+      Files.createDirectories(stateFile.getParent());
+      Files.writeString(stateFile, "{}");
+
+      CliResult result =
+          executeCapturingSystemOut(
+              "apply", "--no-tui", "--reset-state", "-c", config.toString(), "--yes");
+
+      assertThat(result.exitCode()).isEqualTo(ExitCode.SUCCESS.value());
+      assertThat(result.stdout()).contains("Mode: dry-run");
+      assertThat(stateFile).exists();
+    } finally {
+      System.setProperty("user.home", originalHome);
+    }
+  }
+
+  @Test
+  void applyDryRun_withSkipState_neverRepairsPermissionsOrMutatesStateLayout() throws Exception {
+    Assumptions.assumeTrue(
+        Files.getFileStore(tempDir)
+            .supportsFileAttributeView(java.nio.file.attribute.PosixFileAttributeView.class));
+    Path mutation = tempDir.resolve("must-not-exist");
+    Path config = writeDryRunDefaultConfig(mutation);
+    String originalHome = System.getProperty("user.home");
+    System.setProperty("user.home", tempDir.toString());
+    try {
+      var repository = new JsonStateRepository(new ObjectMapper());
+      repository.save(BootstrapState.empty("default", "1.0.0"));
+      Path stateFile = repository.path("default");
+      Path stateRoot = stateFile.getParent();
+      Files.setPosixFilePermissions(
+          stateRoot, java.nio.file.attribute.PosixFilePermissions.fromString("rwxrwxrwx"));
+      Files.setPosixFilePermissions(
+          stateFile, java.nio.file.attribute.PosixFilePermissions.fromString("rw-rw-rw-"));
+      var timestamp = java.nio.file.attribute.FileTime.from(Instant.parse("2026-01-02T03:04:05Z"));
+      Files.setLastModifiedTime(stateRoot, timestamp);
+      Files.setLastModifiedTime(stateFile, timestamp);
+      List<String> layout = directoryLayout(tempDir);
+
+      CliResult result =
+          executeCapturingSystemOut(
+              "apply",
+              "--no-tui",
+              "--dry-run",
+              "--skip-already-installed",
+              "-c",
+              config.toString(),
+              "--yes");
+
+      assertThat(result.exitCode()).isEqualTo(ExitCode.SUCCESS.value());
+      assertThat(Files.getPosixFilePermissions(stateRoot))
+          .isEqualTo(java.nio.file.attribute.PosixFilePermissions.fromString("rwxrwxrwx"));
+      assertThat(Files.getPosixFilePermissions(stateFile))
+          .isEqualTo(java.nio.file.attribute.PosixFilePermissions.fromString("rw-rw-rw-"));
+      assertThat(Files.getLastModifiedTime(stateRoot)).isEqualTo(timestamp);
+      assertThat(Files.getLastModifiedTime(stateFile)).isEqualTo(timestamp);
+      assertThat(directoryLayout(tempDir)).isEqualTo(layout);
+      assertThat(mutation).doesNotExist();
+    } finally {
+      System.setProperty("user.home", originalHome);
+    }
+  }
+
+  @Test
+  void plan_withSkipState_neverRepairsPermissionsOrMutatesStateLayout() throws Exception {
+    Assumptions.assumeTrue(
+        Files.getFileStore(tempDir)
+            .supportsFileAttributeView(java.nio.file.attribute.PosixFileAttributeView.class));
+    Path mutation = tempDir.resolve("must-not-exist");
+    Path config = writeDryRunDefaultConfig(mutation);
+    String originalHome = System.getProperty("user.home");
+    System.setProperty("user.home", tempDir.toString());
+    try {
+      var repository = new JsonStateRepository(new ObjectMapper());
+      repository.save(BootstrapState.empty("default", "1.0.0"));
+      Path stateFile = repository.path("default");
+      Path stateRoot = stateFile.getParent();
+      Files.setPosixFilePermissions(
+          stateRoot, java.nio.file.attribute.PosixFilePermissions.fromString("rwxrwxrwx"));
+      Files.setPosixFilePermissions(
+          stateFile, java.nio.file.attribute.PosixFilePermissions.fromString("rw-rw-rw-"));
+      var timestamp = java.nio.file.attribute.FileTime.from(Instant.parse("2026-01-02T03:04:05Z"));
+      Files.setLastModifiedTime(stateRoot, timestamp);
+      Files.setLastModifiedTime(stateFile, timestamp);
+      List<String> layout = directoryLayout(tempDir);
+
+      CliResult result = execute("plan", "--skip-already-installed", "-c", config.toString());
+
+      assertThat(result.exitCode()).isEqualTo(ExitCode.SUCCESS.value());
+      assertThat(Files.getPosixFilePermissions(stateRoot))
+          .isEqualTo(java.nio.file.attribute.PosixFilePermissions.fromString("rwxrwxrwx"));
+      assertThat(Files.getPosixFilePermissions(stateFile))
+          .isEqualTo(java.nio.file.attribute.PosixFilePermissions.fromString("rw-rw-rw-"));
+      assertThat(Files.getLastModifiedTime(stateRoot)).isEqualTo(timestamp);
+      assertThat(Files.getLastModifiedTime(stateFile)).isEqualTo(timestamp);
+      assertThat(directoryLayout(tempDir)).isEqualTo(layout);
+      assertThat(mutation).doesNotExist();
+    } finally {
+      System.setProperty("user.home", originalHome);
+    }
+  }
+
+  @Test
+  void applyHelp_doesNotAdvertiseRemovedParallelPhasesOption() {
+    CommandLine apply = Main.commandLine().getSubcommands().get("apply");
+
+    assertThat(apply.getUsageMessage()).doesNotContain("--parallel-phases");
+  }
+
+  @Test
+  void apply_whenParallelPhasesRequested_rejectsRemovedOption() {
+    CliResult result = execute("apply", "--parallel-phases");
+
+    assertThat(result.exitCode()).isEqualTo(ExitCode.INVALID_INPUT.value());
+    assertThat(result.stderr())
+        .contains("Unknown option: '--parallel-phases'")
+        .contains("Usage: fluxion apply");
   }
 
   @Test
@@ -182,23 +453,29 @@ class CliExitCodeTest {
   @Test
   void statusResumeCommand_printsNextIncompletePhase() throws Exception {
     Path config = writeConfig();
+    String originalHome = System.getProperty("user.home");
+    System.setProperty("user.home", tempDir.toString());
+    try {
+      CliResult result =
+          execute("status", "--resume-command", "-c", config.toString(), "--profile", "default");
 
-    CliResult result =
-        execute("status", "--resume-command", "-c", config.toString(), "--profile", "default");
-
-    assertThat(result.exitCode()).isEqualTo(ExitCode.SUCCESS.value());
-    assertThat(result.stdout())
-        .contains("fluxion apply --no-tui")
-        .contains("-c " + config)
-        .contains("--profile default")
-        .contains("--skip-already-installed")
-        .contains("--from-phase base");
-    assertThat(result.stderr()).isEmpty();
+      assertThat(result.exitCode()).isEqualTo(ExitCode.SUCCESS.value());
+      assertThat(result.stdout())
+          .contains("fluxion apply --no-tui")
+          .contains("-c " + config)
+          .contains("--profile default")
+          .contains("--skip-already-installed")
+          .contains("--from-phase base");
+      assertThat(result.stderr()).isEmpty();
+    } finally {
+      System.setProperty("user.home", originalHome);
+    }
   }
 
-  @Test
-  void generate_writesValidStarterConfig() throws Exception {
-    Path generated = tempDir.resolve("generated.yaml");
+  @ParameterizedTest
+  @ValueSource(strings = {"minimal", "developer", "desktop", "dotfiles"})
+  void generate_eachPresetWritesAValidStarterConfig(String preset) throws Exception {
+    Path generated = tempDir.resolve("generated-" + preset + ".yaml");
 
     CliResult generate =
         execute(
@@ -208,7 +485,7 @@ class CliExitCodeTest {
             "--profile",
             "generated",
             "--preset",
-            "developer",
+            preset,
             "--output",
             generated.toString());
 
@@ -220,6 +497,9 @@ class CliExitCodeTest {
         .contains("packageManager: dnf")
         .doesNotContain("you@example.com")
         .doesNotContain("Your Name");
+    if ("dotfiles".equals(preset)) {
+      assertThat(Files.readString(generated)).contains("installerVersion: \"v0.4.2\"");
+    }
 
     CliResult validate = execute("validate", "--no-tui", "-c", generated.toString());
     assertThat(validate.exitCode()).isEqualTo(ExitCode.SUCCESS.value());
@@ -242,12 +522,12 @@ class CliExitCodeTest {
 
   @Test
   void validate_whenStrictWarnings_returnsConfigurationError() throws Exception {
-    Path config = writeBinaryWithoutChecksumConfig();
+    Path config = writeDuplicatePackageConfig();
 
     CliResult result = execute("validate", "--no-tui", "--strict", "-c", config.toString());
 
     assertThat(result.exitCode()).isEqualTo(ExitCode.CONFIGURATION_ERROR.value());
-    assertThat(result.stdout()).contains("warning").contains("checksum");
+    assertThat(result.stdout()).contains("warning").contains("Duplicate package");
     assertThat(result.stderr()).contains("Config validation failed");
   }
 
@@ -259,6 +539,17 @@ class CliExitCodeTest {
 
     assertThat(result.exitCode()).isEqualTo(ExitCode.CONFIGURATION_ERROR.value());
     assertThat(result.stdout()).contains("jobs[0].steps[0].packageManager").contains("apt");
+    assertThat(result.stderr()).contains("Config validation failed");
+  }
+
+  @Test
+  void validate_whenChecksumUrlIsTheOnlyBinaryTrustMetadata_reportsError() throws Exception {
+    Path config = writeBinaryWithUnboundChecksumUrlConfig();
+
+    CliResult result = execute("validate", "--no-tui", "-c", config.toString());
+
+    assertThat(result.exitCode()).isEqualTo(ExitCode.CONFIGURATION_ERROR.value());
+    assertThat(result.stdout()).contains("literal SHA-256").contains("supplemental");
     assertThat(result.stderr()).contains("Config validation failed");
   }
 
@@ -321,6 +612,29 @@ class CliExitCodeTest {
   }
 
   @Test
+  void plan_whenRemoteScriptUsesSignedUrl_hidesPrivateUrlComponentsInTextAndJson()
+      throws Exception {
+    Path config = writeWorkstationProfileWithSignedScriptUrl();
+
+    CliResult text = execute("plan", "--no-tui", "--show-commands", "-c", config.toString());
+    CliResult json =
+        execute("plan", "--no-tui", "--show-commands", "--format", "json", "-c", config.toString());
+
+    for (CliResult result : List.of(text, json)) {
+      assertThat(result.exitCode()).isEqualTo(ExitCode.SUCCESS.value());
+      assertThat(result.stdout())
+          .contains("https://example.test/install.sh")
+          .doesNotContain("X-Amz-Signature")
+          .doesNotContain("sensitive-signature")
+          .doesNotContain("sensitive-fragment");
+      assertThat(result.stderr()).isEmpty();
+    }
+    assertThat(json.stdout())
+        .contains("\"displayName\":\"https://example.test/install.sh\"")
+        .contains("\"commandPreview\"");
+  }
+
+  @Test
   void plan_whenWorkstationProfileHasSources_showsSourceCommandsBeforePackages() throws Exception {
     Path config = writeWorkstationProfileWithDnfSource();
 
@@ -329,7 +643,8 @@ class CliExitCodeTest {
     assertThat(result.exitCode()).isEqualTo(ExitCode.SUCCESS.value());
     assertThat(result.stdout()).contains("Source setup:");
     assertThat(result.stdout())
-        .containsSubsequence("$ /bin/bash -lc printf %s '[docker]", "$ sudo dnf install -y git");
+        .containsSubsequence(
+            "$ sysboot-source-setup dnf docker no-remote-artifact", "$ sudo dnf install -y git");
     assertThat(result.stderr()).isEmpty();
   }
 
@@ -490,6 +805,22 @@ class CliExitCodeTest {
   }
 
   @Test
+  void apply_whenInterruptUsesCustomExitCode_returnsThatCode() throws Exception {
+    Path config = writeWorkstationProfileWithInterrupt("next", 42);
+    String originalHome = System.getProperty("user.home");
+    System.setProperty("user.home", tempDir.toString());
+    try {
+      CliResult result =
+          executeCapturingSystemOut("apply", "--no-tui", "-c", config.toString(), "--yes");
+
+      assertThat(result.exitCode()).isEqualTo(42);
+      assertThat(result.stdout()).contains("PAUSED").contains("Log out before continuing.");
+    } finally {
+      System.setProperty("user.home", originalHome);
+    }
+  }
+
+  @Test
   void apply_whenStateManifestFingerprintDiffers_rejectsUntilResetRequested() throws Exception {
     Path firstConfig = writeWorkstationProfileWithInterrupt("next");
     Path changedConfig = writeWorkstationProfileWithInterrupt("current");
@@ -512,6 +843,115 @@ class CliExitCodeTest {
           .contains("--reset-state");
       assertThat(reset.exitCode()).isEqualTo(ExitCode.PAUSED.value());
       assertThat(reset.stdout()).contains("Next plan entry: pause-login");
+    } finally {
+      System.setProperty("user.home", originalHome);
+    }
+  }
+
+  @Test
+  void apply_whenGeneratedMultiPhaseResumeCommandRuns_usesFullManifestIdentity() throws Exception {
+    Path baseMarker = tempDir.resolve("base-ran");
+    Path desktopMarker = tempDir.resolve("desktop-ran");
+    Path config = writeMultiPhaseResumeConfig(baseMarker, desktopMarker);
+    String originalHome = System.getProperty("user.home");
+    System.setProperty("user.home", tempDir.toString());
+    try {
+      CliResult first =
+          executeCapturingSystemOut("apply", "--no-tui", "-c", config.toString(), "--yes");
+      String resumeCommand =
+          first
+              .stdout()
+              .lines()
+              .filter(line -> line.contains("Resume with: fluxion apply"))
+              .map(line -> line.substring(line.indexOf("fluxion apply")))
+              .findFirst()
+              .orElseThrow();
+
+      String[] commandParts = resumeCommand.split(" ");
+      CliResult resumed =
+          executeCapturingSystemOut(Arrays.copyOfRange(commandParts, 1, commandParts.length));
+
+      assertThat(first.exitCode()).isEqualTo(ExitCode.SUCCESS.value());
+      assertThat(resumeCommand)
+          .contains("--skip-already-installed")
+          .contains("--from-phase desktop");
+      assertThat(resumed.exitCode()).isEqualTo(ExitCode.SUCCESS.value());
+      assertThat(resumed.stderr()).isEmpty();
+      assertThat(baseMarker).exists();
+      assertThat(desktopMarker).exists();
+      BootstrapState state =
+          new JsonStateRepository(new ObjectMapper()).load("default").orElseThrow();
+      assertThat(state.manifestIdentity()).contains("multi-phase-resume");
+      assertThat(state.findPhaseEntry("desktop")).isPresent();
+    } finally {
+      System.setProperty("user.home", originalHome);
+    }
+  }
+
+  @Test
+  void apply_whenReprobeRequested_ignoresStalePhaseAndResumeState() throws Exception {
+    Path beforeMarker = tempDir.resolve("reprobe-before");
+    Path afterMarker = tempDir.resolve("reprobe-after");
+    Path config = writeReprobeConfig(beforeMarker, afterMarker);
+    String originalHome = System.getProperty("user.home");
+    System.setProperty("user.home", tempDir.toString());
+    try {
+      var repository = new JsonStateRepository(new ObjectMapper());
+      repository.save(
+          BootstrapState.empty("default", "1.0.0")
+              .withPhaseEntry(
+                  new PhaseStateEntry(
+                      "base", PhaseStatus.COMPLETED, Instant.now(), Optional.of("old-phase")))
+              .withNextPlanEntry(Optional.of("after"))
+              .withManifestMetadata("reprobe-profile", "old-manifest"));
+
+      CliResult result =
+          executeCapturingSystemOut(
+              "apply", "--no-tui", "--re-probe", "-c", config.toString(), "--yes");
+
+      assertThat(result.exitCode()).isEqualTo(ExitCode.SUCCESS.value());
+      assertThat(result.stderr()).isEmpty();
+      assertThat(beforeMarker).exists();
+      assertThat(afterMarker).exists();
+      BootstrapState refreshed = repository.load("default").orElseThrow();
+      assertThat(refreshed.nextPlanEntry()).isEmpty();
+      assertThat(refreshed.entries())
+          .extracting(StateEntry::moduleName)
+          .containsExactly("before", "after");
+      assertThat(refreshed.manifestFingerprint())
+          .hasValueSatisfying(value -> assertThat(value).doesNotContain("old-manifest"));
+    } finally {
+      System.setProperty("user.home", originalHome);
+    }
+  }
+
+  @Test
+  void apply_whenGuardedCommandSelected_requiresYesBeforeMutation() throws Exception {
+    Path marker = tempDir.resolve("guarded-command-ran");
+    Path config = writeGuardedCommandConfig(marker);
+    String originalHome = System.getProperty("user.home");
+    System.setProperty("user.home", tempDir.toString());
+    try {
+      CliResult denied = executeCapturingSystemOut("apply", "--no-tui", "-c", config.toString());
+      CliResult preview =
+          executeCapturingSystemOut("apply", "--no-tui", "--dry-run", "-c", config.toString());
+
+      assertThat(denied.exitCode()).isEqualTo(ExitCode.INVALID_INPUT.value());
+      assertThat(denied.stderr())
+          .contains("Explicit confirmation required")
+          .contains("guarded/guarded-command")
+          .contains("--yes");
+      assertThat(marker).doesNotExist();
+      assertThat(preview.exitCode()).isEqualTo(ExitCode.SUCCESS.value());
+      assertThat(preview.stdout()).contains("DRY-RUN");
+      assertThat(marker).doesNotExist();
+
+      CliResult approved =
+          executeCapturingSystemOut("apply", "--no-tui", "--yes", "-c", config.toString());
+
+      assertThat(approved.exitCode()).isEqualTo(ExitCode.SUCCESS.value());
+      assertThat(approved.stderr()).isEmpty();
+      assertThat(marker).exists();
     } finally {
       System.setProperty("user.home", originalHome);
     }
@@ -705,14 +1145,41 @@ class CliExitCodeTest {
 
   @Test
   void stateShow_whenFormatJsonAndMissingState_outputsEmptyState() {
-    CliResult result = execute("state", "show", "--format", "json", "default");
+    String originalHome = System.getProperty("user.home");
+    System.setProperty("user.home", tempDir.toString());
+    try {
+      CliResult result = execute("state", "show", "--format", "json", "default");
 
-    assertThat(result.exitCode()).isEqualTo(ExitCode.SUCCESS.value());
-    assertThat(result.stdout())
-        .contains("\"profileName\":\"default\"")
-        .contains("\"phases\":[]")
-        .contains("\"items\":[]");
-    assertThat(result.stderr()).isEmpty();
+      assertThat(result.exitCode()).isEqualTo(ExitCode.SUCCESS.value());
+      assertThat(result.stdout())
+          .contains("\"profileName\":\"default\"")
+          .contains("\"phases\":[]")
+          .contains("\"items\":[]");
+      assertThat(result.stderr()).isEmpty();
+    } finally {
+      System.setProperty("user.home", originalHome);
+    }
+  }
+
+  @Test
+  void stateShow_whenLegacySourceContainsCredentials_redactsRequestSecrets() {
+    String originalHome = System.getProperty("user.home");
+    System.setProperty("user.home", tempDir.toString());
+    try {
+      var repo = new JsonStateRepository(new ObjectMapper());
+      repo.save(stateWithSourceUrl("https://user:password@example.test/rg?token=secret#asset"));
+
+      CliResult result = execute("state", "show", "--format", "json", "default");
+
+      assertThat(result.exitCode()).isEqualTo(ExitCode.SUCCESS.value());
+      assertThat(result.stdout())
+          .contains("https://example.test/rg")
+          .doesNotContain("password")
+          .doesNotContain("token")
+          .doesNotContain("secret");
+    } finally {
+      System.setProperty("user.home", originalHome);
+    }
   }
 
   @Test
@@ -794,7 +1261,8 @@ class CliExitCodeTest {
                       Instant.parse("2026-06-01T10:01:00Z"),
                       Optional.of("14.1.1"),
                       Optional.of("a".repeat(64)),
-                      Optional.of("https://example.test/rg.tar.gz"))),
+                      Optional.of(
+                          "https://user:password@example.test/rg.tar.gz?token=secret#asset"))),
               List.of(
                   new PhaseStateEntry(
                       "base", PhaseStatus.COMPLETED, Instant.parse("2026-06-01T10:02:00Z")))));
@@ -804,14 +1272,39 @@ class CliExitCodeTest {
       assertThat(result.exitCode()).isEqualTo(ExitCode.SUCCESS.value());
       assertThat(result.stdout())
           .contains("# Fluxion Run Report")
-          .contains("fluxion apply -c")
+          .contains("fluxion apply --no-tui -c")
+          .contains("--profile default")
+          .contains("--skip-already-installed")
           .contains("--from-phase desktop")
+          .contains("Last run: `2026-06-01T10:00:00Z`")
+          .contains("State version: `1.0.0`")
           .contains("/usr/local/bin/rg")
-          .contains("https://example.test/rg.tar.gz");
+          .contains("https://example.test/rg.tar.gz")
+          .doesNotContain("password")
+          .doesNotContain("token")
+          .doesNotContain("secret");
       assertThat(result.stderr()).isEmpty();
     } finally {
       System.setProperty("user.home", originalHome);
     }
+  }
+
+  private BootstrapState stateWithSourceUrl(String sourceUrl) {
+    return new BootstrapState(
+        "default",
+        Instant.now(),
+        "1.0.0",
+        List.of(
+            new StateEntry(
+                "default",
+                "ripgrep",
+                "/usr/local/bin/rg",
+                ItemType.COMPILED_BINARY,
+                Instant.now(),
+                Optional.empty(),
+                Optional.empty(),
+                Optional.of(sourceUrl))),
+        List.of());
   }
 
   @Test
@@ -833,7 +1326,9 @@ class CliExitCodeTest {
       assertThat(result.exitCode()).isEqualTo(ExitCode.SUCCESS.value());
       assertThat(result.stdout())
           .contains("<!doctype html>")
-          .contains("<h1>Fluxion Run Report</h1>");
+          .contains("<h1>Fluxion Run Report</h1>")
+          .contains("<strong>Last run:</strong> 2026-06-01T10:00:00Z")
+          .contains("<strong>State version:</strong> 1.0.0");
       assertThat(result.stderr()).isEmpty();
     } finally {
       System.setProperty("user.home", originalHome);
@@ -846,6 +1341,47 @@ class CliExitCodeTest {
 
     assertThat(result.exitCode()).isEqualTo(ExitCode.CONFIGURATION_ERROR.value());
     assertThat(result.stderr()).contains("No state file found for profile: missing");
+  }
+
+  @Test
+  void reportLast_whenProfileIsAbsolute_returnsInvalidInput() {
+    CliResult result = execute("report", "last", "--profile", "/tmp/outside");
+
+    assertThat(result.exitCode()).isEqualTo(ExitCode.INVALID_INPUT.value());
+    assertThat(result.stderr()).contains("safe slug").doesNotContain("Exception");
+  }
+
+  @Test
+  void reportLast_whenStateRootIsSymlink_rejectsWithoutReadingTarget() throws Exception {
+    String originalHome = System.getProperty("user.home");
+    System.setProperty("user.home", tempDir.toString());
+    try {
+      Path outsideRoot = tempDir.resolve("outside-state");
+      Path stateRoot = tempDir.resolve(".local/share/fluxion");
+      Files.createDirectories(outsideRoot);
+      Files.createDirectories(stateRoot.getParent());
+      Path outsideState = outsideRoot.resolve("default.state.json");
+      Files.writeString(
+          outsideState,
+          """
+          {
+            "schemaVersion": 2,
+            "profileName": "default",
+            "entries": [],
+            "phaseEntries": []
+          }
+          """);
+      String original = Files.readString(outsideState);
+      createSymlinkOrSkip(stateRoot, outsideRoot);
+
+      CliResult result = execute("report", "last", "--profile", "default");
+
+      assertThat(result.exitCode()).isEqualTo(ExitCode.IO_ERROR.value());
+      assertThat(result.stderr()).contains("Failed to read state file");
+      assertThat(outsideState).hasContent(original);
+    } finally {
+      System.setProperty("user.home", originalHome);
+    }
   }
 
   @Test
@@ -1052,6 +1588,20 @@ class CliExitCodeTest {
     }
   }
 
+  private void createSymlinkOrSkip(Path link, Path target) {
+    try {
+      Files.createSymbolicLink(link, target);
+    } catch (UnsupportedOperationException | IOException | SecurityException e) {
+      Assumptions.abort("Symbolic links are not supported: " + e.getMessage());
+    }
+  }
+
+  private List<String> directoryLayout(Path root) throws IOException {
+    try (var paths = Files.walk(root)) {
+      return paths.map(root::relativize).map(Path::toString).sorted().toList();
+    }
+  }
+
   private void assertWorkstationSelection(String output, String operation) {
     assertThat(output)
         .contains("Operation: " + operation)
@@ -1085,6 +1635,53 @@ class CliExitCodeTest {
     return config;
   }
 
+  private Path writeDuplicatePackageConfig() throws IOException {
+    Path config = tempDir.resolve("duplicate-package-profile.yaml");
+    Files.writeString(
+        config,
+        """
+        profile: test
+        os:
+          type: fedora
+          release: "44"
+        jobs:
+          - name: base
+            steps:
+              - type: packages
+                name: tools
+                packageManager: dnf
+                packages: [git, git]
+        """);
+    return config;
+  }
+
+  private Path writeDryRunDefaultConfig(Path mutation) throws IOException {
+    Path config = tempDir.resolve("dry-run-default.yaml");
+    Files.writeString(
+        config,
+        """
+        apiVersion: initkit.io/v1alpha1
+        kind: WorkstationProfile
+        metadata:
+          name: dry-run-default-test
+        spec:
+          policy:
+            dryRun: true
+          target:
+            os:
+              distribution: fedora
+              release: "44"
+          plan:
+            - name: mutation-sentinel
+              kind: commands
+              spec:
+                commands:
+                  - ["/bin/sh", "-c", "touch %s"]
+        """
+            .formatted(mutation));
+    return config;
+  }
+
   private Path writeShellConfig(String shell) throws IOException {
     Path config = tempDir.resolve("shell-profile.yaml");
     Files.writeString(
@@ -1104,6 +1701,25 @@ class CliExitCodeTest {
                   - "echo ready"
         """
             .formatted(shell));
+    return config;
+  }
+
+  private Path writeFailingShellConfig() throws IOException {
+    Path config = tempDir.resolve("failing-shell-profile.yaml");
+    Files.writeString(
+        config,
+        """
+        profile: test
+        os:
+          type: fedora
+          release: "44"
+        jobs:
+          - name: base
+            steps:
+              - type: shell-command
+                name: fail
+                commands: ["exit 17"]
+        """);
     return config;
   }
 
@@ -1131,6 +1747,89 @@ class CliExitCodeTest {
                 remote: flathub
                 appIds: [org.mozilla.firefox]
         """);
+    return config;
+  }
+
+  private Path writeMultiPhaseResumeConfig(Path baseMarker, Path desktopMarker) throws IOException {
+    Path config = tempDir.resolve("multi-phase-resume.yaml");
+    Files.writeString(
+        config,
+        """
+        profile: multi-phase-resume
+        os:
+          type: fedora
+          release: "44"
+        jobs:
+          - name: base
+            restartPolicy:
+              type: prompt-logout
+              message: Continue in a fresh session.
+            steps:
+              - type: shell-command
+                name: base-marker
+                commands:
+                  - "touch %s"
+          - name: desktop
+            dependsOn: [base]
+            steps:
+              - type: shell-command
+                name: desktop-marker
+                commands:
+                  - "touch %s"
+        """
+            .formatted(baseMarker, desktopMarker));
+    return config;
+  }
+
+  private Path writeReprobeConfig(Path beforeMarker, Path afterMarker) throws IOException {
+    Path config = tempDir.resolve("reprobe-profile.yaml");
+    Files.writeString(
+        config,
+        """
+        profile: reprobe-profile
+        os:
+          type: fedora
+          release: "44"
+        jobs:
+          - name: base
+            steps:
+              - type: shell-command
+                name: before
+                commands:
+                  - "touch %s"
+              - type: shell-command
+                name: after
+                commands:
+                  - "touch %s"
+        """
+            .formatted(beforeMarker, afterMarker));
+    return config;
+  }
+
+  private Path writeGuardedCommandConfig(Path marker) throws IOException {
+    Path config = tempDir.resolve("guarded-command.yaml");
+    Files.writeString(
+        config,
+        """
+        apiVersion: initkit.io/v1alpha1
+        kind: WorkstationProfile
+        metadata:
+          name: guarded-command-test
+        spec:
+          target:
+            os:
+              distribution: fedora
+              release: "44"
+          plan:
+            - name: guarded
+              kind: commands
+              spec:
+                commands:
+                  - name: guarded-command
+                    argv: ["/bin/sh", "-c", "touch %s"]
+                    confirm: "Create the marker?"
+        """
+            .formatted(marker));
     return config;
   }
 
@@ -1187,6 +1886,32 @@ class CliExitCodeTest {
     return config;
   }
 
+  private Path writeWorkstationProfileWithSignedScriptUrl() throws IOException {
+    Path config = tempDir.resolve("workstation-signed-script.yaml");
+    Files.writeString(
+        config,
+        """
+        apiVersion: initkit.io/v1alpha1
+        kind: WorkstationProfile
+        metadata:
+          name: workstation-signed-script
+        spec:
+          target:
+            os:
+              distribution: fedora
+              release: "44"
+          plan:
+            - name: signed-script
+              kind: shell-scripts
+              spec:
+                scripts:
+                  - name: installer
+                    url: "https://example.test/install.sh?X-Amz-Signature=sensitive-signature#sensitive-fragment"
+                    sha256: "0000000000000000000000000000000000000000000000000000000000000000"
+        """);
+    return config;
+  }
+
   private Path writeWorkstationProfileWithDnfSource() throws IOException {
     Path config = tempDir.resolve("workstation-source.yaml");
     Files.writeString(
@@ -1207,6 +1932,7 @@ class CliExitCodeTest {
                 spec:
                   id: docker
                   baseUrl: https://download.docker.com/linux/fedora/$releasever/stable
+                  enabled: false
                   gpgCheck: false
           plan:
             - name: tools
@@ -1218,6 +1944,11 @@ class CliExitCodeTest {
   }
 
   private Path writeWorkstationProfileWithInterrupt(String resumeFrom) throws IOException {
+    return writeWorkstationProfileWithInterrupt(resumeFrom, 75);
+  }
+
+  private Path writeWorkstationProfileWithInterrupt(String resumeFrom, int exitCode)
+      throws IOException {
     Path config = tempDir.resolve("workstation-interrupt-" + resumeFrom + ".yaml");
     Files.writeString(
         config,
@@ -1239,13 +1970,14 @@ class CliExitCodeTest {
                 instructions:
                   - Run fluxion apply again.
                 resumeFrom: %s
+                exitCode: %d
             - name: after-pause
               kind: commands
               spec:
                 commands:
                   - ["echo", "after"]
         """
-            .formatted(resumeFrom));
+            .formatted(resumeFrom, exitCode));
     return config;
   }
 
@@ -1266,6 +1998,7 @@ class CliExitCodeTest {
                 binaryName: rg
                 url: https://example.test/rg.tar.gz
                 installPath: /usr/local/bin/rg
+                archivePath: rg
         """);
     return config;
   }
@@ -1287,6 +2020,7 @@ class CliExitCodeTest {
                 binaryName: fluxion-rg
                 url: https://example.test/rg.tar.gz
                 installPath: /definitely/missing/fluxion-rg
+                archivePath: rg
                 checksum:
                   algorithm: sha256
                   value: abcdef
@@ -1332,7 +2066,33 @@ class CliExitCodeTest {
                 binaryName: rg
                 url: https://example.test/rg.tar.gz
                 checksumUrl: https://example.test/rg.sha256
+                signatureUrl: https://example.test/rg.tar.gz.asc
+                allowedSignerFingerprint: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
                 installPath: /usr/local/bin/rg
+                archivePath: rg
+        """);
+    return config;
+  }
+
+  private Path writeBinaryWithUnboundChecksumUrlConfig() throws IOException {
+    Path config = tempDir.resolve("binary-unbound-checksum-url-profile.yaml");
+    Files.writeString(
+        config,
+        """
+        profile: test
+        os:
+          type: fedora
+          release: "44"
+        jobs:
+          - name: base
+            steps:
+              - type: compiled-binary
+                name: ripgrep
+                binaryName: rg
+                url: https://example.test/rg.tar.gz
+                checksumUrl: https://example.test/rg.sha256
+                installPath: /usr/local/bin/rg
+                archivePath: rg
         """);
     return config;
   }
@@ -1355,6 +2115,7 @@ class CliExitCodeTest {
                 url: https://example.test/rg.tar.gz
                 signatureUrl: https://example.test/rg.tar.gz.asc
                 installPath: /usr/local/bin/rg
+                archivePath: rg
         """);
     return config;
   }
@@ -1377,6 +2138,28 @@ class CliExitCodeTest {
                 packages: [git]
         """);
     return config;
+  }
+
+  private BootstrapState stateWithSharedItemKey() {
+    StateEntry core =
+        new StateEntry(
+            "default",
+            "core",
+            "shared",
+            ItemType.PACKAGE,
+            Instant.now(),
+            Optional.empty(),
+            Optional.empty());
+    StateEntry desktop =
+        new StateEntry(
+            "default",
+            "desktop",
+            "shared",
+            ItemType.PACKAGE,
+            Instant.now(),
+            Optional.empty(),
+            Optional.empty());
+    return BootstrapState.empty("default", "1.0.0").withEntry(core).withEntry(desktop);
   }
 
   private boolean hasSupportedPackageDatabase() {

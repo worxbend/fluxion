@@ -5,8 +5,12 @@ import static org.assertj.core.api.Assertions.assertThat;
 import dev.sysboot.config.YamlConfigLoader;
 import dev.sysboot.core.AptRepositoryModule;
 import dev.sysboot.core.AssertModule;
+import dev.sysboot.core.BinaryUrl;
 import dev.sysboot.core.BootstrapConfig;
+import dev.sysboot.core.Checksum;
+import dev.sysboot.core.CompiledBinaryModule;
 import dev.sysboot.core.FlatpakRemoteModule;
+import dev.sysboot.core.GpgKeyModule;
 import dev.sysboot.core.ItemType;
 import dev.sysboot.core.ManualModule;
 import dev.sysboot.core.ModuleName;
@@ -23,6 +27,8 @@ import dev.sysboot.core.ProfileName;
 import dev.sysboot.core.RestartPolicy;
 import dev.sysboot.core.RpmRepositoryModule;
 import dev.sysboot.core.RpmRepositorySourceSetup;
+import dev.sysboot.core.Sha256Digest;
+import dev.sysboot.core.ShellKind;
 import dev.sysboot.core.SkippedPlanEntry;
 import dev.sysboot.core.StepResult;
 import java.io.IOException;
@@ -211,6 +217,40 @@ class ExecutionPlanBuilderTest {
   }
 
   @Test
+  void build_compiledBinaryInNewShell_includesTheLiveLoginShellTransformation() {
+    var binary =
+        new CompiledBinaryModule(
+            new ModuleName("tool"),
+            "tool",
+            new BinaryUrl(URI.create("https://example.test/tool")),
+            Optional.of(new Checksum("sha256", "a".repeat(64))),
+            Path.of("/usr/local/bin/tool"),
+            false);
+    var phase =
+        new Phase(
+            new PhaseName("tools"),
+            "",
+            List.of(binary),
+            List.of(),
+            new RestartPolicy.RequiresNewShell(ShellKind.BASH),
+            false);
+
+    ExecutionPlan plan =
+        new ExecutionPlanBuilder(new PackageManagerExecutorRegistry(List.of(dnf())))
+            .build(config(List.of(phase)));
+
+    assertThat(plan.phases().getFirst().modules().getFirst().items().getFirst().commandPreview())
+        .contains(
+            List.of(
+                "bash",
+                "--login",
+                "-i",
+                "-c",
+                "'download' 'https://example.test/tool' '->' '/usr/local/bin/tool'"
+                    + " 'direct-binary' 'mode' '0755'"));
+  }
+
+  @Test
   void build_checkpointModules_includesAssertAndManualItems() {
     var builder = new ExecutionPlanBuilder(new PackageManagerExecutorRegistry(List.of(dnf())));
     var phase =
@@ -255,7 +295,8 @@ class ExecutionPlanBuilderTest {
                     new ModuleName("flathub"),
                     "flathub",
                     URI.create("https://flathub.org/repo/flathub.flatpakrepo"),
-                    false)),
+                    false,
+                    Optional.of(new Sha256Digest("a".repeat(64))))),
             List.of(),
             new RestartPolicy.None(),
             false);
@@ -267,12 +308,34 @@ class ExecutionPlanBuilderTest {
     assertThat(item.commandPreview())
         .contains(
             List.of(
-                "flatpak",
-                "--user",
-                "remote-add",
-                "--if-not-exists",
-                "flathub",
-                "https://flathub.org/repo/flathub.flatpakrepo"));
+                "sysboot-source-setup", "flatpak", "flathub", "verify-sha256=" + "a".repeat(64)));
+  }
+
+  @Test
+  void build_gpgKeyModule_usesStableIdentityAndPublicUrlInPreview() {
+    String fingerprint = "A".repeat(40);
+    String publicUrl = "https://example.test/repository.asc";
+    String signedUrl = publicUrl + "?token=not-for-output#request-fragment";
+    var key = new GpgKeyModule.GpgKey(signedUrl, Optional.empty(), fingerprint);
+    var phase =
+        new Phase(
+            new PhaseName("repositories"),
+            "",
+            List.of(new GpgKeyModule(new ModuleName("repository-key"), List.of(key), false)),
+            List.of(),
+            new RestartPolicy.None(),
+            false);
+
+    ExecutionPlan plan =
+        new ExecutionPlanBuilder(new PackageManagerExecutorRegistry(List.of(dnf())))
+            .build(config(List.of(phase)));
+
+    ExecutionPlan.Item item = plan.phases().getFirst().modules().getFirst().items().getFirst();
+    assertThat(item.item().key()).isEqualTo("fingerprint:" + fingerprint);
+    assertThat(item.item().displayName()).isEqualTo(publicUrl);
+    assertThat(item.commandPreview().orElseThrow())
+        .contains("download " + publicUrl)
+        .allMatch(line -> !line.contains("not-for-output") && !line.contains("request-fragment"));
   }
 
   @Test
@@ -285,9 +348,11 @@ class ExecutionPlanBuilderTest {
             List.of(
                 new AptRepositoryModule(
                     new ModuleName("docker"),
-                    "deb https://download.docker.com/linux/debian bookworm stable",
+                    "deb [signed-by=/etc/apt/keyrings/docker.gpg]"
+                        + " https://download.docker.com/linux/debian bookworm stable",
                     Path.of("/etc/apt/sources.list.d/docker.list"),
                     Optional.empty(),
+                    Optional.of(Path.of("/etc/apt/keyrings/docker.gpg")),
                     Optional.empty())),
             List.of(),
             new RestartPolicy.None(),
@@ -298,12 +363,7 @@ class ExecutionPlanBuilderTest {
     ExecutionPlan.Item item = plan.phases().getFirst().modules().getFirst().items().getFirst();
     assertThat(item.item().itemType()).isEqualTo(ItemType.APT_REPOSITORY);
     assertThat(item.commandPreview().orElseThrow())
-        .containsExactly(
-            "/bin/bash",
-            "-lc",
-            "printf %s\\\\n"
-                + " 'deb https://download.docker.com/linux/debian bookworm stable' | sudo tee"
-                + " '/etc/apt/sources.list.d/docker.list' >/dev/null && sudo apt-get update");
+        .containsExactly("sysboot-source-setup", "apt", "docker", "no-remote-artifact");
   }
 
   @Test
@@ -320,8 +380,9 @@ class ExecutionPlanBuilderTest {
                     URI.create("https://download.docker.com/linux/fedora/$releasever/stable"),
                     Path.of("/etc/yum.repos.d/docker.repo"),
                     Optional.empty(),
-                    true,
-                    false)),
+                    false,
+                    false,
+                    Optional.empty())),
             List.of(),
             new RestartPolicy.None(),
             false);
@@ -331,16 +392,7 @@ class ExecutionPlanBuilderTest {
     ExecutionPlan.Item item = plan.phases().getFirst().modules().getFirst().items().getFirst();
     assertThat(item.item().itemType()).isEqualTo(ItemType.RPM_REPOSITORY);
     assertThat(item.commandPreview().orElseThrow())
-        .containsExactly(
-            "/bin/bash",
-            "-lc",
-            "printf %s '[docker]\n"
-                + "name=docker\n"
-                + "baseurl=https://download.docker.com/linux/fedora/$releasever/stable\n"
-                + "enabled=1\n"
-                + "gpgcheck=0\n"
-                + "' | sudo tee '/etc/yum.repos.d/docker.repo' >/dev/null && sudo dnf makecache"
-                + " --refresh");
+        .containsExactly("sysboot-source-setup", "dnf", "docker", "no-remote-artifact");
   }
 
   @Test
@@ -356,7 +408,7 @@ class ExecutionPlanBuilderTest {
                     "chaotic-aur",
                     URI.create("https://cdn-mirror.chaotic.cx/$repo/$arch"),
                     Path.of("/etc/pacman.conf"),
-                    Optional.of("Required DatabaseOptional"),
+                    Optional.of("Required TrustedOnly"),
                     Optional.empty(),
                     true)),
             List.of(),
@@ -368,14 +420,7 @@ class ExecutionPlanBuilderTest {
     ExecutionPlan.Item item = plan.phases().getFirst().modules().getFirst().items().getFirst();
     assertThat(item.item().itemType()).isEqualTo(ItemType.PACMAN_REPOSITORY);
     assertThat(item.commandPreview().orElseThrow())
-        .containsExactly(
-            "/bin/bash",
-            "-lc",
-            "grep -Eq '^\\[chaotic-aur\\]$' '/etc/pacman.conf' || printf %s '\n"
-                + "[chaotic-aur]\n"
-                + "Server = https://cdn-mirror.chaotic.cx/$repo/$arch\n"
-                + "SigLevel = Required DatabaseOptional\n"
-                + "' | sudo tee -a '/etc/pacman.conf' >/dev/null; sudo pacman -Sy");
+        .containsExactly("sysboot-source-setup", "pacman", "chaotic-aur", "no-remote-artifact");
   }
 
   private static BootstrapConfig config(List<Phase> phases) {
@@ -463,7 +508,7 @@ class ExecutionPlanBuilderTest {
         URI.create("https://download.docker.com/linux/fedora/$releasever/stable"),
         Path.of("/etc/yum.repos.d/docker.repo"),
         Optional.empty(),
-        true,
+        false,
         false);
   }
 

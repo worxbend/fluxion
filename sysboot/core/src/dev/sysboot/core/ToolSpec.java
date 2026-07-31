@@ -4,6 +4,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.regex.Pattern;
 
 /**
  * Description of an external command-line tool that Fluxion delegates work to.
@@ -15,14 +16,15 @@ import java.util.Optional;
  *
  * @param name binary name, also used as the cache directory name
  * @param repository GitHub {@code owner/repo} publishing the releases
- * @param version release tag to pin, or {@link #LATEST}
+ * @param version release tag whose platform assets are present in {@code assetSha256}
  * @param assetTemplates candidate asset filenames, most preferred first, using {@code ${name}},
  *     {@code ${version}}, {@code ${os}} and {@code ${arch}} placeholders. More than one is allowed
  *     because projects rename their assets between releases and a pinned old version must keep
  *     working.
  * @param osNaming how the release spells the operating system in asset names
- * @param checksumPolicy how the release publishes checksums for that asset
+ * @param checksumPolicy how the release publishes supplemental checksums for that asset
  * @param binaryName name of the executable inside the archive, when it differs from {@code name}
+ * @param assetSha256 trusted literal SHA-256 digests keyed by exact release asset filename
  */
 public record ToolSpec(
     String name,
@@ -31,9 +33,13 @@ public record ToolSpec(
     List<String> assetTemplates,
     OsNaming osNaming,
     ChecksumPolicy checksumPolicy,
-    Optional<String> binaryName) {
+    Optional<String> binaryName,
+    Map<String, String> assetSha256) {
 
   public static final String LATEST = "latest";
+  private static final Pattern CACHE_SEGMENT = Pattern.compile("[A-Za-z0-9][A-Za-z0-9._+-]*");
+  private static final Pattern REPOSITORY =
+      Pattern.compile("[A-Za-z0-9][A-Za-z0-9._-]*/[A-Za-z0-9][A-Za-z0-9._-]*");
 
   public ToolSpec {
     Objects.requireNonNull(name);
@@ -43,9 +49,29 @@ public record ToolSpec(
     Objects.requireNonNull(checksumPolicy);
     assetTemplates = List.copyOf(Objects.requireNonNull(assetTemplates));
     binaryName = binaryName == null ? Optional.empty() : binaryName;
+    assetSha256 = Map.copyOf(Objects.requireNonNull(assetSha256));
     if (assetTemplates.isEmpty()) {
       throw new IllegalArgumentException("At least one asset template is required");
     }
+    name = requireCacheSegment(name, "Tool name");
+    version = requireCacheSegment(version, "Tool version");
+    if (!REPOSITORY.matcher(repository).matches() || repository.contains("..")) {
+      throw new IllegalArgumentException("Tool repository must use a safe owner/repository name");
+    }
+    assetTemplates.forEach(ToolSpec::requireAssetTemplate);
+    binaryName = binaryName.map(value -> requireCacheSegment(value, "Tool binary name"));
+    assetSha256.forEach(ToolSpec::requireCatalogEntry);
+  }
+
+  public ToolSpec(
+      String name,
+      String repository,
+      String version,
+      List<String> assetTemplates,
+      OsNaming osNaming,
+      ChecksumPolicy checksumPolicy,
+      Optional<String> binaryName) {
+    this(name, repository, version, assetTemplates, osNaming, checksumPolicy, binaryName, Map.of());
   }
 
   public ToolSpec(
@@ -56,7 +82,35 @@ public record ToolSpec(
       OsNaming osNaming,
       ChecksumPolicy checksumPolicy,
       Optional<String> binaryName) {
-    this(name, repository, version, List.of(assetTemplate), osNaming, checksumPolicy, binaryName);
+    this(
+        name,
+        repository,
+        version,
+        List.of(assetTemplate),
+        osNaming,
+        checksumPolicy,
+        binaryName,
+        Map.of());
+  }
+
+  public ToolSpec(
+      String name,
+      String repository,
+      String version,
+      String assetTemplate,
+      OsNaming osNaming,
+      ChecksumPolicy checksumPolicy,
+      Optional<String> binaryName,
+      Map<String, String> assetSha256) {
+    this(
+        name,
+        repository,
+        version,
+        List.of(assetTemplate),
+        osNaming,
+        checksumPolicy,
+        binaryName,
+        assetSha256);
   }
 
   /** How the upstream release publishes checksums for its assets. */
@@ -90,8 +144,20 @@ public record ToolSpec(
   }
 
   public ToolSpec withVersion(String newVersion) {
+    String safeVersion = requireCacheSegment(newVersion, "Tool version");
+    if (!safeVersion.equals(version)) {
+      throw new IllegalArgumentException(
+          "Tool version is not present in the trusted release-digest catalog");
+    }
     return new ToolSpec(
-        name, repository, newVersion, assetTemplates, osNaming, checksumPolicy, binaryName);
+        name,
+        repository,
+        safeVersion,
+        assetTemplates,
+        osNaming,
+        checksumPolicy,
+        binaryName,
+        assetSha256);
   }
 
   public ToolSpec withBinaryName(String executable) {
@@ -102,7 +168,19 @@ public record ToolSpec(
         assetTemplates,
         osNaming,
         checksumPolicy,
-        Optional.of(executable));
+        Optional.of(executable),
+        assetSha256);
+  }
+
+  public ToolSpec withAssetSha256(String assetName, String digest) {
+    var catalog = new java.util.LinkedHashMap<>(assetSha256);
+    catalog.put(assetName, digest);
+    return new ToolSpec(
+        name, repository, version, assetTemplates, osNaming, checksumPolicy, binaryName, catalog);
+  }
+
+  public Optional<String> expectedSha256(String assetName) {
+    return Optional.ofNullable(assetSha256.get(assetName));
   }
 
   /** Preferred asset name for the given platform. */
@@ -129,17 +207,56 @@ public record ToolSpec(
   }
 
   private String render(String template, HostPlatform platform) {
+    return render(template, version, platform);
+  }
+
+  private String render(String template, String renderedVersion, HostPlatform platform) {
     return substitute(
         template,
         Map.of(
             "name",
             name,
             "version",
-            version,
+            renderedVersion,
             "os",
             osNaming.render(platform),
             "arch",
             platform.architecture().goName()));
+  }
+
+  private static String requireCacheSegment(String value, String subject) {
+    Objects.requireNonNull(value, subject + " must not be null");
+    if (!value.equals(value.strip())
+        || !CACHE_SEGMENT.matcher(value).matches()
+        || value.equals(".")
+        || value.equals("..")
+        || value.contains("..")) {
+      throw new IllegalArgumentException(
+          subject + " must be a single safe cache-path segment without traversal");
+    }
+    return value;
+  }
+
+  private static void requireAssetTemplate(String template) {
+    Objects.requireNonNull(template, "Tool asset template must not be null");
+    if (template.isBlank()
+        || !template.equals(template.strip())
+        || template.equals(".")
+        || template.equals("..")
+        || template.contains("/")
+        || template.contains("\\")
+        || template.codePoints().anyMatch(Character::isISOControl)) {
+      throw new IllegalArgumentException(
+          "Tool asset template must be a single safe release filename");
+    }
+  }
+
+  private static void requireCatalogEntry(String assetName, String digest) {
+    requireAssetTemplate(assetName);
+    Objects.requireNonNull(digest, "Tool asset SHA-256 must not be null");
+    if (!digest.matches("[0-9a-fA-F]{64}")) {
+      throw new IllegalArgumentException("Tool asset SHA-256 must be 64 hexadecimal characters");
+    }
   }
 
   private static String substitute(String template, Map<String, String> values) {

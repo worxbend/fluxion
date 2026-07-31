@@ -18,6 +18,7 @@ import dev.sysboot.core.FlatpakRemoteModule;
 import dev.sysboot.core.PackageManagerKind;
 import dev.sysboot.core.PackageModule;
 import dev.sysboot.core.PacmanRepositoryModule;
+import dev.sysboot.core.PublicUrl;
 import dev.sysboot.core.RpmRepositoryModule;
 import dev.sysboot.core.SdkmanModule;
 import dev.sysboot.core.ShellCommandModule;
@@ -50,6 +51,8 @@ public final class DoctorCommand implements Runnable {
 
   private static final Duration NETWORK_TIMEOUT = Duration.ofSeconds(3);
 
+  private final NetworkProbe networkProbe;
+
   @Mixin private GlobalOptions options;
 
   @Spec private CommandSpec spec;
@@ -64,6 +67,14 @@ public final class DoctorCommand implements Runnable {
       names = {"--skip-network"},
       description = "Skip network checks for compiled binary URLs")
   private boolean skipNetwork;
+
+  public DoctorCommand() {
+    this(DoctorCommand::head);
+  }
+
+  DoctorCommand(NetworkProbe networkProbe) {
+    this.networkProbe = java.util.Objects.requireNonNull(networkProbe);
+  }
 
   @Override
   public void run() {
@@ -142,10 +153,14 @@ public final class DoctorCommand implements Runnable {
   private Check checkStateDirectory() {
     try {
       Path stateFile = new JsonStateRepository(new ObjectMapper()).path(profile);
-      Files.createDirectories(stateFile.getParent());
-      Path probe = Files.createTempFile(stateFile.getParent(), ".doctor", ".tmp");
+      Path stateDirectory = stateFile.getParent();
+      if (stateDirectory == null) {
+        return Check.fail("state directory", "state file has no parent directory");
+      }
+      Files.createDirectories(stateDirectory);
+      Path probe = Files.createTempFile(stateDirectory, ".doctor", ".tmp");
       Files.deleteIfExists(probe);
-      return Check.pass("state directory", "writable: " + stateFile.getParent());
+      return Check.pass("state directory", "writable: " + stateDirectory);
     } catch (IOException | StateReadException e) {
       return Check.fail("state directory", e.getMessage());
     }
@@ -292,20 +307,28 @@ public final class DoctorCommand implements Runnable {
       checks.add(
           Check.fail(
               "binary artifact",
-              module.url().value() + " is not " + CompiledBinaryArtifactFormat.supportedFormats()));
+              PublicUrl.from(module.url().value())
+                  + " is not "
+                  + CompiledBinaryArtifactFormat.supportedFormats()));
       return;
     }
     module
         .signatureUrl()
         .ifPresent(url -> checks.add(checkRequiredCommand("gpg", "signature command")));
     if (skipNetwork) {
-      checks.add(Check.warn("network", "skipped " + module.url().value()));
+      checks.add(Check.warn("network", "skipped " + PublicUrl.from(module.url().value())));
       module
           .checksumUrl()
-          .ifPresent(url -> checks.add(Check.warn("checksum network", "skipped " + url.value())));
+          .ifPresent(
+              url ->
+                  checks.add(
+                      Check.warn("checksum network", "skipped " + PublicUrl.from(url.value()))));
       module
           .signatureUrl()
-          .ifPresent(url -> checks.add(Check.warn("signature network", "skipped " + url.value())));
+          .ifPresent(
+              url ->
+                  checks.add(
+                      Check.warn("signature network", "skipped " + PublicUrl.from(url.value()))));
       return;
     }
     checks.add(checkUrl("network", module.url().value()));
@@ -314,25 +337,34 @@ public final class DoctorCommand implements Runnable {
   }
 
   private Check checkUrl(String label, URI uri) {
+    String publicUrl = PublicUrl.from(uri);
     try {
-      HttpRequest request =
-          HttpRequest.newBuilder(uri)
-              .method("HEAD", HttpRequest.BodyPublishers.noBody())
-              .timeout(NETWORK_TIMEOUT)
-              .build();
-      int status =
-          HttpClient.newHttpClient()
-              .send(request, HttpResponse.BodyHandlers.discarding())
-              .statusCode();
+      int status = networkProbe.head(uri);
       return status < 400
-          ? Check.pass(label, uri.toString())
-          : Check.fail(label, uri + " -> " + status);
+          ? Check.pass(label, publicUrl)
+          : Check.fail(label, publicUrl + " -> " + status);
     } catch (IOException e) {
-      return Check.fail(label, uri + " -> " + e.getMessage());
+      return Check.fail(label, publicUrl + " -> request failed");
     } catch (InterruptedException e) {
       Thread.currentThread().interrupt();
-      return Check.fail(label, uri + " -> interrupted");
+      return Check.fail(label, publicUrl + " -> interrupted");
     }
+  }
+
+  private static int head(URI uri) throws IOException, InterruptedException {
+    HttpRequest request =
+        HttpRequest.newBuilder(uri)
+            .method("HEAD", HttpRequest.BodyPublishers.noBody())
+            .timeout(NETWORK_TIMEOUT)
+            .build();
+    return HttpClient.newHttpClient()
+        .send(request, HttpResponse.BodyHandlers.discarding())
+        .statusCode();
+  }
+
+  @FunctionalInterface
+  interface NetworkProbe {
+    int head(URI uri) throws IOException, InterruptedException;
   }
 
   private record Check(CheckStatus status, String name, String detail) {

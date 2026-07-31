@@ -116,8 +116,7 @@ it. Use `configPath` when the font set should have exactly one definition.
 
 ## Pinning versions
 
-Every delegated step accepts `installerVersion`, which pins the release Fluxion installs when the
-tool is not already on `PATH`:
+Every delegated step accepts `installerVersion`, which identifies the release Fluxion installs:
 
 ```yaml
 - type: binstaller-profile
@@ -126,14 +125,22 @@ tool is not already on `PATH`:
   installerVersion: "v0.2.0"
 ```
 
-Defaults come from `dev.sysboot.core.KnownTools`, which is the single place tool versions are
-declared. Pinning is recommended for profiles shared across machines: an unpinned `latest` can change
-what a "reproducible" bootstrap does.
+Defaults come from `dev.sysboot.core.KnownTools`, which is the single place tool versions and
+per-platform literal SHA-256 digests are declared. A version override is accepted only when that
+exact release is represented in the trusted digest catalog; mutable or unknown versions fail before
+network access. Published sidecars and checksum files are checked as supplemental metadata and must
+agree with the catalog. The Scala Dotbot v0.1.0 release is Linux-only, so automatic installation
+fails without a network request on macOS.
+
+`KnownToolReleaseIT` checks every catalogued asset and checksum endpoint when integration tests have
+network access. Set `SYSBOOT_VERIFY_KNOWN_TOOL_BYTES=true` to additionally download each asset with a
+64 MiB bound and compare its bytes to the literal catalog digest.
 
 ## Adding a new tool
 
-1. Add a `ToolSpec` to `KnownTools`, with the repository, default version, ordered asset-name
-   candidates, OS naming convention, and checksum policy.
+1. Add a `ToolSpec` to `KnownTools`, with the repository, pinned version, actual asset-name
+   candidates, OS naming convention, checksum policy, and literal digests for every supported
+   platform asset.
 2. Add the entry to `ToolSpecTest` so the asset naming is pinned by a test.
 3. `KnownToolReleaseIT` picks it up automatically and checks it against the live release.
 4. Add a step kind if the tool needs one, or reference it from an existing executor.
@@ -147,5 +154,7 @@ intermediate tool worth inserting and Fluxion needs per-package failure isolatio
 wrapper would hide.
 
 `compiled-binary` predates `binstaller-profile` and still works, including checksum and detached
-signature verification. For new profiles, prefer `binstaller-profile`: it handles version resolution,
-archive layouts, symlinks, and locking that `compiled-binary` does not.
+signature verification. Its automatic delegation snapshots canonical and declared output paths and
+restores them if binstaller fails or Fluxion rejects the result. For new profiles, prefer
+`binstaller-profile`: it handles version resolution, archive layouts, symlinks, and locking that
+`compiled-binary` does not.

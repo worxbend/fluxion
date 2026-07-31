@@ -8,14 +8,20 @@ import dev.sysboot.cli.option.GlobalOptions;
 import dev.sysboot.cli.output.PlainExecutionReport;
 import dev.sysboot.cli.output.StdoutExecutionEventListener;
 import dev.sysboot.core.BootstrapConfig;
+import dev.sysboot.core.BootstrapModule;
+import dev.sysboot.core.ExecutionApproval;
 import dev.sysboot.core.ExecutionEvent;
 import dev.sysboot.core.ExecutionPausedException;
 import dev.sysboot.core.Phase;
+import dev.sysboot.core.PhaseName;
+import dev.sysboot.core.ShellCommandModule;
+import dev.sysboot.core.ShellScriptModule;
 import dev.sysboot.core.StepResult;
 import dev.sysboot.executor.ExecutionPlan;
 import dev.sysboot.executor.JsonStateRepository;
 import dev.sysboot.executor.PhaseExecutionPlanner;
 import java.io.PrintWriter;
+import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Optional;
@@ -49,7 +55,7 @@ public final class ApplyCommand implements Runnable {
 
   @Option(
       names = {"--yes", "-y"},
-      description = "Approve unattended execution")
+      description = "Approve confirmation-protected items for unattended execution")
   private boolean yes;
 
   @Option(
@@ -73,11 +79,6 @@ public final class ApplyCommand implements Runnable {
   private boolean probeOnly;
 
   @Option(
-      names = {"--parallel-phases"},
-      description = "Run independent phases concurrently (default: false)")
-  private boolean parallelPhases;
-
-  @Option(
       names = {"--profile"},
       description = "Profile name for state tracking",
       paramLabel = "PROFILE",
@@ -89,91 +90,170 @@ public final class ApplyCommand implements Runnable {
     boolean effectiveSkip = skipAlreadyInstalled || reProbe;
     boolean useTui = options.useTui();
     var stateRepository = new JsonStateRepository(new ObjectMapper());
-    if (resetState) {
-      stateRepository.reset(profile);
+    ExecutionApproval approval = yes ? ExecutionApproval.approveAll() : ExecutionApproval.denyAll();
+    BootstrapConfig config;
+    try (var configContext = ApplicationContext.create(true)) {
+      config = configContext.configLoader().load(options.resolvedConfigFile());
     }
-    try (var context = ApplicationContext.create(!useTui, profile, effectiveSkip, reProbe)) {
-      execute(context, stateRepository, useTui);
+    SemanticConfigValidation.requireValid(config);
+    BootstrapConfig filtered = applyFilters(config);
+    boolean effectiveDryRun = dryRun || filtered.policy().dryRunDefault().orElse(false);
+    rejectUnapprovedConfirmations(filtered, effectiveDryRun);
+    try (var context =
+        ApplicationContext.create(
+            !useTui, profile, effectiveSkip, reProbe, approval, effectiveDryRun)) {
+      execute(context, stateRepository, useTui, config, filtered, effectiveDryRun);
     }
   }
 
   /** Closing the context zeroes the cached sudo password and stops its keepalive. */
   private void execute(
-      ApplicationContext context, JsonStateRepository stateRepository, boolean useTui) {
-    BootstrapConfig config = context.configLoader().load(options.resolvedConfigFile());
-    BootstrapConfig filtered = applyFilters(config);
+      ApplicationContext context,
+      JsonStateRepository stateRepository,
+      boolean useTui,
+      BootstrapConfig config,
+      BootstrapConfig filtered,
+      boolean effectiveDryRun) {
+    preflightBeforeReset(
+        effectiveDryRun, probeOnly, false, () -> context.preflight(filtered), () -> {});
+    Runnable apply =
+        () -> {
+          if (resetState && !effectiveDryRun) {
+            stateRepository.reset(profile);
+          }
+          executeSelected(context, stateRepository, useTui, config, filtered, effectiveDryRun);
+        };
+    if (resetState && !effectiveDryRun) {
+      stateRepository.withGlobalMutationLock(apply);
+    } else {
+      apply.run();
+    }
+  }
 
+  private void executeSelected(
+      ApplicationContext context,
+      JsonStateRepository stateRepository,
+      boolean useTui,
+      BootstrapConfig config,
+      BootstrapConfig filtered,
+      boolean effectiveDryRun) {
     if (probeOnly) {
       runProbeOnly(context, filtered);
       return;
     }
 
     if (!useTui) {
-      var listener =
-          new StdoutExecutionEventListener(
-                  event -> resumeCommandFor(event, filtered),
-                  () -> Optional.of(stateRepository.path(profile)))
-              .streamingOutput(options.verbose());
-      writePlainReport(context, filtered, stateRepository);
-      var failure = new java.util.concurrent.atomic.AtomicReference<RuntimeException>();
-      try {
-        if (dryRun) {
-          context.orchestrator().dryRun(filtered, listener);
-        } else {
-          InterruptibleRun.run(
-              cancellation -> {
-                try {
-                  context.orchestrator().execute(filtered, listener, cancellation);
-                } catch (ExecutionPausedException e) {
-                  failure.set(e);
-                }
-              },
-              () ->
-                  System.out.println(
-                      System.lineSeparator()
-                          + "Stopping after the current step; press Ctrl-C again to force quit."));
-        }
-      } finally {
-        listener.printSummary();
+      runPlain(context, stateRepository, config, filtered, effectiveDryRun);
+      return;
+    }
+    runTui(context, config, filtered, effectiveDryRun);
+  }
+
+  private void runPlain(
+      ApplicationContext context,
+      JsonStateRepository stateRepository,
+      BootstrapConfig config,
+      BootstrapConfig filtered,
+      boolean effectiveDryRun) {
+    var listener =
+        new StdoutExecutionEventListener(
+                event -> resumeCommandFor(event, config),
+                () -> Optional.of(stateRepository.path(profile)))
+            .streamingOutput(options.verbose());
+    writePlainReport(context, filtered, stateRepository, effectiveDryRun);
+    var failure = new java.util.concurrent.atomic.AtomicReference<RuntimeException>();
+    try {
+      if (effectiveDryRun) {
+        context.orchestrator().dryRun(filtered, listener);
+      } else {
+        InterruptibleRun.run(
+            cancellation ->
+                runPlainApply(context, config, filtered, listener, cancellation, failure),
+            this::printCancellationNotice);
       }
-      if (failure.get() instanceof ExecutionPausedException paused) {
-        throw new CliFailureException(ExitCode.PAUSED, paused.getMessage(), paused);
-      }
-    } else {
-      var tui =
-          context
-              .tuiApp()
-              .orElseThrow(() -> new IllegalStateException("TUI mode is not available"));
-      tui.showCommandOutput(options.verbose());
-      var tuiFailure = new java.util.concurrent.atomic.AtomicReference<RuntimeException>();
-      InterruptibleRun.run(
-          cancellation -> {
-            try {
-              tui.run(filtered, dryRun, cancellation);
-            } catch (java.io.IOException e) {
-              tuiFailure.set(
-                  new CliFailureException(ExitCode.IO_ERROR, "TUI error: " + e.getMessage(), e));
-            }
-          },
-          () -> {});
-      if (tuiFailure.get() != null) {
-        throw tuiFailure.get();
-      }
+    } finally {
+      listener.printSummary();
+    }
+    if (failure.get() instanceof ExecutionPausedException paused) {
+      throw paused;
+    }
+  }
+
+  private void runPlainApply(
+      ApplicationContext context,
+      BootstrapConfig config,
+      BootstrapConfig filtered,
+      StdoutExecutionEventListener listener,
+      dev.sysboot.core.CancellationSignal cancellation,
+      java.util.concurrent.atomic.AtomicReference<RuntimeException> failure) {
+    try {
+      context
+          .orchestrator()
+          .execute(config, selectedPhases(config, filtered), listener, cancellation);
+    } catch (ExecutionPausedException e) {
+      failure.set(e);
+    }
+  }
+
+  private void printCancellationNotice() {
+    System.out.println(
+        System.lineSeparator()
+            + "Stopping after the current step; press Ctrl-C again to force quit.");
+  }
+
+  private void runTui(
+      ApplicationContext context,
+      BootstrapConfig config,
+      BootstrapConfig filtered,
+      boolean effectiveDryRun) {
+    var tui =
+        context.tuiApp().orElseThrow(() -> new IllegalStateException("TUI mode is not available"));
+    tui.showCommandOutput(options.verbose());
+    var failure = new java.util.concurrent.atomic.AtomicReference<RuntimeException>();
+    InterruptibleRun.run(
+        cancellation -> {
+          try {
+            tui.run(config, filtered, effectiveDryRun, cancellation);
+          } catch (java.io.IOException e) {
+            failure.set(
+                new CliFailureException(ExitCode.IO_ERROR, "TUI error: " + e.getMessage(), e));
+          }
+        },
+        () -> {});
+    if (failure.get() != null) {
+      throw failure.get();
     }
   }
 
   private void writePlainReport(
-      ApplicationContext context, BootstrapConfig config, JsonStateRepository stateRepository) {
+      ApplicationContext context,
+      BootstrapConfig config,
+      JsonStateRepository stateRepository,
+      boolean effectiveDryRun) {
     ExecutionPlan plan = buildPlan(context, config);
-    var out = new PrintWriter(System.out, true);
+    var out = new PrintWriter(System.out, true, StandardCharsets.UTF_8);
     PlainExecutionReport.writeHeader(
         out,
         "apply",
-        dryRun ? "dry-run" : "live",
+        effectiveDryRun ? "dry-run" : "live",
         plan.profileName(),
         context.hostFactsProvider().facts(),
         Optional.of(stateRepository.path(profile)));
     PlainExecutionReport.writeWorkstationSelection(out, plan);
+  }
+
+  static void preflightBeforeReset(
+      boolean effectiveDryRun,
+      boolean probeOnly,
+      boolean resetState,
+      Runnable preflight,
+      Runnable reset) {
+    if (!effectiveDryRun && !probeOnly) {
+      preflight.run();
+    }
+    if (resetState && !effectiveDryRun) {
+      reset.run();
+    }
   }
 
   private ExecutionPlan buildPlan(ApplicationContext context, BootstrapConfig config) {
@@ -190,10 +270,39 @@ public final class ApplyCommand implements Runnable {
     var results =
         context
             .parallelProbeRunner()
-            .probeAll(config.modules(), item -> System.out.println("  Probed: " + item));
+            .probeAll(buildPlan(context, config), item -> System.out.println("  Probed: " + item));
     results.forEach(
         (key, status) ->
             System.out.println("  " + key + " → " + status.getClass().getSimpleName()));
+  }
+
+  private void rejectUnapprovedConfirmations(BootstrapConfig config, boolean effectiveDryRun) {
+    if (yes || effectiveDryRun || probeOnly) {
+      return;
+    }
+    List<String> guardedItems = config.modules().stream().flatMap(this::guardedItems).toList();
+    if (guardedItems.isEmpty()) {
+      return;
+    }
+    throw new CliFailureException(
+        ExitCode.INVALID_INPUT,
+        "Explicit confirmation required for "
+            + String.join(", ", guardedItems)
+            + ". Re-run with --yes; guarded items are not prompted interactively.");
+  }
+
+  private java.util.stream.Stream<String> guardedItems(BootstrapModule module) {
+    return switch (module) {
+      case ShellCommandModule commands ->
+          commands.items().stream()
+              .filter(item -> item.confirm().isPresent())
+              .map(item -> module.name().value() + "/" + item.name());
+      case ShellScriptModule scripts ->
+          scripts.items().stream()
+              .filter(item -> item.confirm().isPresent())
+              .map(item -> module.name().value() + "/" + item.name());
+      default -> java.util.stream.Stream.empty();
+    };
   }
 
   private BootstrapConfig applyFilters(BootstrapConfig config) {
@@ -230,16 +339,39 @@ public final class ApplyCommand implements Runnable {
     if (phases.isEmpty()) {
       throw unknownPhase(phaseFilter, config);
     }
-    if (phases == config.phases()) return config;
+    if (phases == config.phases()) {
+      return config;
+    }
+    Set<PhaseName> retained =
+        phases.stream().map(Phase::name).collect(Collectors.toUnmodifiableSet());
+    phases = phases.stream().map(phase -> retainDependencies(phase, retained)).toList();
 
     var builder =
         BootstrapConfig.builder()
             .profileName(config.profileName())
             .target(config.target())
             .policy(config.policy())
-            .skippedPlanEntries(config.skippedPlanEntries());
+            .skippedPlanEntries(config.skippedPlanEntries())
+            .sourceSetups(config.sourceSetups());
     phases.forEach(builder::addPhase);
     return builder.build();
+  }
+
+  private List<Phase> selectedPhases(BootstrapConfig config, BootstrapConfig filtered) {
+    Set<PhaseName> selected =
+        filtered.phases().stream().map(Phase::name).collect(Collectors.toUnmodifiableSet());
+    return config.phases().stream().filter(phase -> selected.contains(phase.name())).toList();
+  }
+
+  private Phase retainDependencies(Phase phase, Set<PhaseName> retained) {
+    List<PhaseName> dependencies = phase.dependsOn().stream().filter(retained::contains).toList();
+    return new Phase(
+        phase.name(),
+        phase.description(),
+        phase.modules(),
+        dependencies,
+        phase.restartPolicy(),
+        phase.continueOnModuleError());
   }
 
   private void validatePhaseFilter(Set<String> allowed, BootstrapConfig config) {

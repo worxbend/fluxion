@@ -12,6 +12,9 @@ on:
   schedule:
     - cron: "24 3 * * 3"
 
+permissions:
+  contents: read
+
 jobs:
   analyze:
     name: Analyze
@@ -28,16 +31,18 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
 
       - name: Initialize CodeQL
-        uses: github/codeql-action/init@v4
+        uses: github/codeql-action/init@f205ea1c3313d32999d8d6a48b4f6530d4437b38 # v4
         with:
           languages: ${{ matrix.language }}
           queries: +security-and-quality
 
       - name: Set up GraalVM Java 25
-        uses: graalvm/setup-graalvm@v1
+        uses: graalvm/setup-graalvm@0def53c0fd8534bc13416c9469f5be45265824fd # v1
         with:
           distribution: graalvm
           java-version: "25"
@@ -47,6 +52,6 @@ jobs:
         run: cd sysboot && ./mill __.compile
 
       - name: Perform CodeQL Analysis
-        uses: github/codeql-action/analyze@v4
+        uses: github/codeql-action/analyze@f205ea1c3313d32999d8d6a48b4f6530d4437b38 # v4
         with:
           category: "/language:${{ matrix.language }}"

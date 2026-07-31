@@ -53,7 +53,7 @@ public final class BinstallerExecutor {
           ? new StepResult.Success(module.itemKey(), result.elapsed())
           : new StepResult.Failure(
               module.itemKey(), failureMessage(result), result.exitCode(), result.elapsed());
-    } catch (ToolResolutionException e) {
+    } catch (ToolResolutionException | IllegalArgumentException e) {
       return new StepResult.Failure(
           module.itemKey(), "Failed to prepare binstaller: " + e.getMessage(), 1, Duration.ZERO);
     }
@@ -68,7 +68,7 @@ public final class BinstallerExecutor {
       ProcessResult result =
           shellRunner.run(planCommand(binary(module), module), Map.of(), READ_ONLY_TIMEOUT);
       return result.isSuccess() ? Optional.of(result.stdout()) : Optional.empty();
-    } catch (ToolResolutionException | ShellExecutionException e) {
+    } catch (ToolResolutionException | ShellExecutionException | IllegalArgumentException e) {
       return Optional.empty();
     }
   }
@@ -81,7 +81,7 @@ public final class BinstallerExecutor {
       appendSelection(command, module);
       ProcessResult result = shellRunner.run(List.copyOf(command), Map.of(), READ_ONLY_TIMEOUT);
       return result.isSuccess() ? Optional.of(result.stdout()) : Optional.empty();
-    } catch (ToolResolutionException | ShellExecutionException e) {
+    } catch (ToolResolutionException | ShellExecutionException | IllegalArgumentException e) {
       return Optional.empty();
     }
   }
@@ -124,14 +124,7 @@ public final class BinstallerExecutor {
 
   static ToolSpec toolSpec(BinstallerModule module) {
     ToolSpec base = KnownTools.BINSTALLER;
-    return new ToolSpec(
-        base.name(),
-        base.repository(),
-        module.installerVersion(),
-        base.assetTemplates(),
-        base.osNaming(),
-        base.checksumPolicy(),
-        Optional.of(module.binstallerBinary()));
+    return base.withVersion(module.installerVersion()).withBinaryName(module.binstallerBinary());
   }
 
   private String failureMessage(ProcessResult result) {

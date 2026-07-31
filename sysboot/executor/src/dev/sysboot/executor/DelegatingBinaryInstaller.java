@@ -3,6 +3,7 @@ package dev.sysboot.executor;
 import dev.sysboot.core.CompiledBinaryModule;
 import dev.sysboot.core.KnownTools;
 import dev.sysboot.core.ProcessResult;
+import dev.sysboot.core.PublicUrl;
 import dev.sysboot.core.ShellRunner;
 import dev.sysboot.core.StepResult;
 import java.io.IOException;
@@ -20,13 +21,13 @@ import org.slf4j.LoggerFactory;
  * Installs a {@code compiled-binary} step by handing it to binstaller.
  *
  * <p>binstaller is the binary installer; Fluxion should not have a second one. Delegating gains zip
- * and tar.xz extraction, which Fluxion's own installer never supported — the reason the shipped
- * Fedora profile still installs yazi and zig with hand-written {@code curl | unzip | mv | chmod}.
+ * and tar.xz extraction, which Fluxion's own installer never supported and profiles historically
+ * handled with hand-written download and extraction commands.
  *
  * <p>Delegation is attempted, not assumed. When the step cannot be expressed faithfully (a detached
  * GPG signature, a non-SHA-256 checksum, an unmappable archive) or binstaller is unavailable
- * (offline, air-gapped, an unsupported platform), the caller falls back to the built-in installer
- * rather than failing or silently doing less than the profile asked for.
+ * (offline, air-gapped, an unsupported platform), control returns to the caller. The caller may use
+ * its built-in path only for formats it can safely install; delegation-only formats fail closed.
  */
 final class DelegatingBinaryInstaller {
 
@@ -35,10 +36,17 @@ final class DelegatingBinaryInstaller {
 
   private final ShellRunner shellRunner;
   private final ToolResolver toolResolver;
+  private final boolean enabled;
 
   DelegatingBinaryInstaller(ShellRunner shellRunner, ToolResolver toolResolver) {
+    this(shellRunner, toolResolver, true);
+  }
+
+  private DelegatingBinaryInstaller(
+      ShellRunner shellRunner, ToolResolver toolResolver, boolean enabled) {
     this.shellRunner = shellRunner;
     this.toolResolver = toolResolver;
+    this.enabled = enabled;
   }
 
   /**
@@ -54,7 +62,12 @@ final class DelegatingBinaryInstaller {
         },
         spec -> {
           throw new ToolResolutionException("delegation is disabled");
-        });
+        },
+        false);
+  }
+
+  boolean isEnabled() {
+    return enabled;
   }
 
   /**
@@ -88,9 +101,7 @@ final class DelegatingBinaryInstaller {
               : new StepResult.Failure(
                   module.binaryName(), StepOutcome.detail(result), result.exitCode(), elapsed));
     } catch (ToolResolutionException e) {
-      // No binstaller on this host and none obtainable: fall back rather than fail, so an offline
-      // or air-gapped machine still installs what Fluxion can install itself.
-      log.debug("binstaller unavailable, using the built-in installer: {}", e.getMessage());
+      log.debug("binstaller unavailable, returning control to the caller: {}", e.getMessage());
       return Optional.empty();
     } catch (IOException e) {
       log.debug("Could not stage a binstaller profile: {}", e.getMessage());
@@ -114,7 +125,7 @@ final class DelegatingBinaryInstaller {
             "--only",
             module.name().value(),
             "#",
-            module.url().toString(),
+            PublicUrl.from(module.url().value()),
             "->",
             module.installPath().toString()));
   }

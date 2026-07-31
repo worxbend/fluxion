@@ -43,7 +43,7 @@ final class PlanKinds {
   @FunctionalInterface
   interface SpecCheck {
     void check(
-        WorkstationProfileValidator validator,
+        WorkstationPlanValidators validator,
         String path,
         String entryName,
         PlanSpecDocument spec,
@@ -54,7 +54,7 @@ final class PlanKinds {
   @FunctionalInterface
   interface ModuleMapper {
     Optional<BootstrapModule> map(
-        WorkstationProfileConfigMapper mapper, PlanEntryDocument entry, BootstrapPolicy policy);
+        WorkstationPlanMappers mapper, PlanEntryDocument entry, BootstrapPolicy policy);
   }
 
   record PlanKind(
@@ -118,83 +118,83 @@ final class PlanKinds {
           installer(
               "binary-downloads",
               "Download and install a compiled binary or archive.",
-              WorkstationProfileValidator::validateBinarySpec,
+              WorkstationPlanValidators::validateBinarySpec,
               (mapper, entry, policy) -> Optional.of(mapper.compiledBinaryModule(entry, policy))),
           installer(
               "shell-scripts",
               "Run local or HTTPS-fetched shell scripts.",
-              WorkstationProfileValidator::validateScriptSpec,
+              WorkstationPlanValidators::validateScriptSpec,
               (mapper, entry, policy) -> Optional.of(mapper.shellScriptModule(entry, policy))),
           installer(
               "commands",
               "Run shell or direct argv commands.",
               (validator, path, name, spec, errors) ->
-                  validator.validateCommandSpec(path, spec, errors),
+                  validator.validateCommandSpec(path, name, spec, errors),
               (mapper, entry, policy) -> Optional.of(mapper.shellCommandModule(entry, policy))),
           installer(
               "file-writes",
               "Write files from inline content or a source path.",
-              WorkstationProfileValidator::validateFileWriteSpec,
-              WorkstationProfileConfigMapper::fileWriteModule),
+              WorkstationPlanValidators::validateFileWriteSpec,
+              WorkstationPlanMappers::fileWriteModule),
           installer(
               "nerd-fonts",
               "Install Nerd Font families via nerd-fonts-installer.",
-              WorkstationProfileValidator::validateNerdFontSpec,
+              WorkstationPlanValidators::validateNerdFontSpec,
               (mapper, entry, policy) -> Optional.of(mapper.nerdFontModule(entry))),
           installer(
               "dotfiles-apply",
               "Apply a Dotbot configuration via dotbot.",
-              WorkstationProfileValidator::validateDotfilesSpec,
+              WorkstationPlanValidators::validateDotfilesSpec,
               (mapper, entry, policy) -> Optional.of(mapper.dotbotModule(entry))),
           installer(
               "binstaller-profile",
               "Install binaries from a binstaller BinaryDistributionProfile.",
-              WorkstationProfileValidator::validateBinstallerSpec,
+              WorkstationPlanValidators::validateBinstallerSpec,
               (mapper, entry, policy) -> Optional.of(mapper.binstallerModule(entry, policy))),
           installer(
               "user-groups",
               "Add the user to groups. Append-only; never removes membership.",
-              WorkstationProfileValidator::validateUserGroupsSpec,
+              WorkstationPlanValidators::validateUserGroupsSpec,
               (mapper, entry, policy) -> Optional.of(mapper.userGroupsModule(entry, policy))),
           installer(
               "git-config",
               "Set git config entries at global, system or local scope.",
-              WorkstationProfileValidator::validateGitConfigSpec,
+              WorkstationPlanValidators::validateGitConfigSpec,
               (mapper, entry, policy) -> Optional.of(mapper.gitConfigModule(entry, policy))),
           installer(
               "git-repo",
               "Clone git repositories, and optionally update existing clones.",
-              WorkstationProfileValidator::validateGitRepoSpec,
+              WorkstationPlanValidators::validateGitRepoSpec,
               (mapper, entry, policy) -> Optional.of(mapper.gitRepoModule(entry, policy))),
           installer(
               "systemd-unit",
               "Enable, mask, start or stop systemd units.",
-              WorkstationProfileValidator::validateSystemdUnitSpec,
+              WorkstationPlanValidators::validateSystemdUnitSpec,
               (mapper, entry, policy) -> Optional.of(mapper.systemdUnitModule(entry, policy))),
           installer(
               "system-setting",
               "Set timezone, hostname, locale, NTP and the RTC mode.",
-              WorkstationProfileValidator::validateSystemSettingSpec,
+              WorkstationPlanValidators::validateSystemSettingSpec,
               (mapper, entry, policy) -> Optional.of(mapper.systemSettingModule(entry, policy))),
           installer(
               "system-update",
               "Refresh package metadata or upgrade every installed package.",
-              WorkstationProfileValidator::validateSystemUpdateSpec,
+              WorkstationPlanValidators::validateSystemUpdateSpec,
               (mapper, entry, policy) -> Optional.of(mapper.systemUpdateModule(entry, policy))),
           installer(
               "gpg-key",
               "Import repository signing keys into a keyring.",
-              WorkstationProfileValidator::validateGpgKeySpec,
+              WorkstationPlanValidators::validateGpgKeySpec,
               (mapper, entry, policy) -> Optional.of(mapper.gpgKeyModule(entry, policy))),
           installer(
               "tool-packages",
               "Install via a language tool: cargo-binstall, pipx, snap, uv, npm, go.",
-              WorkstationProfileValidator::validateToolPackagesSpec,
+              WorkstationPlanValidators::validateToolPackagesSpec,
               (mapper, entry, policy) -> Optional.of(mapper.toolPackagesModule(entry, policy))),
           installer(
               "zypper-repository",
               "Add an openSUSE repository, with its signing key.",
-              WorkstationProfileValidator::validateZypperRepositorySpec,
+              WorkstationPlanValidators::validateZypperRepositorySpec,
               (mapper, entry, policy) -> Optional.of(mapper.zypperRepositoryModule(entry))),
           new PlanKind(
               "interrupt",

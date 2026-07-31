@@ -36,6 +36,7 @@ import dev.sysboot.core.ToolchainModule;
 import dev.sysboot.core.UserGroupsModule;
 import dev.sysboot.core.ZypperModule;
 import dev.sysboot.core.ZypperRepositoryModule;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Optional;
 import java.util.Set;
@@ -52,7 +53,8 @@ final class BootstrapConfigSelectionFilter {
             .profileName(config.profileName())
             .target(config.target())
             .policy(config.policy())
-            .skippedPlanEntries(config.skippedPlanEntries());
+            .skippedPlanEntries(config.skippedPlanEntries())
+            .sourceSetups(config.sourceSetups());
     phases.forEach(builder::addPhase);
     return builder.build();
   }
@@ -107,7 +109,8 @@ final class BootstrapConfigSelectionFilter {
           filterShellCommandModule(shellCommandModule, entries);
       case NerdFontModule nerdFontModule -> filterNerdFontModule(nerdFontModule, entries);
       case CompiledBinaryModule compiledBinaryModule -> Optional.of(compiledBinaryModule);
-      case ShellScriptModule shellScriptModule -> Optional.of(shellScriptModule);
+      case ShellScriptModule shellScriptModule ->
+          filterShellScriptModule(shellScriptModule, entries);
       case DotbotModule dotbotModule -> Optional.of(dotbotModule);
       case DefaultShellModule defaultShellModule -> Optional.of(defaultShellModule);
       case OhMyZshModule ohMyZshModule -> Optional.of(ohMyZshModule);
@@ -118,15 +121,17 @@ final class BootstrapConfigSelectionFilter {
       case InterruptModule interruptModule -> Optional.of(interruptModule);
       case SdkmanModule sdkmanModule -> filterSdkmanModule(sdkmanModule, entries);
       case BinstallerModule binstallerModule -> Optional.of(binstallerModule);
-      case UserGroupsModule userGroupsModule -> Optional.of(userGroupsModule);
+      case UserGroupsModule userGroupsModule -> filterUserGroupsModule(userGroupsModule, entries);
       case ZypperRepositoryModule zypperRepositoryModule -> Optional.of(zypperRepositoryModule);
-      case GitConfigModule gitConfigModule -> Optional.of(gitConfigModule);
-      case GitRepoModule gitRepoModule -> Optional.of(gitRepoModule);
-      case SystemdUnitModule systemdUnitModule -> Optional.of(systemdUnitModule);
+      case GitConfigModule gitConfigModule -> filterGitConfigModule(gitConfigModule, entries);
+      case GitRepoModule gitRepoModule -> filterGitRepoModule(gitRepoModule, entries);
+      case SystemdUnitModule systemdUnitModule ->
+          filterSystemdUnitModule(systemdUnitModule, entries);
       case SystemSettingModule systemSettingModule -> Optional.of(systemSettingModule);
       case SystemUpdateModule systemUpdateModule -> Optional.of(systemUpdateModule);
-      case GpgKeyModule gpgKeyModule -> Optional.of(gpgKeyModule);
-      case ToolPackagesModule toolPackagesModule -> Optional.of(toolPackagesModule);
+      case GpgKeyModule gpgKeyModule -> filterGpgKeyModule(gpgKeyModule, entries);
+      case ToolPackagesModule toolPackagesModule ->
+          filterToolPackagesModule(toolPackagesModule, entries);
     };
   }
 
@@ -153,7 +158,11 @@ final class BootstrapConfigSelectionFilter {
         ? Optional.empty()
         : Optional.of(
             new PackageModule(
-                module.name(), module.packageManager(), packages, module.continueOnError()));
+                module.name(),
+                module.packageManager(),
+                packages,
+                module.actions(),
+                module.continueOnError()));
   }
 
   private Optional<BootstrapModule> filterZypperModule(ZypperModule module, Set<String> entries) {
@@ -167,7 +176,86 @@ final class BootstrapConfigSelectionFilter {
     var appIds = module.appIds().stream().filter(entries::contains).toList();
     return appIds.isEmpty()
         ? Optional.empty()
-        : Optional.of(new FlatpakModule(module.name(), module.remote(), appIds));
+        : Optional.of(
+            new FlatpakModule(module.name(), module.remote(), appIds, module.continueOnError()));
+  }
+
+  private Optional<BootstrapModule> filterShellScriptModule(
+      ShellScriptModule module, Set<String> entries) {
+    var items = module.items().stream().filter(item -> entries.contains(item.name())).toList();
+    return items.isEmpty()
+        ? Optional.empty()
+        : Optional.of(
+            new ShellScriptModule(
+                module.name(),
+                items,
+                module.workingDir(),
+                module.continueOnError(),
+                module.probeCommand()));
+  }
+
+  private Optional<BootstrapModule> filterUserGroupsModule(
+      UserGroupsModule module, Set<String> entries) {
+    var groups =
+        module.groups().stream().filter(group -> entries.contains(module.itemKey(group))).toList();
+    return groups.isEmpty()
+        ? Optional.empty()
+        : Optional.of(
+            new UserGroupsModule(
+                module.name(),
+                module.user(),
+                groups,
+                module.createMissing(),
+                module.logoutCheckpoint(),
+                module.checkpointMessage(),
+                module.continueOnError()));
+  }
+
+  private Optional<BootstrapModule> filterGitConfigModule(
+      GitConfigModule module, Set<String> entries) {
+    var selected = new LinkedHashMap<String, String>();
+    module.sortedKeys().stream()
+        .filter(entries::contains)
+        .forEach(key -> selected.put(key, module.entries().get(key)));
+    return selected.isEmpty()
+        ? Optional.empty()
+        : Optional.of(
+            new GitConfigModule(module.name(), module.scope(), selected, module.continueOnError()));
+  }
+
+  private Optional<BootstrapModule> filterGitRepoModule(GitRepoModule module, Set<String> entries) {
+    var repos =
+        module.repos().stream().filter(repo -> entries.contains(repo.destination())).toList();
+    return repos.isEmpty()
+        ? Optional.empty()
+        : Optional.of(new GitRepoModule(module.name(), repos, module.continueOnError()));
+  }
+
+  private Optional<BootstrapModule> filterSystemdUnitModule(
+      SystemdUnitModule module, Set<String> entries) {
+    var units =
+        module.units().stream().filter(unit -> entries.contains(unit.qualifiedName())).toList();
+    return units.isEmpty()
+        ? Optional.empty()
+        : Optional.of(
+            new SystemdUnitModule(module.name(), module.scope(), units, module.continueOnError()));
+  }
+
+  private Optional<BootstrapModule> filterGpgKeyModule(GpgKeyModule module, Set<String> entries) {
+    var keys = module.keys().stream().filter(key -> entries.contains(key.itemKey())).toList();
+    return keys.isEmpty()
+        ? Optional.empty()
+        : Optional.of(new GpgKeyModule(module.name(), keys, module.continueOnError()));
+  }
+
+  private Optional<BootstrapModule> filterToolPackagesModule(
+      ToolPackagesModule module, Set<String> entries) {
+    var packages = module.packages().stream().filter(pkg -> entries.contains(pkg.name())).toList();
+    return packages.isEmpty()
+        ? Optional.empty()
+        : Optional.of(
+            new ToolPackagesModule(
+                module.name(), module.backend(), packages, module.continueOnError()));
   }
 
   private Optional<BootstrapModule> filterShellCommandModule(
@@ -203,6 +291,7 @@ final class BootstrapConfigSelectionFilter {
             module.installerVersion(),
             module.nerdfontBinary(),
             config,
+            module.configPath(),
             module.probeCommand()));
   }
 }

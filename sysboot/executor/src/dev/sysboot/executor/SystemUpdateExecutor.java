@@ -30,7 +30,7 @@ public final class SystemUpdateExecutor {
     Duration timeout = module.timeout().orElse(DEFAULT_TIMEOUT);
     for (List<String> command : commands(module)) {
       if (ExecutionCancellation.isCancelled()) {
-        break;
+        return cancelled(module);
       }
       ProcessResult result = shellRunner.run(command, Map.of(), timeout);
       if (!succeeded(module, result)) {
@@ -42,6 +42,14 @@ public final class SystemUpdateExecutor {
       }
     }
     return new StepResult.Success(module.itemKey(), Duration.ZERO);
+  }
+
+  private StepResult cancelled(SystemUpdateModule module) {
+    return new StepResult.Paused(
+        module.itemKey(),
+        "System update cancelled before every command completed",
+        java.util.Optional.empty(),
+        130);
   }
 
   public List<String> commandPreview(SystemUpdateModule module) {

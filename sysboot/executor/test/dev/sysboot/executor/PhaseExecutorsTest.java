@@ -3,6 +3,7 @@ package dev.sysboot.executor;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.mock;
 
+import dev.sysboot.core.ExecutionApproval;
 import dev.sysboot.core.ProcessResult;
 import dev.sysboot.core.ShellRunner;
 import java.time.Duration;
@@ -49,7 +50,23 @@ class PhaseExecutorsTest {
     assertThat(registry.forRunner(loginShellRunner)).isSameAs(registry.forRunner(loginShellRunner));
   }
 
+  @Test
+  void aDifferentRunnerPreservesTheRunApprovalPolicy() {
+    ExecutionApproval approval = ExecutionApproval.approveAll();
+    var registry = registryWith(mock(DotbotExecutor.class), mock(NerdFontExecutor.class), approval);
+    ShellRunner loginShellRunner = new NoopShellRunner();
+
+    PhaseExecutors executors = registry.forRunner(loginShellRunner);
+
+    assertThat(executors.approval()).isSameAs(approval);
+  }
+
   private PhaseExecutors.Registry registryWith(DotbotExecutor dotbot, NerdFontExecutor nerdFont) {
+    return registryWith(dotbot, nerdFont, ExecutionApproval.denyAll());
+  }
+
+  private PhaseExecutors.Registry registryWith(
+      DotbotExecutor dotbot, NerdFontExecutor nerdFont, ExecutionApproval approval) {
     return new PhaseExecutors.Registry(
         primaryRunner,
         PhaseExecutors.injected(
@@ -60,7 +77,9 @@ class PhaseExecutorsTest {
             mock(OhMyZshExecutor.class),
             mock(ToolchainExecutor.class),
             nerdFont,
-            mock(ShellReloadExecutor.class)));
+            mock(ShellReloadExecutor.class),
+            approval),
+        approval);
   }
 
   private static final class NoopShellRunner implements ShellRunner {

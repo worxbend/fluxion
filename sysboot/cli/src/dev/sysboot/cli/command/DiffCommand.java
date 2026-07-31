@@ -7,6 +7,7 @@ import dev.sysboot.cli.output.JsonOutput;
 import dev.sysboot.cli.output.OutputFormat;
 import dev.sysboot.core.BootstrapConfig;
 import dev.sysboot.core.BootstrapState;
+import dev.sysboot.core.DisplayTextSanitizer;
 import dev.sysboot.executor.JsonStateRepository;
 import dev.sysboot.executor.StatusReport;
 import dev.sysboot.executor.StatusReportBuilder;
@@ -22,6 +23,8 @@ import picocli.CommandLine.Spec;
 
 @Command(name = "diff", description = "Show what would change on this host")
 public final class DiffCommand implements Runnable {
+
+  private final DisplayTextSanitizer sanitizer = new DisplayTextSanitizer();
 
   @Mixin private GlobalOptions options;
 
@@ -46,7 +49,7 @@ public final class DiffCommand implements Runnable {
     BootstrapConfig config = context.configLoader().load(options.resolvedConfigFile());
     Optional<BootstrapState> state = new JsonStateRepository(new ObjectMapper()).load(profile);
     var plan = context.executionPlanBuilder().build(config);
-    var liveResults = context.parallelProbeRunner().probeAll(config.modules(), ignored -> {});
+    var liveResults = context.parallelProbeRunner().probeAll(plan, ignored -> {});
     StatusReport report = new StatusReportBuilder().build(plan, state, liveResults);
     List<StatusReport.Item> changes = changes(report);
 
@@ -65,7 +68,7 @@ public final class DiffCommand implements Runnable {
 
   private void writeText(StatusReport report, List<StatusReport.Item> changes) {
     var out = spec.commandLine().getOut();
-    out.printf("Diff for profile: %s%n", report.profileName());
+    out.printf("Diff for profile: %s%n", safe(report.profileName()));
     out.println();
     if (changes.isEmpty()) {
       out.println("No changes detected.");
@@ -77,7 +80,9 @@ public final class DiffCommand implements Runnable {
         out.println(title(classification) + ":");
         group.forEach(
             item ->
-                out.printf("  - %s (%s): %s%n", item.displayName(), item.type(), item.detail()));
+                out.printf(
+                    "  - %s (%s): %s%n",
+                    safe(item.displayName()), safe(item.type()), safe(item.detail())));
         out.println();
       }
     }
@@ -98,6 +103,7 @@ public final class DiffCommand implements Runnable {
 
   private Map<String, Object> jsonChange(StatusReport.Item item) {
     var output = new LinkedHashMap<String, Object>();
+    output.put("moduleName", item.moduleName());
     output.put("key", item.key());
     output.put("displayName", item.displayName());
     output.put("type", item.type());
@@ -137,5 +143,9 @@ public final class DiffCommand implements Runnable {
       case UNKNOWN -> "unknown";
       case VERSION_DRIFT -> "version-drift";
     };
+  }
+
+  private String safe(Object value) {
+    return sanitizer.sanitizeLine(String.valueOf(value));
   }
 }

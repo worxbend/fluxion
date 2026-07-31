@@ -1,7 +1,9 @@
 package dev.sysboot.executor;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
@@ -14,6 +16,7 @@ import dev.sysboot.core.BinaryUrl;
 import dev.sysboot.core.BootstrapConfig;
 import dev.sysboot.core.BootstrapPolicy;
 import dev.sysboot.core.BootstrapState;
+import dev.sysboot.core.CancellationSignal;
 import dev.sysboot.core.Checksum;
 import dev.sysboot.core.CompiledBinaryModule;
 import dev.sysboot.core.DotbotModule;
@@ -22,8 +25,13 @@ import dev.sysboot.core.ExecutionEvent;
 import dev.sysboot.core.ExecutionPausedException;
 import dev.sysboot.core.FlatpakModule;
 import dev.sysboot.core.FlatpakRemoteModule;
+import dev.sysboot.core.GitConfigModule;
+import dev.sysboot.core.GitConfigScope;
+import dev.sysboot.core.InstallationStatus;
+import dev.sysboot.core.InstalledProbe;
 import dev.sysboot.core.InterruptModule;
 import dev.sysboot.core.InterruptResumeMode;
+import dev.sysboot.core.ItemType;
 import dev.sysboot.core.ManualModule;
 import dev.sysboot.core.ModuleName;
 import dev.sysboot.core.NerdFontConfig;
@@ -45,8 +53,11 @@ import dev.sysboot.core.RestartPolicy;
 import dev.sysboot.core.RpmRepositoryModule;
 import dev.sysboot.core.RpmRepositorySourceSetup;
 import dev.sysboot.core.ScriptPath;
+import dev.sysboot.core.Sha256Digest;
+import dev.sysboot.core.ShellCommandItem;
 import dev.sysboot.core.ShellCommandModule;
 import dev.sysboot.core.ShellRunner;
+import dev.sysboot.core.ShellScriptItem;
 import dev.sysboot.core.ShellScriptModule;
 import dev.sysboot.core.SkippedPlanEntry;
 import dev.sysboot.core.StateEntry;
@@ -64,6 +75,7 @@ import java.util.HexFormat;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -112,6 +124,9 @@ class BootstrapOrchestratorImplTest {
             invocation ->
                 new CompiledBinaryInstaller(new DefaultShellRunner())
                     .dryRunCommand(invocation.getArgument(0)));
+    lenient()
+        .when(shellScriptExecutor.executeItem(any()))
+        .thenReturn(new StepResult.Success("script", Duration.ZERO));
 
     orchestrator = orchestrator(alwaysRun(), Optional.empty());
   }
@@ -141,6 +156,62 @@ class BootstrapOrchestratorImplTest {
             EventKind.ITEM_COMPLETED,
             EventKind.MODULE_COMPLETED,
             EventKind.PHASE_COMPLETED);
+  }
+
+  @Test
+  void execute_whenRemoteScriptVerificationFails_emitsControlledItemAndPhaseFailureEvents() {
+    ScriptDownloadClient failingDownload =
+        (url, sha256) -> {
+          throw new IOException("upstream detail");
+        };
+    shellScriptExecutor = new ShellScriptExecutor(new FailingShellRunner(), failingDownload);
+    orchestrator = orchestrator(alwaysRun(), Optional.empty());
+    var script =
+        new ShellScriptItem(
+            "remote",
+            Optional.empty(),
+            Optional.of(URI.create("https://example.test/install.sh?token=secret")),
+            List.of(),
+            Optional.empty(),
+            List.of(),
+            false,
+            List.of(0),
+            Optional.empty(),
+            Optional.empty(),
+            Optional.empty(),
+            Duration.ofMinutes(1),
+            Optional.of(new Sha256Digest("0".repeat(64))));
+    var module =
+        new ShellScriptModule(
+            new ModuleName("scripts"), List.of(script), Optional.empty(), false, Optional.empty());
+    var phase =
+        new Phase(
+            new PhaseName("scripts"),
+            "Scripts",
+            List.of(module),
+            List.of(),
+            new RestartPolicy.None(),
+            false);
+    List<ExecutionEvent> events = new ArrayList<>();
+
+    assertThatThrownBy(() -> orchestrator.execute(buildPhasedConfig(List.of(phase)), events::add))
+        .isInstanceOf(BootstrapExecutionException.class);
+
+    assertThat(events)
+        .extracting(ExecutionEvent::kind)
+        .containsSubsequence(
+            EventKind.MODULE_STARTED,
+            EventKind.ITEM_STARTED,
+            EventKind.ITEM_COMPLETED,
+            EventKind.MODULE_COMPLETED,
+            EventKind.PHASE_FAILED);
+    assertThat(events.stream().flatMap(event -> event.result().stream()).toList())
+        .anySatisfy(
+            result -> {
+              assertThat(result).isInstanceOf(StepResult.Failure.class);
+              assertThat(((StepResult.Failure) result).errorMessage())
+                  .doesNotContain("secret", "upstream detail");
+            });
   }
 
   @Test
@@ -179,10 +250,232 @@ class BootstrapOrchestratorImplTest {
                         false))));
 
     List<ExecutionEvent> events = new ArrayList<>();
-    orchestrator.execute(config, events::add);
+    assertThatThrownBy(() -> orchestrator.execute(config, events::add))
+        .isInstanceOf(BootstrapExecutionException.class);
 
     verify(dnfExecutor, times(2)).install(any());
     assertThat(events).extracting(ExecutionEvent::kind).contains(EventKind.PHASE_FAILED);
+  }
+
+  @Test
+  void execute_whenProcessLaunchFails_recordsPhaseFailureBeforePropagating() {
+    when(dnfExecutor.install(any()))
+        .thenThrow(new ShellExecutionException("Failed to start process: dnf"));
+    var stateRepository = new InMemoryStateRepository(BootstrapState.empty("test", "1.0.0"));
+    orchestrator = orchestrator(alwaysRun(), Optional.of(stateRepository));
+    var config =
+        buildPhasedConfig(
+            List.of(
+                phase(
+                    "foundation",
+                    false,
+                    List.of(),
+                    new PackageModule(
+                        new ModuleName("tools"),
+                        PackageManagerKind.DNF,
+                        List.of(new PackageName("git")),
+                        false))));
+    List<ExecutionEvent> events = new ArrayList<>();
+
+    org.assertj.core.api.Assertions.assertThatThrownBy(
+            () -> orchestrator.execute(config, events::add))
+        .isInstanceOf(ShellExecutionException.class);
+
+    assertThat(events).extracting(ExecutionEvent::kind).contains(EventKind.PHASE_FAILED);
+    assertThat(stateRepository.state().findPhaseEntry("foundation").orElseThrow().status())
+        .isEqualTo(PhaseStatus.FAILED);
+  }
+
+  @Test
+  void execute_whenShellModuleHasMultipleItems_usesPerItemIdentityAndStreaming() {
+    var repository = new InMemoryStateRepository(BootstrapState.empty("test", "1.0.0"));
+    ShellRunner runner =
+        (command, env, timeout) -> {
+          ExecutionOutput.sink().accept("ran " + command.getLast());
+          return new ProcessResult(0, "", "", Duration.ZERO);
+        };
+    orchestrator = orchestratorWithRunner(runner, Optional.of(repository));
+    var module =
+        new ShellCommandModule(
+            new ModuleName("commands"),
+            List.of(
+                ShellCommandItem.shell("first", "echo first", "/bin/bash", Optional.empty()),
+                ShellCommandItem.shell("second", "echo second", "/bin/bash", Optional.empty())),
+            "/bin/bash",
+            Optional.empty(),
+            false,
+            Optional.empty());
+    List<ExecutionEvent> events = new ArrayList<>();
+
+    orchestrator.execute(buildConfig(List.of(module)), events::add);
+
+    assertThat(events)
+        .filteredOn(event -> event.kind() == EventKind.ITEM_STARTED)
+        .extracting(ExecutionEvent::item)
+        .containsExactly("first", "second");
+    assertThat(events)
+        .filteredOn(event -> event.kind() == EventKind.ITEM_OUTPUT)
+        .extracting(ExecutionEvent::item)
+        .containsExactly("first", "second");
+    assertThat(repository.state().entries())
+        .extracting(StateEntry::itemKey)
+        .containsExactly("first", "second");
+  }
+
+  @Test
+  void execute_whenGitConfigItemsSplit_failureStateSkipAndRetryStayPerItem() {
+    var repository = new InMemoryStateRepository(BootstrapState.empty("test", "1.0.0"));
+    var failSecond = new java.util.concurrent.atomic.AtomicBoolean(true);
+    List<List<String>> commands = new ArrayList<>();
+    ShellRunner runner =
+        (command, env, timeout) -> {
+          commands.add(List.copyOf(command));
+          if (command.contains("--get")) {
+            return new ProcessResult(1, "", "", Duration.ZERO);
+          }
+          if (command.contains("b.two") && failSecond.get()) {
+            return new ProcessResult(1, "", "failed", Duration.ZERO);
+          }
+          return new ProcessResult(0, "", "", Duration.ZERO);
+        };
+    var module =
+        new GitConfigModule(
+            new ModuleName("git"),
+            GitConfigScope.GLOBAL,
+            Map.of("a.one", "first", "b.two", "second"),
+            false);
+    var config = buildPhasedConfig(List.of(phase("git-config", false, List.of(), module)));
+    orchestrator = orchestratorWithRunner(runner, Optional.of(repository));
+
+    assertThatThrownBy(() -> orchestrator.execute(config, ignored -> {}))
+        .isInstanceOf(BootstrapExecutionException.class);
+
+    assertThat(repository.state().entries())
+        .extracting(StateEntry::itemKey)
+        .containsExactly("global:a.one");
+
+    failSecond.set(false);
+    commands.clear();
+    var skipRecorded =
+        new SkipEvaluator(
+            Optional.of(repository.state()),
+            new InstalledProbeRegistry(List.of()),
+            RunStateMode.SKIP_RECORDED);
+    orchestrator =
+        new BootstrapOrchestratorImpl(
+            new PackageManagerExecutorRegistry(List.of(dnfExecutor)),
+            shellScriptExecutor,
+            binaryInstaller,
+            new AptRepositoryInstaller(runner),
+            new RpmRepositoryInstaller(runner),
+            new PacmanRepositoryInstaller(runner),
+            new FileWriteExecutor(runner),
+            flatpakInstaller,
+            new FlatpakRemoteInstaller(runner),
+            new DotbotExecutor(runner),
+            new DefaultShellExecutor(runner),
+            new OhMyZshExecutor(runner),
+            new ToolchainExecutor(runner),
+            new NerdFontExecutor(runner),
+            new ShellReloadExecutor(runner),
+            skipRecorded,
+            Optional.of(repository),
+            "test",
+            runner,
+            dev.sysboot.core.ExecutionApproval.denyAll());
+    List<ExecutionEvent> retryEvents = new ArrayList<>();
+
+    orchestrator.execute(config, retryEvents::add);
+
+    assertThat(retryEvents)
+        .filteredOn(event -> event.kind() == EventKind.ITEM_COMPLETED)
+        .extracting(ExecutionEvent::item)
+        .contains("global:a.one", "global:b.two");
+    assertThat(retryEvents)
+        .filteredOn(
+            event ->
+                event.item().equals("global:a.one")
+                    && event.result().filter(StepResult.Skipped.class::isInstance).isPresent())
+        .hasSize(1);
+    assertThat(commands).noneMatch(command -> command.contains("a.one"));
+    assertThat(repository.state().entries())
+        .extracting(StateEntry::itemKey)
+        .containsExactly("global:a.one", "global:b.two");
+
+    repository.forgetItem("test", "global:a.one");
+
+    assertThat(repository.state().entries())
+        .extracting(StateEntry::itemKey)
+        .containsExactly("global:b.two");
+  }
+
+  @Test
+  void execute_whenCancellationArrivesBetweenGitConfigItems_stopsBeforeTheSibling() {
+    var cancellation = new CancellationSignal();
+    var repository = new InMemoryStateRepository(BootstrapState.empty("test", "1.0.0"));
+    ShellRunner runner =
+        (command, env, timeout) -> {
+          if (command.contains("--get")) {
+            return new ProcessResult(1, "", "", Duration.ZERO);
+          }
+          cancellation.cancel();
+          return new ProcessResult(0, "", "", Duration.ZERO);
+        };
+    orchestrator = orchestratorWithRunner(runner, Optional.of(repository));
+    var module =
+        new GitConfigModule(
+            new ModuleName("git"),
+            GitConfigScope.GLOBAL,
+            Map.of("a.one", "first", "b.two", "second"),
+            false);
+    List<ExecutionEvent> events = new ArrayList<>();
+
+    assertThatThrownBy(
+            () -> orchestrator.execute(buildConfig(List.of(module)), events::add, cancellation))
+        .isInstanceOf(ExecutionCancelledException.class);
+
+    assertThat(events)
+        .filteredOn(event -> event.kind() == EventKind.ITEM_STARTED)
+        .extracting(ExecutionEvent::item)
+        .containsExactly("global:a.one");
+    assertThat(repository.state().entries())
+        .extracting(StateEntry::itemKey)
+        .containsExactly("global:a.one");
+  }
+
+  @Test
+  void execute_whenScriptModuleHasMultipleItems_usesPerItemIdentityAndStreaming() {
+    var repository = new InMemoryStateRepository(BootstrapState.empty("test", "1.0.0"));
+    when(shellScriptExecutor.executeItem(any()))
+        .thenAnswer(
+            invocation -> {
+              ShellScriptItem item = invocation.getArgument(0);
+              ExecutionOutput.sink().accept("ran " + item.name());
+              return new StepResult.Success(item.name(), Duration.ZERO);
+            });
+    orchestrator = orchestrator(alwaysRun(), Optional.of(repository));
+    var module =
+        new ShellScriptModule(
+            new ModuleName("scripts"),
+            List.of(localScript("first", "./first.sh"), localScript("second", "./second.sh")),
+            Optional.empty(),
+            false,
+            Optional.empty());
+    List<ExecutionEvent> events = new ArrayList<>();
+
+    orchestrator.execute(buildConfig(List.of(module)), events::add);
+
+    assertThat(events)
+        .filteredOn(event -> event.kind() == EventKind.ITEM_STARTED)
+        .extracting(ExecutionEvent::item)
+        .containsExactly("first", "second");
+    assertThat(events)
+        .filteredOn(event -> event.kind() == EventKind.ITEM_OUTPUT)
+        .extracting(ExecutionEvent::item)
+        .containsExactly("first", "second");
+    assertThat(repository.state().entries())
+        .extracting(StateEntry::itemKey)
+        .containsExactly("first", "second");
   }
 
   @Test
@@ -232,7 +525,8 @@ class BootstrapOrchestratorImplTest {
                         List.of(new PackageName("jq")),
                         false))));
 
-    orchestrator.execute(config, ignored -> {});
+    assertThatThrownBy(() -> orchestrator.execute(config, ignored -> {}))
+        .isInstanceOf(BootstrapExecutionException.class);
 
     verify(dnfExecutor, times(3)).install(any());
   }
@@ -271,13 +565,11 @@ class BootstrapOrchestratorImplTest {
   }
 
   @Test
-  void execute_whenFlatpakMiddleAppFails_attemptsLaterAppBeforeAggregateFailure() {
-    when(flatpakInstaller.install(any(), org.mockito.ArgumentMatchers.eq("org.first")))
-        .thenReturn(new StepResult.Success("org.first", Duration.ZERO));
-    when(flatpakInstaller.install(any(), org.mockito.ArgumentMatchers.eq("org.broken")))
-        .thenReturn(new StepResult.Failure("org.broken", "failed", 1, Duration.ZERO));
-    when(flatpakInstaller.install(any(), org.mockito.ArgumentMatchers.eq("org.last")))
-        .thenReturn(new StepResult.Success("org.last", Duration.ZERO));
+  void execute_whenFlatpakMiddleAppFails_stopsBeforeLaterApp() {
+    when(flatpakInstaller.install(any(), org.mockito.ArgumentMatchers.eq("org.example.first")))
+        .thenReturn(new StepResult.Success("org.example.first", Duration.ZERO));
+    when(flatpakInstaller.install(any(), org.mockito.ArgumentMatchers.eq("org.example.broken")))
+        .thenReturn(new StepResult.Failure("org.example.broken", "failed", 1, Duration.ZERO));
     var config =
         buildPhasedConfig(
             List.of(
@@ -288,23 +580,25 @@ class BootstrapOrchestratorImplTest {
                     new FlatpakModule(
                         new ModuleName("desktop"),
                         "flathub",
-                        List.of("org.first", "org.broken", "org.last"),
+                        List.of("org.example.first", "org.example.broken", "org.example.last"),
                         false))));
 
     List<ExecutionEvent> events = new ArrayList<>();
-    orchestrator.execute(config, events::add);
+    assertThatThrownBy(() -> orchestrator.execute(config, events::add))
+        .isInstanceOf(BootstrapExecutionException.class);
 
-    verify(flatpakInstaller).install(any(), org.mockito.ArgumentMatchers.eq("org.first"));
-    verify(flatpakInstaller).install(any(), org.mockito.ArgumentMatchers.eq("org.broken"));
-    verify(flatpakInstaller).install(any(), org.mockito.ArgumentMatchers.eq("org.last"));
+    verify(flatpakInstaller).install(any(), org.mockito.ArgumentMatchers.eq("org.example.first"));
+    verify(flatpakInstaller).install(any(), org.mockito.ArgumentMatchers.eq("org.example.broken"));
+    verify(flatpakInstaller, never())
+        .install(any(), org.mockito.ArgumentMatchers.eq("org.example.last"));
     assertThat(events).extracting(ExecutionEvent::kind).contains(EventKind.PHASE_FAILED);
   }
 
   @Test
-  void execute_whenPhaseAllowsModuleErrors_completesPhaseAndRunsDependentPhase() {
+  void execute_whenPhaseAllowsModuleErrors_finishesSiblingsButBlocksDependentPhase() {
     when(dnfExecutor.install(any()))
         .thenReturn(new StepResult.Failure("git", "not found", 1, Duration.ofMillis(100)))
-        .thenReturn(new StepResult.Success("curl", Duration.ofMillis(100)));
+        .thenReturn(new StepResult.Success("jq", Duration.ofMillis(100)));
 
     var config =
         buildPhasedConfig(
@@ -317,6 +611,11 @@ class BootstrapOrchestratorImplTest {
                         new ModuleName("tools"),
                         PackageManagerKind.DNF,
                         List.of(new PackageName("git")),
+                        false),
+                    new PackageModule(
+                        new ModuleName("sibling-tools"),
+                        PackageManagerKind.DNF,
+                        List.of(new PackageName("jq")),
                         false)),
                 phase(
                     "dependent",
@@ -329,13 +628,14 @@ class BootstrapOrchestratorImplTest {
                         false))));
 
     List<ExecutionEvent> events = new ArrayList<>();
-    orchestrator.execute(config, events::add);
+    assertThatThrownBy(() -> orchestrator.execute(config, events::add))
+        .isInstanceOf(BootstrapExecutionException.class);
 
-    assertThat(events).extracting(ExecutionEvent::kind).doesNotContain(EventKind.PHASE_FAILED);
+    assertThat(events).extracting(ExecutionEvent::kind).contains(EventKind.PHASE_FAILED);
     assertThat(events)
-        .filteredOn(e -> e.kind() == EventKind.PHASE_COMPLETED)
+        .filteredOn(e -> e.kind() == EventKind.PHASE_BLOCKED)
         .extracting(e -> e.phaseContext().orElseThrow())
-        .contains("foundation", "dependent");
+        .containsExactly("dependent");
     verify(dnfExecutor, times(2)).install(any());
   }
 
@@ -366,20 +666,33 @@ class BootstrapOrchestratorImplTest {
                         new ModuleName("more-tools"),
                         PackageManagerKind.DNF,
                         List.of(new PackageName("curl")),
+                        false)),
+                phase(
+                    "transitive-dependent",
+                    false,
+                    List.of(new PhaseName("dependent")),
+                    new PackageModule(
+                        new ModuleName("last-tools"),
+                        PackageManagerKind.DNF,
+                        List.of(new PackageName("jq")),
                         false))));
 
     List<ExecutionEvent> events = new ArrayList<>();
-    orchestrator.execute(config, events::add);
+    assertThatThrownBy(() -> orchestrator.execute(config, events::add))
+        .isInstanceOf(BootstrapExecutionException.class);
 
     assertThat(events).extracting(ExecutionEvent::kind).contains(EventKind.PHASE_FAILED);
     assertThat(events)
         .filteredOn(e -> e.kind() == EventKind.PHASE_BLOCKED)
         .extracting(e -> e.phaseContext().orElseThrow())
-        .containsExactly("dependent");
+        .containsExactly("dependent", "transitive-dependent");
     assertThat(stateRepository.state().findPhaseEntry("foundation").orElseThrow().reason())
         .contains("Phase stopped after a module failure");
     assertThat(stateRepository.state().findPhaseEntry("dependent").orElseThrow().reason())
         .contains("Blocked by failed phase: foundation");
+    assertThat(
+            stateRepository.state().findPhaseEntry("transitive-dependent").orElseThrow().reason())
+        .contains("Blocked by failed phase: dependent");
     verify(dnfExecutor, times(1)).install(any());
   }
 
@@ -437,8 +750,6 @@ class BootstrapOrchestratorImplTest {
 
   @Test
   void dryRun_whenSourceSetupConfigured_emitsSourceBeforePackage() {
-    when(rpmRepositoryInstaller.addCommand(any()))
-        .thenReturn(List.of("/bin/bash", "-lc", "sudo dnf makecache --refresh"));
     var config =
         buildConfig(
             List.of(dnfSourceSetup()),
@@ -504,7 +815,7 @@ class BootstrapOrchestratorImplTest {
                 "v1.0.5",
                 "nerdfont-install",
                 new NerdFontConfig(
-                    "latest",
+                    "v3.4.0",
                     Path.of("/home/test/.local/share/fonts/NerdFonts"),
                     true,
                     List.of("JetBrainsMono")),
@@ -528,16 +839,21 @@ class BootstrapOrchestratorImplTest {
             .toList();
     assertThat(previews)
         .contains(
-            // compiled-binary now delegates to binstaller, which handles zip and tar.xz that
-            // Fluxion's own extractor never did. The preview keeps the URL and destination so a
-            // plan still says what is being installed.
+            // stripComponents cannot be represented by binstaller, so this archive stays on the
+            // built-in exact-selection path.
             List.of(
-                "binstaller",
-                "apply",
-                "--only",
-                "ripgrep-download",
-                "#",
+                "download",
                 "https://example.com/ripgrep.tar.gz",
+                "->",
+                "/usr/local/bin/rg",
+                "extract",
+                "ripgrep/bin/rg",
+                "strip-components",
+                "1",
+                "mode",
+                "0755",
+                "symlink",
+                "/usr/local/bin/ripgrep",
                 "->",
                 "/usr/local/bin/rg"),
             List.of("<interpreter>", "./scripts/bootstrap.sh", "--dry"),
@@ -568,7 +884,8 @@ class BootstrapOrchestratorImplTest {
             false);
 
     List<ExecutionEvent> events = new ArrayList<>();
-    orchestrator.execute(buildConfig(List.of(module)), events::add);
+    assertThatThrownBy(() -> orchestrator.execute(buildConfig(List.of(module)), events::add))
+        .isInstanceOf(BootstrapExecutionException.class);
 
     assertThat(events)
         .flatExtracting(event -> event.result().stream().toList())
@@ -578,34 +895,40 @@ class BootstrapOrchestratorImplTest {
 
   @Test
   void execute_whenRequiredSourceSetupFails_doesNotInstallPackages() {
-    when(rpmRepositoryInstaller.add(any()))
+    when(rpmRepositoryInstaller.addTrusted(any(), any()))
         .thenReturn(
             new StepResult.Failure("/etc/yum.repos.d/docker.repo", "failed", 1, Duration.ZERO));
     var stateRepository = new InMemoryStateRepository(BootstrapState.empty("test", "1.0.0"));
     orchestrator = orchestrator(alwaysRun(), Optional.of(stateRepository));
 
-    orchestrator.execute(configWithSourceAndPackage(BootstrapPolicy.empty()), ignored -> {});
+    assertThatThrownBy(
+            () ->
+                orchestrator.execute(
+                    configWithSourceAndPackage(BootstrapPolicy.empty()), ignored -> {}))
+        .isInstanceOf(BootstrapExecutionException.class);
 
     verify(dnfExecutor, never()).install(any());
     assertThat(stateRepository.state().entries()).isEmpty();
   }
 
   @Test
-  void execute_whenSourceSetupFailsAndPolicyAllowsContinuation_installsPackages() {
-    when(rpmRepositoryInstaller.add(any()))
+  void execute_whenSourceSetupFailsAndPolicyAllowsContinuation_stillBlocksPackages() {
+    when(rpmRepositoryInstaller.addTrusted(any(), any()))
         .thenReturn(
             new StepResult.Failure("/etc/yum.repos.d/docker.repo", "failed", 1, Duration.ZERO));
     var policy = new BootstrapPolicy(Optional.empty(), Optional.of(true), Optional.empty());
 
-    orchestrator.execute(configWithSourceAndPackage(policy), ignored -> {});
+    assertThatThrownBy(
+            () -> orchestrator.execute(configWithSourceAndPackage(policy), ignored -> {}))
+        .isInstanceOf(BootstrapExecutionException.class);
 
-    verify(dnfExecutor).install(new PackageName("git"));
+    verify(dnfExecutor, never()).install(new PackageName("git"));
   }
 
   @Test
   void execute_whenSourceSetupSucceeds_recordsRepositoryStateBeforePackageState() {
     var stateRepository = new InMemoryStateRepository(BootstrapState.empty("test", "1.0.0"));
-    when(rpmRepositoryInstaller.add(any()))
+    when(rpmRepositoryInstaller.addTrusted(any(), any()))
         .thenReturn(new StepResult.Success("/etc/yum.repos.d/docker.repo", Duration.ZERO));
     orchestrator = orchestrator(alwaysRun(), Optional.of(stateRepository));
 
@@ -638,11 +961,117 @@ class BootstrapOrchestratorImplTest {
                 new PhaseStateEntry(
                     "foundation", PhaseStatus.COMPLETED, Instant.now(), Optional.of(fingerprint)))
             .withManifestMetadata("test", fingerprintCalculator.manifestFingerprint(config));
-    orchestrator = orchestrator(alwaysRun(), Optional.of(new InMemoryStateRepository(state)));
+    var skipEvaluator =
+        new SkipEvaluator(
+            Optional.of(state), new InstalledProbeRegistry(List.of()), RunStateMode.SKIP_RECORDED);
+    orchestrator = orchestrator(skipEvaluator, Optional.of(new InMemoryStateRepository(state)));
 
     orchestrator.execute(config, ignored -> {});
 
     verify(dnfExecutor, never()).install(any());
+  }
+
+  @Test
+  void execute_whenRecordOnlyAndCompletedPhaseMatches_runsPhaseModules() {
+    Phase phase =
+        phase(
+            "foundation",
+            false,
+            List.of(),
+            new PackageModule(
+                new ModuleName("tools"),
+                PackageManagerKind.DNF,
+                List.of(new PackageName("git")),
+                true));
+    BootstrapConfig config = buildPhasedConfig(List.of(phase));
+    var fingerprints = new PhaseFingerprintCalculator();
+    BootstrapState state =
+        BootstrapState.empty("test", "1.0.0")
+            .withPhaseEntry(
+                new PhaseStateEntry(
+                    "foundation",
+                    PhaseStatus.COMPLETED,
+                    Instant.now(),
+                    Optional.of(fingerprints.fingerprint(phase))))
+            .withManifestMetadata("test", fingerprints.manifestFingerprint(config));
+    orchestrator = orchestrator(alwaysRun(), Optional.of(new InMemoryStateRepository(state)));
+
+    orchestrator.execute(config, ignored -> {});
+
+    verify(dnfExecutor).install(new PackageName("git"));
+  }
+
+  @Test
+  void execute_whenRecordOnlyRunFails_removesPriorSuccessfulDecisions() {
+    Phase phase = phase("foundation", false, List.of(), packages("tools", "git"));
+    BootstrapConfig config = buildPhasedConfig(List.of(phase));
+    var fingerprints = new PhaseFingerprintCalculator();
+    BootstrapState previous =
+        BootstrapState.empty("test", "1.0.0")
+            .withEntry(
+                new StateEntry(
+                    "test",
+                    "tools",
+                    "git",
+                    ItemType.PACKAGE,
+                    Instant.now(),
+                    Optional.empty(),
+                    Optional.empty()))
+            .withPhaseEntry(
+                new PhaseStateEntry(
+                    "foundation",
+                    PhaseStatus.COMPLETED,
+                    Instant.now(),
+                    Optional.of(fingerprints.fingerprint(phase))))
+            .withManifestMetadata("test", fingerprints.manifestFingerprint(config));
+    var repository = new InMemoryStateRepository(previous);
+    when(dnfExecutor.install(any()))
+        .thenReturn(new StepResult.Failure("git", "failed", 1, Duration.ZERO));
+    orchestrator = orchestrator(alwaysRun(), Optional.of(repository));
+
+    assertThatThrownBy(() -> orchestrator.execute(config, ignored -> {}))
+        .isInstanceOf(BootstrapExecutionException.class);
+
+    assertThat(repository.state().entries()).isEmpty();
+    assertThat(repository.state().findPhaseEntry("foundation").orElseThrow().status())
+        .isEqualTo(PhaseStatus.FAILED);
+  }
+
+  @Test
+  void execute_whenLiveReprobe_ignoresAllPersistedRunDecisions() {
+    Phase phase =
+        phase("foundation", false, List.of(), packages("before", "git"), packages("after", "curl"));
+    BootstrapConfig config = buildPhasedConfig(List.of(phase));
+    var fingerprints = new PhaseFingerprintCalculator();
+    BootstrapState staleState =
+        BootstrapState.empty("test", "1.0.0")
+            .withPhaseEntry(
+                new PhaseStateEntry(
+                    "foundation",
+                    PhaseStatus.COMPLETED,
+                    Instant.now(),
+                    Optional.of(fingerprints.fingerprint(phase))))
+            .withNextPlanEntry(Optional.of("after"))
+            .withManifestMetadata("test", "different-manifest");
+    var repository = new InMemoryStateRepository(staleState);
+    var probeCount = new AtomicInteger();
+    var liveReprobe =
+        new SkipEvaluator(
+            Optional.of(staleState),
+            new InstalledProbeRegistry(List.of(notInstalledProbe(probeCount))),
+            RunStateMode.LIVE_REPROBE);
+    orchestrator = orchestrator(liveReprobe, Optional.of(repository));
+
+    orchestrator.execute(config, ignored -> {});
+
+    verify(dnfExecutor, times(2)).install(any());
+    assertThat(probeCount).hasValue(2);
+    assertThat(repository.state().nextPlanEntry()).isEmpty();
+    assertThat(repository.state().entries())
+        .extracting(StateEntry::itemKey)
+        .containsExactly("git", "curl");
+    assertThat(repository.state().manifestFingerprint())
+        .contains(fingerprints.manifestFingerprint(config));
   }
 
   @Test
@@ -736,6 +1165,42 @@ class BootstrapOrchestratorImplTest {
   }
 
   @Test
+  void dryRun_whenAssertSuccessIsRecorded_stillPreviewsTheLiveCheck() {
+    var assertion =
+        new AssertModule(
+            new ModuleName("secure-boot"),
+            "mokutil --sb-state",
+            "Secure Boot must be disabled",
+            "/bin/bash",
+            Optional.empty());
+    var config = buildConfig(List.of(assertion));
+    BootstrapState state =
+        BootstrapState.empty("test", "1.0.0")
+            .withEntry(
+                new StateEntry(
+                    "test",
+                    "secure-boot",
+                    "secure-boot",
+                    ItemType.ASSERT,
+                    Instant.now(),
+                    Optional.empty(),
+                    Optional.empty()));
+    var skipEvaluator =
+        new SkipEvaluator(
+            Optional.of(state), new InstalledProbeRegistry(List.of()), RunStateMode.SKIP_RECORDED);
+    orchestrator = orchestrator(skipEvaluator, Optional.of(new InMemoryStateRepository(state)));
+
+    List<ExecutionEvent> events = new ArrayList<>();
+    orchestrator.dryRun(config, events::add);
+
+    assertThat(events)
+        .filteredOn(event -> event.item().equals("secure-boot"))
+        .flatExtracting(event -> event.result().stream().toList())
+        .singleElement()
+        .isInstanceOf(StepResult.DryRun.class);
+  }
+
+  @Test
   void execute_whenAssertCommandFails_failsPhaseWithConfiguredMessage() {
     orchestrator = orchestratorWithRunner(result(1));
     var config =
@@ -753,7 +1218,8 @@ class BootstrapOrchestratorImplTest {
                         Optional.empty()))));
 
     List<ExecutionEvent> events = new ArrayList<>();
-    orchestrator.execute(config, events::add);
+    assertThatThrownBy(() -> orchestrator.execute(config, events::add))
+        .isInstanceOf(BootstrapExecutionException.class);
 
     assertThat(events).extracting(ExecutionEvent::kind).contains(EventKind.PHASE_FAILED);
     var failure =
@@ -786,37 +1252,16 @@ class BootstrapOrchestratorImplTest {
   }
 
   @Test
-  void execute_whenFlatpakRemoteConfigured_addsRemoteAndRecordsSuccess() {
-    var stateRepository = new InMemoryStateRepository(BootstrapState.empty("test", "1.0.0"));
-    when(flatpakRemoteInstaller.add(any()))
-        .thenReturn(new StepResult.Success("flathub", Duration.ofMillis(25)));
-    orchestrator = orchestrator(alwaysRun(), Optional.of(stateRepository));
-    var module =
-        new FlatpakRemoteModule(
-            new ModuleName("flathub"),
-            "flathub",
-            URI.create("https://flathub.org/repo/flathub.flatpakrepo"),
-            true);
-
-    orchestrator.execute(buildConfig(List.of(module)), ignored -> {});
-
-    verify(flatpakRemoteInstaller).add(module);
-    assertThat(stateRepository.state().entries())
-        .extracting(StateEntry::itemType)
-        .containsExactly(dev.sysboot.core.ItemType.FLATPAK_REMOTE);
-  }
-
-  @Test
   void execute_whenAptRepositoryConfigured_addsRepositoryAndRecordsSuccess() {
     var stateRepository = new InMemoryStateRepository(BootstrapState.empty("test", "1.0.0"));
-    when(aptRepositoryInstaller.add(any()))
+    when(aptRepositoryInstaller.addTrusted(any(), eq(Optional.empty())))
         .thenReturn(new StepResult.Success("/etc/apt/sources.list.d/docker.list", Duration.ZERO));
     orchestrator = orchestrator(alwaysRun(), Optional.of(stateRepository));
     var module = aptRepositoryModule();
 
     orchestrator.execute(buildConfig(List.of(module)), ignored -> {});
 
-    verify(aptRepositoryInstaller).add(module);
+    verify(aptRepositoryInstaller).addTrusted(module.asSourceSetup(), Optional.empty());
     assertThat(stateRepository.state().entries())
         .extracting(StateEntry::itemType)
         .containsExactly(dev.sysboot.core.ItemType.APT_REPOSITORY);
@@ -825,14 +1270,14 @@ class BootstrapOrchestratorImplTest {
   @Test
   void execute_whenRpmRepositoryConfigured_addsRepositoryAndRecordsSuccess() {
     var stateRepository = new InMemoryStateRepository(BootstrapState.empty("test", "1.0.0"));
-    when(rpmRepositoryInstaller.add(any()))
+    when(rpmRepositoryInstaller.addTrusted(any(), eq(Optional.empty())))
         .thenReturn(new StepResult.Success("/etc/yum.repos.d/docker.repo", Duration.ZERO));
     orchestrator = orchestrator(alwaysRun(), Optional.of(stateRepository));
     var module = rpmRepositoryModule();
 
     orchestrator.execute(buildConfig(List.of(module)), ignored -> {});
 
-    verify(rpmRepositoryInstaller).add(module);
+    verify(rpmRepositoryInstaller).addTrusted(module.asSourceSetup(), Optional.empty());
     assertThat(stateRepository.state().entries())
         .extracting(StateEntry::itemType)
         .containsExactly(dev.sysboot.core.ItemType.RPM_REPOSITORY);
@@ -861,16 +1306,8 @@ class BootstrapOrchestratorImplTest {
             new ModuleName("flathub"),
             "flathub",
             URI.create("https://flathub.org/repo/flathub.flatpakrepo"),
-            false);
-    when(flatpakRemoteInstaller.addCommand(module))
-        .thenReturn(
-            List.of(
-                "flatpak",
-                "--user",
-                "remote-add",
-                "--if-not-exists",
-                "flathub",
-                "https://flathub.org/repo/flathub.flatpakrepo"));
+            false,
+            Optional.of(new dev.sysboot.core.Sha256Digest("a".repeat(64))));
 
     List<ExecutionEvent> events = new ArrayList<>();
     orchestrator.dryRun(buildConfig(List.of(module)), events::add);
@@ -884,38 +1321,12 @@ class BootstrapOrchestratorImplTest {
                 .orElseThrow();
     assertThat(dryRun.wouldExecute())
         .containsExactly(
-            "flatpak",
-            "--user",
-            "remote-add",
-            "--if-not-exists",
-            "flathub",
-            "https://flathub.org/repo/flathub.flatpakrepo");
+            "sysboot-source-setup", "flatpak", "flathub", "verify-sha256=" + "a".repeat(64));
   }
 
   @Test
   void dryRun_whenAptRepositoryConfigured_emitsRepositoryCommand() {
     var module = aptRepositoryModule();
-    when(aptRepositoryInstaller.addCommand(module))
-        .thenReturn(List.of("/bin/bash", "-lc", "sudo apt-get update"));
-
-    List<ExecutionEvent> events = new ArrayList<>();
-    orchestrator.dryRun(buildConfig(List.of(module)), events::add);
-
-    var dryRun =
-        (StepResult.DryRun)
-            events.stream()
-                .flatMap(event -> event.result().stream())
-                .filter(StepResult.DryRun.class::isInstance)
-                .findFirst()
-                .orElseThrow();
-    assertThat(dryRun.wouldExecute()).containsExactly("/bin/bash", "-lc", "sudo apt-get update");
-  }
-
-  @Test
-  void dryRun_whenRpmRepositoryConfigured_emitsRepositoryCommand() {
-    var module = rpmRepositoryModule();
-    when(rpmRepositoryInstaller.addCommand(module))
-        .thenReturn(List.of("/bin/bash", "-lc", "sudo dnf makecache --refresh"));
 
     List<ExecutionEvent> events = new ArrayList<>();
     orchestrator.dryRun(buildConfig(List.of(module)), events::add);
@@ -928,14 +1339,12 @@ class BootstrapOrchestratorImplTest {
                 .findFirst()
                 .orElseThrow();
     assertThat(dryRun.wouldExecute())
-        .containsExactly("/bin/bash", "-lc", "sudo dnf makecache --refresh");
+        .containsExactly("sysboot-source-setup", "apt", "docker", "no-remote-artifact");
   }
 
   @Test
-  void dryRun_whenPacmanRepositoryConfigured_emitsRepositoryCommand() {
-    var module = pacmanRepositoryModule();
-    when(pacmanRepositoryInstaller.addCommand(module))
-        .thenReturn(List.of("/bin/bash", "-lc", "sudo pacman -Sy"));
+  void dryRun_whenRpmRepositoryConfigured_emitsRepositoryCommand() {
+    var module = rpmRepositoryModule();
 
     List<ExecutionEvent> events = new ArrayList<>();
     orchestrator.dryRun(buildConfig(List.of(module)), events::add);
@@ -947,7 +1356,26 @@ class BootstrapOrchestratorImplTest {
                 .filter(StepResult.DryRun.class::isInstance)
                 .findFirst()
                 .orElseThrow();
-    assertThat(dryRun.wouldExecute()).containsExactly("/bin/bash", "-lc", "sudo pacman -Sy");
+    assertThat(dryRun.wouldExecute())
+        .containsExactly("sysboot-source-setup", "dnf", "docker", "no-remote-artifact");
+  }
+
+  @Test
+  void dryRun_whenPacmanRepositoryConfigured_emitsRepositoryCommand() {
+    var module = pacmanRepositoryModule();
+
+    List<ExecutionEvent> events = new ArrayList<>();
+    orchestrator.dryRun(buildConfig(List.of(module)), events::add);
+
+    var dryRun =
+        (StepResult.DryRun)
+            events.stream()
+                .flatMap(event -> event.result().stream())
+                .filter(StepResult.DryRun.class::isInstance)
+                .findFirst()
+                .orElseThrow();
+    assertThat(dryRun.wouldExecute())
+        .containsExactly("sysboot-source-setup", "pacman", "chaotic-aur", "no-remote-artifact");
   }
 
   @Test
@@ -1042,7 +1470,10 @@ class BootstrapOrchestratorImplTest {
                 "test", new PhaseFingerprintCalculator().manifestFingerprint(config));
     var repository = new InMemoryStateRepository(state);
 
-    orchestrator(alwaysRun(), Optional.of(repository)).execute(config, ignored -> {});
+    var skipEvaluator =
+        new SkipEvaluator(
+            Optional.of(state), new InstalledProbeRegistry(List.of()), RunStateMode.SKIP_RECORDED);
+    orchestrator(skipEvaluator, Optional.of(repository)).execute(config, ignored -> {});
 
     assertThat(repository.state().nextPlanEntry()).isEmpty();
     assertThat(repository.state().entries())
@@ -1073,7 +1504,7 @@ class BootstrapOrchestratorImplTest {
         stateRepository,
         "test",
         new DefaultShellRunner(),
-        new DefaultShellRunner());
+        dev.sysboot.core.ExecutionApproval.denyAll());
   }
 
   private BootstrapOrchestratorImpl orchestratorWithRunner(ProcessResult result) {
@@ -1081,6 +1512,11 @@ class BootstrapOrchestratorImplTest {
   }
 
   private BootstrapOrchestratorImpl orchestratorWithRunner(ShellRunner runner) {
+    return orchestratorWithRunner(runner, Optional.empty());
+  }
+
+  private BootstrapOrchestratorImpl orchestratorWithRunner(
+      ShellRunner runner, Optional<StateRepository> stateRepository) {
     return new BootstrapOrchestratorImpl(
         new PackageManagerExecutorRegistry(List.of(dnfExecutor)),
         shellScriptExecutor,
@@ -1098,10 +1534,10 @@ class BootstrapOrchestratorImplTest {
         new NerdFontExecutor(runner),
         new ShellReloadExecutor(runner),
         alwaysRun(),
-        Optional.empty(),
+        stateRepository,
         "test",
         runner,
-        new DefaultShellRunner());
+        dev.sysboot.core.ExecutionApproval.denyAll());
   }
 
   private BootstrapOrchestratorImpl orchestratorWithRunner(
@@ -1127,11 +1563,28 @@ class BootstrapOrchestratorImplTest {
         stateRepository,
         "test",
         runner,
-        new DefaultShellRunner());
+        dev.sysboot.core.ExecutionApproval.denyAll());
   }
 
   private static ProcessResult result(int exitCode) {
     return new ProcessResult(exitCode, "", "", Duration.ofMillis(10));
+  }
+
+  private static ShellScriptItem localScript(String name, String path) {
+    return new ShellScriptItem(
+        name,
+        Optional.of(new ScriptPath(Path.of(path))),
+        Optional.empty(),
+        List.of(),
+        Optional.empty(),
+        List.of(),
+        false,
+        List.of(0),
+        Optional.empty(),
+        Optional.empty(),
+        Optional.empty(),
+        Duration.ofMinutes(1),
+        Optional.empty());
   }
 
   private static List<String> dnfInstallCommand(PackageName packageName) {
@@ -1143,13 +1596,36 @@ class BootstrapOrchestratorImplTest {
         new ModuleName(name), "Pause at " + name, List.of("Run the manual step"), resumeMode, 75);
   }
 
+  private static PackageModule packages(String moduleName, String packageName) {
+    return new PackageModule(
+        new ModuleName(moduleName),
+        PackageManagerKind.DNF,
+        List.of(new PackageName(packageName)),
+        false);
+  }
+
+  private static InstalledProbe notInstalledProbe(AtomicInteger probeCount) {
+    return new InstalledProbe() {
+      @Override
+      public boolean supports(ItemType itemType) {
+        return itemType == ItemType.PACKAGE;
+      }
+
+      @Override
+      public InstallationStatus probe(String itemKey) {
+        probeCount.incrementAndGet();
+        return new InstallationStatus.NotInstalled(itemKey);
+      }
+    };
+  }
+
   private static AptRepositoryModule aptRepositoryModule() {
     return new AptRepositoryModule(
         new ModuleName("docker"),
-        "deb [signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/debian"
-            + " bookworm stable",
+        "deb [signed-by=/etc/apt/keyrings/docker.gpg]"
+            + " https://download.docker.com/linux/debian bookworm stable",
         Path.of("/etc/apt/sources.list.d/docker.list"),
-        Optional.of(URI.create("https://download.docker.com/linux/debian/gpg")),
+        Optional.empty(),
         Optional.of(Path.of("/etc/apt/keyrings/docker.gpg")));
   }
 
@@ -1159,9 +1635,9 @@ class BootstrapOrchestratorImplTest {
         "docker",
         URI.create("https://download.docker.com/linux/fedora/$releasever/$basearch/stable"),
         Path.of("/etc/yum.repos.d/docker.repo"),
-        Optional.of(URI.create("https://download.docker.com/linux/fedora/gpg")),
-        true,
-        true);
+        Optional.empty(),
+        false,
+        false);
   }
 
   private static PacmanRepositoryModule pacmanRepositoryModule() {
@@ -1170,7 +1646,7 @@ class BootstrapOrchestratorImplTest {
         "chaotic-aur",
         URI.create("https://cdn-mirror.chaotic.cx/$repo/$arch"),
         Path.of("/etc/pacman.conf"),
-        Optional.of("Required DatabaseOptional"),
+        Optional.of("Required TrustedOnly"),
         Optional.empty(),
         true);
   }
@@ -1201,7 +1677,7 @@ class BootstrapOrchestratorImplTest {
         .profileName(new ProfileName("test"))
         .target(new OsTarget.FedoraTarget("41"))
         .policy(policy)
-        .sourceSetups(List.of(dnfSourceSetup()))
+        .sourceSetups(List.of(executableDnfSourceSetup()))
         .addModule(
             new PackageModule(
                 new ModuleName("tools"),
@@ -1219,7 +1695,20 @@ class BootstrapOrchestratorImplTest {
         Path.of("/etc/yum.repos.d/docker.repo"),
         Optional.of(URI.create("https://download.docker.com/linux/fedora/gpg")),
         true,
-        true);
+        true,
+        Optional.of(new dev.sysboot.core.Sha256Digest("a".repeat(64))));
+  }
+
+  private static RpmRepositorySourceSetup executableDnfSourceSetup() {
+    return new RpmRepositorySourceSetup(
+        new ModuleName("docker"),
+        "docker",
+        URI.create("https://download.docker.com/linux/fedora/$releasever/$basearch/stable"),
+        Path.of("/etc/yum.repos.d/docker.repo"),
+        Optional.empty(),
+        false,
+        false,
+        Optional.empty());
   }
 
   private static BootstrapConfig buildPhasedConfig(List<Phase> phases) {

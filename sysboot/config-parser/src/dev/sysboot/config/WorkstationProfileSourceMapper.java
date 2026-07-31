@@ -9,6 +9,7 @@ import dev.sysboot.core.FlatpakRemoteSourceSetup;
 import dev.sysboot.core.ModuleName;
 import dev.sysboot.core.PackageManagerKind;
 import dev.sysboot.core.RpmRepositorySourceSetup;
+import dev.sysboot.core.Sha256Digest;
 import dev.sysboot.core.SkippedPlanEntry;
 import dev.sysboot.core.SourceSetup;
 import dev.sysboot.core.ZypperRepositorySourceSetup;
@@ -117,7 +118,8 @@ final class WorkstationProfileSourceMapper {
             .map(Path::of)
             .orElse(Path.of("/etc/apt/sources.list.d/" + name + ".list")),
         signingKeyUrl,
-        keyringPath);
+        keyringPath,
+        checksum(spec));
   }
 
   private RpmRepositorySourceSetup rpm(SourceDocument source) {
@@ -130,7 +132,8 @@ final class WorkstationProfileSourceMapper {
         spec.repoFile().map(Path::of).orElse(Path.of("/etc/yum.repos.d/" + name + ".repo")),
         spec.gpgKeyUrl().map(URI::create),
         spec.enabled().orElse(true),
-        spec.gpgCheck().orElse(true));
+        spec.gpgCheck().orElse(true),
+        checksum(spec));
   }
 
   private ZypperRepositorySourceSetup zypper(SourceDocument source) {
@@ -143,7 +146,9 @@ final class WorkstationProfileSourceMapper {
         spec.repoFile().map(Path::of).orElse(Path.of("/etc/zypp/repos.d/" + name + ".repo")),
         spec.gpgKeyUrl().map(URI::create),
         spec.enabled().orElse(true),
-        spec.gpgCheck().orElse(true));
+        spec.gpgCheck().orElse(true),
+        spec.autoRefresh().orElse(true),
+        checksum(spec));
   }
 
   private FlatpakRemoteSourceSetup flatpak(SourceDocument source) {
@@ -152,7 +157,12 @@ final class WorkstationProfileSourceMapper {
         new ModuleName(source.name().orElseThrow()),
         spec.remote().orElseThrow(),
         URI.create(spec.url().orElseThrow()),
-        spec.system().orElse(true));
+        spec.system().orElse(true),
+        checksum(spec));
+  }
+
+  private Optional<Sha256Digest> checksum(SourceSpecDocument spec) {
+    return spec.checksum().flatMap(checksum -> checksum.value().map(Sha256Digest::new));
   }
 
   record SourceMapping(List<SourceSetup> sourceSetups, List<SkippedPlanEntry> skippedEntries) {

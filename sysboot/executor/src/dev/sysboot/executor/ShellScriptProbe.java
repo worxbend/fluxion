@@ -3,7 +3,9 @@ package dev.sysboot.executor;
 import dev.sysboot.core.InstallationStatus;
 import dev.sysboot.core.InstalledProbe;
 import dev.sysboot.core.ItemType;
+import dev.sysboot.core.ModuleItem;
 import dev.sysboot.core.ShellRunner;
+import dev.sysboot.core.ShellScriptModule;
 import java.time.Duration;
 import java.util.List;
 import java.util.Map;
@@ -30,7 +32,22 @@ public final class ShellScriptProbe implements InstalledProbe {
 
   @Override
   public InstallationStatus probe(String scriptPath) {
-    String probeCommand = probeCommandsByScriptPath.get(scriptPath);
+    return probe(scriptPath, probeCommandsByScriptPath.get(scriptPath));
+  }
+
+  @Override
+  public InstallationStatus probe(ModuleItem item) {
+    String configured =
+        item.configuredModule()
+            .filter(ShellScriptModule.class::isInstance)
+            .map(ShellScriptModule.class::cast)
+            .flatMap(ShellScriptModule::probeCommand)
+            .orElse(null);
+    return probe(
+        item.key(), configured != null ? configured : probeCommandsByScriptPath.get(item.key()));
+  }
+
+  private InstallationStatus probe(String scriptPath, String probeCommand) {
     if (probeCommand == null) {
       return new InstallationStatus.Unknown(scriptPath, NO_PROBE_REASON);
     }

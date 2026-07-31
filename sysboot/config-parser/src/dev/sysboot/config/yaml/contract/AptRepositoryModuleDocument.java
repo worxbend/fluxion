@@ -15,4 +15,7 @@ public final class AptRepositoryModuleDocument extends ModuleDocument {
 
   @JsonProperty("keyring")
   public String keyring;
+
+  @JsonProperty("checksum")
+  public ChecksumDocument checksum;
 }

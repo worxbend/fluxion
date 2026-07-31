@@ -1,5 +1,7 @@
 package dev.sysboot.tui;
 
+import dev.sysboot.core.DisplayTextSanitizer;
+
 /**
  * Renders the pre-execution probe phase in the TUI.
  *
@@ -13,9 +15,10 @@ public final class ProbePhaseScreen {
   private ProbePhaseScreen() {}
 
   public static String render(AppState.ProbePhase state) {
+    var sanitizer = new DisplayTextSanitizer();
     int total = state.totalItems();
     int done = state.probedSoFar();
-    String current = state.currentItem();
+    String current = sanitizer.sanitizeLine(state.currentItem());
 
     int filled = total == 0 ? BAR_WIDTH : (int) ((double) done / total * BAR_WIDTH);
     String bar = "=".repeat(filled) + " ".repeat(BAR_WIDTH - filled);
@@ -30,7 +33,9 @@ public final class ProbePhaseScreen {
   }
 
   private static String truncate(String s, int max) {
-    if (s == null) return "";
+    if (s == null) {
+      return "";
+    }
     return s.length() <= max ? s : s.substring(0, max - 3) + "...";
   }
 }

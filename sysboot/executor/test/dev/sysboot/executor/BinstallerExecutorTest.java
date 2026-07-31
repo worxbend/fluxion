@@ -141,6 +141,29 @@ class BinstallerExecutorTest {
   }
 
   @Test
+  void anUncataloguedInstallerVersionFailsBeforeToolResolution() {
+    var custom =
+        new BinstallerModule(
+            new ModuleName("binaries"),
+            CONFIG,
+            List.of(),
+            List.of(),
+            false,
+            Optional.empty(),
+            "v9.9.9",
+            "binstaller",
+            Optional.empty(),
+            false);
+
+    StepResult result =
+        new BinstallerExecutor(new RecordingShellRunner(0), spec -> BINARY).execute(custom);
+
+    assertThat(result).isInstanceOf(StepResult.Failure.class);
+    assertThat(((StepResult.Failure) result).errorMessage())
+        .contains("trusted release-digest catalog");
+  }
+
+  @Test
   void theModulePinsTheBinstallerReleaseItWasConfiguredWith() {
     assertThat(BinstallerExecutor.toolSpec(module()).version()).isEqualTo("v0.2.0");
     assertThat(BinstallerExecutor.toolSpec(module()).repository()).isEqualTo("worxbend/binstaller");

@@ -20,6 +20,9 @@ public record PackageManagerAction(String action, List<String> args) {
     if (arg.isBlank()) {
       throw new IllegalArgumentException("Package manager action arg must not be blank");
     }
+    if (arg.chars().anyMatch(Character::isISOControl)) {
+      throw new IllegalArgumentException("Package manager action arg must not contain controls");
+    }
     return arg;
   }
 

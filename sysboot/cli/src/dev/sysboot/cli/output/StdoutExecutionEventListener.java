@@ -1,9 +1,12 @@
 package dev.sysboot.cli.output;
 
+import dev.sysboot.core.DisplayTextSanitizer;
 import dev.sysboot.core.ExecutionEvent;
 import dev.sysboot.core.ExecutionEventListener;
 import dev.sysboot.core.StepResult;
 import java.nio.file.Path;
+import java.util.HashMap;
+import java.util.Map;
 import java.util.Optional;
 import java.util.function.Function;
 import java.util.function.Supplier;
@@ -14,7 +17,10 @@ public final class StdoutExecutionEventListener implements ExecutionEventListene
   private final Function<ExecutionEvent, Optional<String>> resumeCommandProvider;
   private final Supplier<Optional<Path>> statePathProvider;
   private final CommandTextRedactor redactor;
-  private boolean streamOutput;
+  private final Object eventLock = new Object();
+  private final Map<OutputKey, DisplayTextSanitizer.StreamingLineSanitizer> outputSanitizers =
+      new HashMap<>();
+  private volatile boolean streamOutput;
   private volatile boolean itemLineOpen;
   private int succeeded;
   private int failed;
@@ -51,66 +57,77 @@ public final class StdoutExecutionEventListener implements ExecutionEventListene
   }
 
   @Override
-  public synchronized void onEvent(ExecutionEvent event) {
+  public void onEvent(ExecutionEvent event) {
+    synchronized (eventLock) {
+      onEventLocked(event);
+    }
+  }
+
+  private void onEventLocked(ExecutionEvent event) {
     switch (event.kind()) {
       case PHASE_STARTED ->
           System.out.println(
-              Ansi.AUTO.string("@|bold,blue [PHASE ]|@ " + event.moduleName().value()));
+              styled("@|bold,blue [PHASE ]|@ ") + display(event.moduleName().value()));
       case PHASE_COMPLETED ->
           System.out.println(
-              Ansi.AUTO.string("@|bold,blue [DONE  ]|@ phase " + event.moduleName().value()));
+              styled("@|bold,blue [DONE  ]|@ phase ") + display(event.moduleName().value()));
       case PHASE_FAILED ->
           System.out.println(
-              Ansi.AUTO.string("@|bold,red [FAILED]|@ phase " + event.moduleName().value()));
+              styled("@|bold,red [FAILED]|@ phase ") + display(event.moduleName().value()));
       case PHASE_BLOCKED ->
           System.out.println(
-              Ansi.AUTO.string(
-                  "@|yellow [BLOCK ]|@ "
-                      + event.moduleName().value()
-                      + " waits for "
-                      + redactor.redact(event.item())));
+              styled("@|yellow [BLOCK ]|@ ")
+                  + display(event.moduleName().value())
+                  + " waits for "
+                  + display(event.item()));
       case RESTART_REQUIRED -> printRestartRequired(event);
       case MODULE_STARTED ->
           System.out.println(
-              Ansi.AUTO.string("@|bold,blue [MODULE]|@ " + event.moduleName().value()));
+              styled("@|bold,blue [MODULE]|@ ") + display(event.moduleName().value()));
       case MODULE_COMPLETED ->
           System.out.println(
-              Ansi.AUTO.string("@|bold,blue [DONE  ]|@ " + event.moduleName().value()));
-      case ITEM_STARTED -> printItemStarted(event);
+              styled("@|bold,blue [DONE  ]|@ ") + display(event.moduleName().value()));
+      case ITEM_STARTED -> {
+        outputSanitizers.put(outputKey(event), new DisplayTextSanitizer().streamingLines());
+        printItemStarted(event);
+      }
       case ITEM_OUTPUT -> printOutputLine(event);
       case ITEM_COMPLETED -> {
+        flushOutput(event);
         reopenItemLineIfOutputInterrupted(event);
         event.result().ifPresent(result -> printResult(event, result));
+        outputSanitizers.remove(outputKey(event));
         itemLineOpen = false;
       }
       case CANCELLED -> printCancelled(event);
-      case ERROR ->
-          System.out.println(
-              Ansi.AUTO.string("@|bold,red [ERROR ]|@ " + redactor.redact(event.item())));
+      case ERROR -> System.out.println(styled("@|bold,red [ERROR ]|@ ") + display(event.item()));
     }
   }
 
   private void printItemStarted(ExecutionEvent event) {
-    System.out.print(
-        Ansi.AUTO.string("  @|yellow  -->|@  " + redactor.redact(event.item()) + " ... "));
+    System.out.print(styled("  @|yellow  -->|@  ") + display(event.item()) + " ... ");
     itemLineOpen = true;
   }
 
   private void printOutputLine(ExecutionEvent event) {
-    if (!streamOutput) {
+    event.outputLine().map(line -> displayOutput(event, line)).ifPresent(this::printSafeOutput);
+  }
+
+  private void flushOutput(ExecutionEvent event) {
+    Optional.ofNullable(outputSanitizers.get(outputKey(event)))
+        .map(DisplayTextSanitizer.StreamingLineSanitizer::finish)
+        .ifPresent(this::printSafeOutput);
+  }
+
+  private void printSafeOutput(String line) {
+    if (!streamOutput || line.isBlank()) {
       return;
     }
-    event
-        .outputLine()
-        .filter(line -> !line.isBlank())
-        .ifPresent(
-            line -> {
-              if (itemLineOpen) {
-                System.out.println();
-                itemLineOpen = false;
-              }
-              System.out.println("        " + redactor.redact(line));
-            });
+    if (itemLineOpen) {
+      System.out.println();
+      itemLineOpen = false;
+    }
+    System.out.println("        " + line);
   }
 
   /**
@@ -119,21 +136,19 @@ public final class StdoutExecutionEventListener implements ExecutionEventListene
    */
   private void reopenItemLineIfOutputInterrupted(ExecutionEvent event) {
     if (!itemLineOpen) {
-      System.out.print(
-          Ansi.AUTO.string("  @|yellow  -->|@  " + redactor.redact(event.item()) + " ... "));
+      System.out.print(styled("  @|yellow  -->|@  ") + display(event.item()) + " ... ");
     }
   }
 
   private void printCancelled(ExecutionEvent event) {
     closeOpenItemLine();
-    System.out.println(
-        Ansi.AUTO.string("@|bold,yellow [CANCEL]|@ stopped at your request; state was saved"));
+    System.out.println(styled("@|bold,yellow [CANCEL]|@ stopped at your request; state was saved"));
     if (!event.item().isBlank()) {
-      System.out.println("  Next plan entry: " + redactor.redact(event.item()));
+      System.out.println("  Next plan entry: " + display(event.item()));
     }
     resumeCommandProvider
         .apply(event)
-        .ifPresent(command -> System.out.println("  Resume with: " + command));
+        .ifPresent(command -> System.out.println("  Resume with: " + display(command)));
   }
 
   private void closeOpenItemLine() {
@@ -150,13 +165,13 @@ public final class StdoutExecutionEventListener implements ExecutionEventListene
   }
 
   private void printRestartRequired(ExecutionEvent event) {
-    System.out.println(Ansi.AUTO.string("@|bold,yellow [RESTART]|@ " + event.moduleName().value()));
-    for (String line : redactor.redact(event.item()).split("\n")) {
+    System.out.println(styled("@|bold,yellow [RESTART]|@ ") + display(event.moduleName().value()));
+    for (String line : redactor.redactMultiline(event.item()).split("\n")) {
       System.out.println("  " + line);
     }
     resumeCommandProvider
         .apply(event)
-        .ifPresent(command -> System.out.println("  Resume with: " + command));
+        .ifPresent(command -> System.out.println("  Resume with: " + display(command)));
   }
 
   private void printResult(ExecutionEvent event, StepResult result) {
@@ -172,41 +187,62 @@ public final class StdoutExecutionEventListener implements ExecutionEventListene
   private void printSuccess(StepResult.Success success) {
     succeeded++;
     System.out.println(
-        Ansi.AUTO.string(
-            "@|green OK|@ ("
-                + String.format("%.1fs", success.elapsed().toMillis() / 1000.0)
-                + ")"));
+        styled("@|green OK|@ (")
+            + String.format("%.1fs", success.elapsed().toMillis() / 1000.0)
+            + ")");
   }
 
   private void printFailure(StepResult.Failure failure) {
     failed++;
     System.out.println(
-        Ansi.AUTO.string(
-            "@|red FAILED|@ (exit "
-                + failure.exitCode()
-                + "): "
-                + redactor.redact(failure.errorMessage())));
+        styled("@|red FAILED|@ (exit ")
+            + failure.exitCode()
+            + "): "
+            + display(failure.errorMessage()));
   }
 
   private void printSkipped(StepResult.Skipped skip) {
     skipped++;
-    System.out.println(Ansi.AUTO.string("@|yellow SKIPPED|@: " + redactor.redact(skip.reason())));
+    System.out.println(styled("@|yellow SKIPPED|@: ") + display(skip.reason()));
   }
 
   private void printDryRun(StepResult.DryRun dryRunResult) {
     dryRun++;
     var command = redactor.redactCommand(dryRunResult.wouldExecute());
-    System.out.println(Ansi.AUTO.string("@|cyan DRY-RUN|@: " + String.join(" ", command)));
+    System.out.println(styled("@|cyan DRY-RUN|@: ") + String.join(" ", command));
   }
 
   private void printPaused(ExecutionEvent event, StepResult.Paused paused) {
     this.paused++;
-    System.out.println(
-        Ansi.AUTO.string("@|bold,yellow PAUSED|@: " + redactor.redact(paused.message())));
-    statePathProvider.get().ifPresent(path -> System.out.println("  State: " + path));
-    paused.nextPlanEntry().ifPresent(next -> System.out.println("  Next plan entry: " + next));
+    System.out.println(styled("@|bold,yellow PAUSED|@: ") + display(paused.message()));
+    statePathProvider
+        .get()
+        .ifPresent(path -> System.out.println("  State: " + display(path.toString())));
+    paused
+        .nextPlanEntry()
+        .ifPresent(next -> System.out.println("  Next plan entry: " + display(next)));
     resumeCommandProvider
         .apply(event)
-        .ifPresent(command -> System.out.println("  Resume with: " + command));
+        .ifPresent(command -> System.out.println("  Resume with: " + display(command)));
   }
+
+  private String styled(String markup) {
+    return Ansi.AUTO.string(markup);
+  }
+
+  private String display(String text) {
+    return redactor.redact(text);
+  }
+
+  private String displayOutput(ExecutionEvent event, String line) {
+    return outputSanitizers
+        .computeIfAbsent(outputKey(event), ignored -> new DisplayTextSanitizer().streamingLines())
+        .sanitizeLine(line);
+  }
+
+  private OutputKey outputKey(ExecutionEvent event) {
+    return new OutputKey(event.moduleName().value(), event.item());
+  }
+
+  private record OutputKey(String module, String item) {}
 }

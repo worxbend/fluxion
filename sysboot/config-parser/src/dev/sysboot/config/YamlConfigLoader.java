@@ -1,5 +1,6 @@
 package dev.sysboot.config;
 
+import com.fasterxml.jackson.core.StreamReadFeature;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.dataformat.yaml.YAMLFactory;
@@ -9,10 +10,16 @@ import dev.sysboot.core.BootstrapConfig;
 import dev.sysboot.core.ConfigLoader;
 import dev.sysboot.core.HostFactsProvider;
 import java.io.IOException;
+import java.io.InputStream;
 import java.nio.file.Files;
+import java.nio.file.LinkOption;
 import java.nio.file.Path;
+import java.nio.file.StandardOpenOption;
+import java.nio.file.attribute.BasicFileAttributes;
 
 public final class YamlConfigLoader implements ConfigLoader {
+
+  static final long MAX_CONFIG_BYTES = 8L * 1024L * 1024L;
 
   private final ObjectMapper objectMapper;
   private final ConfigMapper configMapper;
@@ -24,7 +31,9 @@ public final class YamlConfigLoader implements ConfigLoader {
   }
 
   public YamlConfigLoader(HostFactsProvider hostFactsProvider) {
-    this.objectMapper = new ObjectMapper(new YAMLFactory());
+    this.objectMapper =
+        new ObjectMapper(
+            YAMLFactory.builder().enable(StreamReadFeature.STRICT_DUPLICATE_DETECTION).build());
     this.objectMapper.findAndRegisterModules();
     this.configMapper = new ConfigMapper();
     this.workstationProfileConfigMapper = new WorkstationProfileConfigMapper(hostFactsProvider);
@@ -33,19 +42,35 @@ public final class YamlConfigLoader implements ConfigLoader {
 
   @Override
   public BootstrapConfig load(Path configFile) {
-    if (!Files.exists(configFile)) {
+    if (!Files.exists(configFile, LinkOption.NOFOLLOW_LINKS)) {
       throw new ConfigLoadException(configFile, "File does not exist");
     }
-    if (!Files.isReadable(configFile)) {
-      throw new ConfigLoadException(configFile, "File is not readable");
-    }
     try {
-      JsonNode root = objectMapper.readTree(configFile.toFile());
+      requireSafeConfigFile(configFile);
+      JsonNode root;
+      try (InputStream input =
+          Files.newInputStream(configFile, StandardOpenOption.READ, LinkOption.NOFOLLOW_LINKS)) {
+        root = objectMapper.readTree(input);
+      }
       return loadDetectedSchema(root, configFile.toAbsolutePath());
     } catch (IOException e) {
       throw new ConfigLoadException(configFile, "YAML parse error: " + e.getMessage(), e);
     } catch (IllegalArgumentException | IllegalStateException e) {
       throw new ConfigLoadException(configFile, "Validation error: " + e.getMessage(), e);
+    }
+  }
+
+  private void requireSafeConfigFile(Path configFile) throws IOException {
+    BasicFileAttributes attributes =
+        Files.readAttributes(configFile, BasicFileAttributes.class, LinkOption.NOFOLLOW_LINKS);
+    if (!attributes.isRegularFile() || attributes.isSymbolicLink()) {
+      throw new IOException("Config must be a regular non-symbolic file");
+    }
+    if (attributes.size() > MAX_CONFIG_BYTES) {
+      throw new IOException("Config exceeds maximum size of " + MAX_CONFIG_BYTES + " bytes");
+    }
+    if (!Files.isReadable(configFile)) {
+      throw new IOException("Config file is not readable");
     }
   }
 

@@ -65,6 +65,9 @@ spec:
 For manifests, `spec.target.os` is informational metadata used to map the manifest into Fluxion's
 core target model and validation reports. It does not decide which plan entries run. Host facts and
 per-entry `when` rules drive selected and skipped WorkstationProfile work.
+Supported `when` matchers are documented in `workstation-profile.md`; reserved `files`, `vars`, and
+`expression` guards are rejected rather than silently treated as true. Variable substitutions in
+shell-expression fields are POSIX-quoted as inert data.
 
 ---
 
@@ -171,6 +174,16 @@ commands.
 Use `pacman-repository` for Arch Pacman repository blocks that would otherwise be hidden in shell
 setup commands.
 
+Repository steps and generated `WorkstationProfile` entries under `spec.sources` share one trust
+contract. Every source URI must be HTTPS without user-info, including the URI embedded in APT
+`deb` and `deb-src` lines. APT `signingKeyUrl` and DNF/Zypper `gpgKeyUrl` values require a SHA-256
+`checksum` over the exact remote key response bytes. Flatpak source URLs always require a SHA-256
+`checksum` over the exact `.flatpakrepo` response bytes. Verification completes before any
+privileged key, repository, or configuration mutation. A repository `baseUrl` is
+transport-validated but is not itself a finite checksum subject. Programmatic repository modules
+without a remote key remain supported; YAML rejects a key URL without its checksum and a checksum
+without its key URL.
+
 ---
 
 ### `apt-repository` — add an APT source
@@ -182,12 +195,22 @@ setup commands.
   sourceList: /etc/apt/sources.list.d/docker.list # default: /etc/apt/sources.list.d/<name>.list
   signingKeyUrl: https://download.docker.com/linux/debian/gpg
   keyring: /etc/apt/keyrings/docker.gpg          # default when signingKeyUrl is set
+  checksum:
+    algorithm: sha256
+    value: 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
 ```
 
-Execution writes the source line with `sudo tee`, optionally installs the signing key with
-`curl | sudo gpg --dearmor`, and runs `sudo apt-get update`. `plan --show-commands`, `dry-run`,
-`status`, `diff`, and `explain` use the source list path as the item key. Validation fails when the
-target OS is not Debian/Ubuntu and warns when no signing key URL is configured.
+Fluxion downloads and verifies a declared signing key without privileges, dearmors it without
+privileges, then uses structured `sudo install` commands for the keyring and source list before
+running `sudo apt-get update`. `plan --show-commands`, `dry-run`, `status`, `diff`, and `explain`
+use the source list path as the item key. Validation fails when the target OS is not Debian/Ubuntu,
+when any source or key URL is not HTTPS or contains user-info, or when a key URL and checksum are
+not configured together. Source options are restricted to `arch` and exactly one `signed-by`;
+`signed-by` must match the absolute `keyring` path. Trust-bypass and alternate option syntax,
+including `trusted` and `allow-insecure`, is rejected.
+`sourceList` is confined to direct `.list` files in `/etc/apt/sources.list.d`. Keyrings are
+normalized and confined to `.gpg` or `.asc` files in `/etc/apt/keyrings` or
+`/usr/share/keyrings`.
 
 ---
 
@@ -202,12 +225,20 @@ target OS is not Debian/Ubuntu and warns when no signing key URL is configured.
   gpgKeyUrl: https://download.docker.com/linux/fedora/gpg
   enabled: true                          # default: true
   gpgCheck: true                         # default: true
+  checksum:
+    algorithm: sha256
+    value: 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
 ```
 
-Execution writes an auditable `.repo` file with `sudo tee` and refreshes metadata with
-`sudo dnf makecache --refresh`. `plan --show-commands`, `dry-run`, `status`, `diff`, and `explain`
-use the repo file path as the item key. Validation fails when the target OS is not Fedora and warns
-when URLs are not HTTPS or when `gpgCheck` is enabled without a `gpgKeyUrl`.
+Fluxion downloads and verifies a declared key without privileges, parses it without privileges,
+installs the local key and an auditable `.repo` file with structured `sudo install` commands, and
+refreshes metadata with `sudo dnf makecache --refresh`. The generated repository refers to the
+installed local key, never the remote key URL. `plan --show-commands`, `dry-run`, `status`, `diff`,
+and `explain` use the repo file path as the item key. Validation fails when the target OS is not
+Fedora, when any URL is not HTTPS or contains user-info, when an enabled repository disables
+`gpgCheck`, when `gpgCheck` lacks a key URL, or when a key URL and checksum are not configured
+together.
+`repoFile` must be a direct `.repo` file in `/etc/yum.repos.d`.
 
 ---
 
@@ -219,15 +250,22 @@ when URLs are not HTTPS or when `gpgCheck` is enabled without a `gpgKeyUrl`.
   repository: chaotic-aur                  # default: name
   server: https://cdn-mirror.chaotic.cx/$repo/$arch
   config: /etc/pacman.conf                 # default: /etc/pacman.conf
-  sigLevel: Required DatabaseOptional
+  sigLevel: Required TrustedOnly
   include: /etc/pacman.d/chaotic-mirrorlist
   enabled: true                            # default: true
 ```
 
-Execution appends a repository block with `sudo tee -a` when the repository is not already present
-and refreshes package databases with `sudo pacman -Sy`. `plan --show-commands`, `dry-run`,
-`status`, `diff`, and `explain` use the repository name as the item key. Validation fails when the
-target OS is not Arch and warns when the server is not HTTPS or `sigLevel` is omitted.
+Execution probes the repository header with structured `grep` arguments. When the repository is
+missing, Fluxion reads only a bounded, root-owned, non-symbolic config beneath secure privileged
+directories, stages the complete replacement privately, and installs it with a structured
+`sudo install` command before `sudo pacman -Sy`. The config path is exactly `/etc/pacman.conf`;
+optional includes are normalized direct children of `/etc/pacman.d`. `sigLevel` accepts only
+Pacman's documented trust-policy tokens. Enabled repositories must leave both package and database
+verification effectively `Required TrustedOnly`; validation applies tokens in order, including
+later package/database-specific overrides. `plan --show-commands`, `dry-run`, `status`, `diff`, and
+`explain` use the repository name as the item key. Validation fails when the target OS is not Arch,
+when the server is not HTTPS or contains user-info, or when an enabled repository omits or weakens
+`sigLevel`.
 
 ---
 
@@ -239,11 +277,16 @@ target OS is not Arch and warns when the server is not HTTPS or `sigLevel` is om
   remote: flathub               # required
   url: https://flathub.org/repo/flathub.flatpakrepo # required
   system: true                  # default: true; false adds the user remote
+  checksum:
+    algorithm: sha256
+    value: 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
 ```
 
-Execution runs `flatpak remote-add --if-not-exists <remote> <url>`. When `system` is `false`,
-Fluxion adds `--user`. `plan --show-commands`, `dry-run`, `status`, `diff`, and `explain` use the
-remote name as the item key. Validation warns when the URL is not HTTPS.
+Fluxion downloads and verifies the descriptor before passing its local path to
+`flatpak remote-add --if-not-exists`. The remote URL is never passed to Flatpak. When `system` is
+`false`, Fluxion adds `--user`. `plan --show-commands`, `dry-run`, `status`, `diff`, and `explain`
+use the remote name as the item key. Validation requires the checksum and an HTTPS URL without
+user-info.
 
 ---
 
@@ -252,12 +295,28 @@ remote name as the item key. Validation warns when the URL is not HTTPS.
 ```yaml
 - type: shell-script
   name: install-sdkman          # required
-  script: scripts/sdkman.sh     # required — relative to config file or absolute
+  script: scripts/sdkman.sh     # local path, relative to config file or absolute
   args:                         # optional, default: []
     - --sdkman
   workingDir: /tmp              # optional, default: config file directory
   continueOnError: false        # default: false
 ```
+
+Define exactly one of `script` or `url`. A local `script` is an operator-controlled filesystem
+input and does not take an integrity field. A remote `url` must use HTTPS without user-info and
+requires `sha256`:
+
+```yaml
+- type: shell-script
+  name: install-sdkman
+  url: https://example.org/install.sh
+  sha256: 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
+```
+
+The same contract applies to `WorkstationProfile` `shell-scripts` entries. Each object containing
+`url` must contain the SHA-256 of the exact response bytes. Fluxion downloads with bounded streaming
+I/O, verifies the digest before execution (including `sudo` execution), and removes the temporary
+file afterward. Redirects may remain on HTTPS, but the final URL must not contain user-info.
 
 The interpreter is detected from the shebang line; falls back to `/bin/bash`. The script is run in a PTY so sudo prompts are handled by the TUI.
 
@@ -270,37 +329,75 @@ The interpreter is detected from the shebang line; falls back to `/bin/bash`. Th
   name: install-neovim          # required
   binaryName: nvim              # required — display name and extracted file name
   url: https://github.com/...   # required — https only
-  checksum:                     # optional but strongly recommended
+  checksum:                     # required unless using a signer-bound detached signature
     algorithm: sha256           # SHA-256 is the only currently supported algorithm
     value: abc123...            # lowercase hex digest
-  checksumUrl: https://github.com/.../checksums.txt # optional alternative to checksum
+  checksumUrl: https://github.com/.../checksums.txt # supplemental metadata; not a trust anchor
   signatureUrl: https://github.com/.../nvim.tar.gz.asc # optional detached signature
-  installPath: /usr/local/bin/nvim  # required — absolute path
-  archivePath: nvim-linux64/bin/nvim # optional — selected path inside .tar.gz/.tgz
+  allowedSignerFingerprint: 0123456789ABCDEF0123456789ABCDEF01234567 # required with signatureUrl
+  installPath: /usr/local/bin/nvim  # required — absolute, normalized path
+  archivePath: nvim-linux64/bin/nvim # required for archives — exact post-strip member path
   stripComponents: 1          # optional — path components stripped before matching archivePath
   mode: "0755"                # optional — POSIX install mode; default: "0755"
   symlinkPath: /usr/local/bin/vim # optional — symlink pointing to installPath
   continueOnError: false        # default: false
 ```
 
-Use either `checksum` or `checksumUrl`, not both. `checksumUrl` must be HTTPS and may point to a
-file containing either a bare SHA-256 digest or common `sha256sum` output such as
-`<digest>  <filename>`. `signatureUrl` must be HTTPS and points to a detached signature verified
-with `gpg --batch --verify <signature> <downloaded-artifact>`.
+Every compiled binary must use one of these trust modes:
 
-Supported artifact formats: `.tar.gz`, `.tgz`, or plain binary URLs. Other archive formats such as
-`.zip` and `.tar.xz` are rejected by validation because the installer cannot extract them yet. For
-archives, Fluxion copies `archivePath` when provided; otherwise it selects an entry whose stripped
-file name matches `binaryName`. `stripComponents` defaults to `0`.
+- a literal SHA-256 `checksum`;
+- an HTTPS detached `signatureUrl` together with the explicitly trusted
+  `allowedSignerFingerprint`.
 
-The binary is copied to `installPath`, the configured `mode` is applied, and `symlinkPath` is
-created when present. If the parent directory is root-owned, Fluxion uses `sudo cp`, `sudo chmod`,
-or `sudo ln -sfn` for the privileged write. Dry-run previews the download URL, archive extraction
-selection, destination path, mode, and symlink without downloading or writing files.
-When `checksum`, `checksumUrl`, and `signatureUrl` are all omitted, Fluxion logs an explicit warning
-and installs from the HTTPS source without integrity verification. Use SHA-256 checksums or detached
-signatures for downloaded binaries whenever possible. `fluxion validate --strict` treats missing
-compiled-binary integrity metadata as a configuration failure.
+`checksumUrl` is supplemental metadata and never establishes trust by itself. Because the current
+schema permits either `checksum` or `checksumUrl`, use it only alongside a signer-bound detached
+signature. A checksum document may contain one bare SHA-256 digest or common `sha256sum` entries
+such as `<digest>  <filename>`. Named entries are accepted only when their safe relative path's
+basename exactly matches the artifact URL's final path component.
+
+`signatureUrl` and `allowedSignerFingerprint` must be configured together. The fingerprint is the
+40-hex OpenPGP v4 or 64-hex OpenPGP v5 primary/signing-key fingerprint. Fluxion runs GPG with a
+machine-readable status channel and requires a valid signature whose signing or primary-key
+fingerprint matches this value; a zero GPG exit code by itself is not sufficient. Accepted signature
+hash algorithms are SHA-256, SHA-384, and SHA-512. Accepted public-key algorithms are RSA signing,
+ECDSA, legacy EdDSA, Ed25519, and Ed448; DSA and weak digest algorithms such as SHA-1 are rejected.
+
+Artifact, checksum, and signature URLs must be absolute HTTPS URLs with a host and no URI user-info.
+Redirects that downgrade to HTTP are rejected. Query strings remain available to the in-memory
+download request for signed URLs, but query strings and fragments are removed from persisted state.
+
+Supported artifact formats are `.tar.gz`, `.tgz`, `.zip`, `.tar.xz`, and plain binary URLs. Fluxion
+extracts `.tar.gz` and `.tgz` locally. `.zip` and `.tar.xz` are delegation-only and require
+`binstaller`; Fluxion fails the step if `binstaller` cannot be obtained or cannot represent the
+requested install, rather than copying the archive as an executable. Every archive URL requires a
+normalized relative POSIX `archivePath`. For local tar archives, Fluxion strips the configured
+number of leading components and then requires an exact match with `archivePath`; it never guesses
+by basename. `stripComponents` defaults to `0`. Delegation is refused whenever
+`stripComponents > 0`, because `binstaller` has no equivalent selector transformation. A missing or
+ambiguous regular-file match fails the step.
+
+Built-in downloads are streamed with timeouts. Artifact/signature files are limited to 1 GiB and
+checksum documents to 1 MiB; oversized, truncated, interrupted, or unsuccessful downloads are
+rejected and partial temporary files are removed. Local tar extraction limits each entry to 1 GiB
+and both declared entry sizes and the complete decompressed TAR stream to 2 GiB. The stream limit
+includes headers, padding, GNU long-name records, and PAX metadata; partial extraction is removed
+on failure. SHA-256 hashing is also streamed rather than loading the artifact into heap memory.
+Delegation-only archive downloads and extraction are performed by `binstaller`, so its
+independently configured limits apply.
+
+The verified binary is staged beside `installPath`, the configured `mode` and `symlinkPath` are
+prepared, and the destination is replaced atomically only after those operations succeed. If
+binary commit fails, Fluxion restores the previous symlink entry. Privileged staging is allowed
+only in a root-owned directory with no symlink components and no group/other write permission;
+other non-writable parents are refused. Delegated installs use an absolute
+`$HOME/.apps/<module>/bin/<binary>` canonical target. Success requires that canonical file to
+change during the invocation and every declared non-canonical output to be a symlink resolving
+exactly to it. Before delegation, Fluxion copies prior regular outputs and records prior symlinks
+and absent paths; a nonzero result or rejected output restores that snapshot before the step fails.
+Dry-run previews the download URL, archive extraction selection, destination path, mode, and
+symlink without downloading or writing files.
+When the required trust metadata is absent or incomplete, validation fails and the installer
+refuses the download even if validation was bypassed.
 
 ---
 
@@ -309,7 +406,7 @@ compiled-binary integrity metadata as a configuration failure.
 ```yaml
 - type: dotbot
   name: dotfiles-core
-  installerVersion: "v0.2.1"    # default: v0.2.1
+  installerVersion: "v0.4.2"    # default: v0.4.2
   config: "~/.dotfiles/install.conf.yaml"
   dotbotBinary: dotbot          # archive entry to execute; default: dotbot
   probeCommand: "test -f ~/.zshrc && test -f ~/.gitconfig"
@@ -331,6 +428,9 @@ extracts the configured binary entry, and runs it with `--config`.
 ```
 
 `shellPath` is accepted as a deprecated alias for `shell`.
+The shell must be an absolute path to an executable. Live execution uses
+`sudo chsh -s <shell> <target-user>` through the same authenticated runner as other privileged
+effects.
 
 ---
 
@@ -340,8 +440,13 @@ extracts the configured binary entry, and runs it with `--config`.
 - type: oh-my-zsh
   name: oh-my-zsh
   installDir: "~/.oh-my-zsh"      # optional, default: ~/.oh-my-zsh
+  revision: c5ba74cf02cce4c342153f79089100194f30940f
+  sha256: 95118b50d062198597e2b73d3a57b609fd95ca68cdc86faf4460d955f0172b61
   probeCommand: "test -d ~/.oh-my-zsh"
 ```
+
+`revision` must be a full 40-character Git commit, not `master`, a branch, or a mutable tag.
+`sha256` verifies that revision's `tools/install.sh` before it runs.
 
 ---
 
@@ -352,6 +457,7 @@ extracts the configured binary entry, and runs it with `--config`.
   name: rustup
   kind: RUSTUP                    # RUSTUP | JULIAUP | SDKMAN | GENERIC
   installScriptUrl: "https://sh.rustup.rs"
+  sha256: 6c30b75a75b28a96fd913a037c8581b580080b6ee9b8169a3c0feb1af7fe8caf
   installArgs:
     - "-y"
     - "--no-modify-path"
@@ -361,6 +467,8 @@ extracts the configured binary entry, and runs it with `--config`.
 ```
 
 `installScript` is accepted as a deprecated alias for `installScriptUrl`.
+`sha256` is required. Installer endpoint updates are intentionally fail-closed: review the new
+script, update the digest, and rerun instead of executing changed upstream bytes implicitly.
 
 ---
 
@@ -411,7 +519,7 @@ and checksum-verifies the release asset for the host platform.
   installerVersion: "v1.0.7"
   nerdfontBinary: "nerd-fonts-installer"
   config:
-    release: "latest"
+    release: "v3.4.0"
     destination: "~/.local/share/fonts/NerdFonts"
     refreshFontCache: true
     families:
@@ -428,6 +536,10 @@ one source of truth for your font set:
   name: nerd-fonts-install
   configPath: "~/.config/nerd-fonts-installer/config.yaml"
 ```
+
+Inline configurations must pin an exact three-component Nerd Fonts release such as `v3.4.0`.
+Fluxion rejects mutable selectors such as `latest`. With `configPath`, the external file is used
+as-is and remains the profile owner's trust boundary.
 
 The project renamed its binary and release assets at `v1.0.7`. Pinning `v1.0.6` or older still
 works — Fluxion tries the current asset name first and the pre-rename name second — but set
@@ -455,7 +567,6 @@ Use this when a previous step writes shell startup files that later commands nee
   name: system-setup
   shell: /bin/bash              # default: /bin/bash
   commands:                     # required, run in order with "<shell> -lc"
-    - "sudo rpm --import https://packages.microsoft.com/keys/microsoft.asc"
     - "git config --global init.defaultBranch main"
     - "source \"$HOME/.sdkman/bin/sdkman-init.sh\" && sdk install java"
     - "cargo-binstall --no-confirm eza bottom"
@@ -464,9 +575,10 @@ Use this when a previous step writes shell startup files that later commands nee
   probeCommand: "git config --global --get init.defaultBranch | grep -q main"
 ```
 
-Use `shell-command` for setup work that is naturally imperative: adding repositories or keys,
-changing global user configuration, cloning plugins, installing SDKMAN candidates, running rustup,
-pnpm, nvm, or similar upstream installers. Keep package-manager installs in typed `packages`
+Use `shell-command` for setup work that is naturally imperative: changing global user
+configuration, cloning plugins, installing SDKMAN candidates, running rustup, pnpm, nvm, or similar
+upstream installers. Declare repositories and keys with the typed repository and `gpg-key` steps so
+their remote artifacts are verified before privileged mutation. Keep package-manager installs in typed `packages`
 steps so Fluxion can still isolate and report individual packages.
 
 ---
@@ -512,7 +624,8 @@ manual work and resume.
 - At least one job, phase, or module is required.
 - `url` for compiled-binary must use `https://`.
 - Package names must not contain shell metacharacters.
-- `installPath` for compiled-binary must be an absolute path.
+- `installPath` and `symlinkPath` for compiled-binary must be absolute, normalized paths.
+- Archive downloads require an explicit normalized relative POSIX `archivePath`.
 
 ---
 
@@ -632,20 +745,26 @@ desired value is left alone and `fluxion diff` can report drift per key. `system
 - type: git-repo
   name: zsh-plugins
   repos:
-    - url: https://github.com/tmux-plugins/tpm
+    - url: https://github.com/tmux-plugins/tpm.git
       dest: ~/.tmux/plugins/tpm
-    - url: https://github.com/zsh-users/zsh-autosuggestions
+      ref: 0123456789abcdef0123456789abcdef01234567
+    - url: https://github.com/zsh-users/zsh-autosuggestions.git
       dest: "${ZSH_CUSTOM:-~/.oh-my-zsh/custom}/plugins/zsh-autosuggestions"
       depth: 1
-      ref: master
+      ref: 89abcdef0123456789abcdef0123456789abcdef
       submodules: false
-      update: pull         # none (default) | pull | reset-hard
 ```
 
 Destinations support shell-style `${VAR:-default}` and `~`, so paths can be copied straight from an
-existing shell script. `update: pull` uses `--ff-only` — a bootstrapper should never create a merge
-commit in a repository you may have edited. `reset-hard` discards local changes, so it is never the
-default.
+existing shell script. Every URL must be HTTPS without user-info, query parameters, or a fragment,
+and every `ref` must be a full immutable 40-hex commit rather than a branch or tag.
+
+Fluxion initializes a staged repository, fetches the configured commit directly, performs a
+detached `FETCH_HEAD` checkout, verifies the exact origin and HEAD, then moves the checkout into
+place without overwriting an existing path. The pin remains fetchable even after the upstream
+default branch advances beyond a shallow `depth`. Existing destinations are
+verified but never pulled or reset; a mismatched origin or HEAD fails closed. The legacy `update`
+field is accepted only as `none`. Recursive submodule checkout allows HTTPS transport only.
 
 ---
 
@@ -717,6 +836,7 @@ had something to install.
   name: vscode-key
   keys:
     - url: https://packages.microsoft.com/keys/microsoft.asc     # rpm --import
+      fingerprint: BC528686B50D79E339D3721CEB3E94ADBE1229CF
     - url: https://download.docker.com/linux/debian/gpg          # apt keyring
       keyring: /etc/apt/keyrings/docker.gpg
       fingerprint: 9DC858229FC7DD38854AE2D88D81803C0EBFCD88
@@ -726,9 +846,18 @@ Omit `keyring` to import into the RPM database; supply it to write a dearmoured 
 apt `signed-by` source.
 
 Importing a key decides what the machine will trust to install software as root, so URLs must be
-`https` or `file`, and a declared `fingerprint` is verified against the key that actually arrived.
-On mismatch the key is **removed** and the step fails — leaving a key the profile did not vouch for
-would be worse than failing.
+`https` or absolute `file` URIs and every key requires its full 40-hex primary `fingerprint`.
+Fluxion downloads to a temporary file, requires exactly one primary key with that fingerprint, and
+only then installs the keyring or invokes `rpm --import`. Local `file:` sources and existing
+keyrings must be regular, non-symlink files no larger than 16 MiB; Fluxion stages a bounded copy
+before inspection. Existing keyrings are accepted only when that copy still matches. A mismatch or
+unsafe file fails without replacing the existing file or importing the downloaded key.
+
+Each RPM-import key is tracked by its fingerprint; a keyring-backed key is tracked by its absolute
+keyring path. URL query parameters and fragments remain available to the download request but are
+excluded from plans, events, errors, and persisted identity. `continueOnError: true` attempts later
+keys, but a trust failure still fails the module; the phase's separate `continueOnModuleError`
+policy then determines whether later modules run.
 
 ---
 
@@ -749,7 +878,9 @@ Prefer `cargo-binstall` over `cargo`: it fetches prebuilt binaries instead of co
 
 Each package installs in its own process, so one yanked crate does not block the other nineteen —
 the same isolation `packages` already provides. The backend must be on `PATH`; the step fails with
-an actionable message rather than a confusing command-not-found if it is missing.
+an actionable message rather than a confusing command-not-found if it is missing. Package names
+must be registry identifiers valid for the selected backend; local paths, URLs, direct references,
+and option-shaped names or versions are rejected.
 
 ---
 
@@ -765,12 +896,19 @@ an actionable message rather than a confusing command-not-found if it is missing
   enabled: true
   gpgCheck: true
   autoRefresh: true
+  checksum:
+    algorithm: sha256
+    value: 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
 ```
 
 apt, dnf and pacman each had a repository step kind; zypper repositories could previously only be
 declared under `spec.sources`. That asymmetry mattered on openSUSE, where adding a repository next to
 the packages that need it is the ordinary case.
 
-Writes an auditable `.repo` file with `sudo tee`. Pair it with `gpg-key` when the key must be
-imported into the RPM database first. Validation requires HTTPS and refuses `gpgCheck: true` without
-a `gpgKeyUrl`, since a repository decides what the machine will install.
+Fluxion downloads and verifies a declared key without privileges, parses it without privileges,
+then installs the local key and auditable `.repo` file with structured `sudo install` commands.
+The generated repository refers to the installed local key, never the remote key URL. Validation
+requires HTTPS URLs without user-info, refuses `gpgCheck: true` without `gpgKeyUrl`, and requires a
+key URL and checksum to be configured together. `repoFile` must be a direct `.repo` file in
+`/etc/zypp/repos.d`; the generated file records `autorefresh=1` or `autorefresh=0` from
+`autoRefresh`. An enabled repository cannot disable `gpgCheck`.

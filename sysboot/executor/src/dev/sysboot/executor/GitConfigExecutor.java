@@ -39,6 +39,19 @@ public final class GitConfigExecutor {
     return StepOutcome.of(module.name(), failures, module.continueOnError());
   }
 
+  StepResult executeItem(GitConfigModule module, String key) {
+    String itemKey = module.itemKey(key);
+    String desired = module.entries().get(key);
+    if (desired.equals(currentValue(module, key).orElse(null))) {
+      return new StepResult.Success(itemKey, Duration.ZERO);
+    }
+    ProcessResult result = shellRunner.run(setCommand(module, key, desired), Map.of(), TIMEOUT);
+    return result.isSuccess()
+        ? new StepResult.Success(itemKey, result.elapsed())
+        : new StepResult.Failure(
+            itemKey, StepOutcome.detail(result), result.exitCode(), result.elapsed());
+  }
+
   /** Current value of a key, empty when unset. Used for skip decisions and drift reporting. */
   public Optional<String> currentValue(GitConfigModule module, String key) {
     ProcessResult result =
@@ -58,6 +71,10 @@ public final class GitConfigExecutor {
         .sortedKeys()
         .forEach(key -> preview.addAll(setCommand(module, key, module.entries().get(key))));
     return List.copyOf(preview);
+  }
+
+  List<String> commandPreview(GitConfigModule module, String key) {
+    return setCommand(module, key, module.entries().get(key));
   }
 
   private List<String> setCommand(GitConfigModule module, String key, String value) {

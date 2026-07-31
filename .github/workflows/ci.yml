@@ -24,19 +24,21 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
 
       - name: Set up Java 25
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@c1e323688fd81a25caa38c78aa6df2d33d3e20d9 # v4
         with:
           distribution: temurin
           java-version: "25"
 
       - name: Set up just
-        uses: extractions/setup-just@v4
+        uses: extractions/setup-just@53165ef7e734c5c07cb06b3c8e7b647c5aa16db3 # v4
 
       - name: Cache build dependencies
-        uses: actions/cache@v6
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
         with:
           path: |
             ~/.cache/coursier
@@ -52,6 +54,12 @@ jobs:
       - name: Check native-image metadata
         run: just native-metadata-check
 
+      - name: Check CI security policy
+        run: just ci-policy-check
+
+      - name: Run Java static analysis
+        run: just quality-check
+
       - name: Run tests
         working-directory: sysboot
         run: ./mill __.test
@@ -66,10 +74,12 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
 
       - name: Set up Java 25
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@c1e323688fd81a25caa38c78aa6df2d33d3e20d9 # v4
         with:
           distribution: temurin
           java-version: "25"
@@ -77,6 +87,14 @@ jobs:
       - name: Build assembly JAR
         working-directory: sysboot
         run: ./mill cli.assembly
+
+      - name: Smoke test JVM assembly
+        run: |
+          set -eu
+          test "$(java -jar sysboot/out/cli/assembly.dest/out.jar --version)" = "fluxion 1.0.0"
+          for f in sysboot/config/*.yaml; do
+            java -jar sysboot/out/cli/assembly.dest/out.jar validate --no-tui -c "$f"
+          done
 
       - name: Package JVM artifact
         run: |
@@ -86,7 +104,7 @@ jobs:
           (cd dist && sha256sum fluxion.jar > fluxion.jar.sha256)
 
       - name: Upload JVM artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: fluxion-jvm
           path: |
@@ -97,13 +115,15 @@ jobs:
   build-native:
     name: Build Native App
     needs: test
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
 
       - name: Set up GraalVM Java 25
-        uses: graalvm/setup-graalvm@v1
+        uses: graalvm/setup-graalvm@0def53c0fd8534bc13416c9469f5be45265824fd # v1
         with:
           distribution: graalvm
           java-version: "25"
@@ -116,11 +136,17 @@ jobs:
 
       - name: Smoke test native image
         run: |
-          sysboot/out/cli/nativeImage.dest/native-executable --help >/dev/null
-          sysboot/out/cli/nativeImage.dest/native-executable --version
+          set -eu
+          executable=sysboot/out/cli/nativeImage.dest/native-executable
+          generated="${RUNNER_TEMP}/fluxion-native-smoke.yaml"
+          "$executable" --help >/dev/null
+          test "$("$executable" --version)" = "fluxion 1.0.0"
           for f in sysboot/config/*.yaml; do
-            sysboot/out/cli/nativeImage.dest/native-executable validate --no-tui -c "$f"
+            "$executable" validate --no-tui -c "$f"
           done
+          "$executable" generate --os debian --profile smoke --output "$generated"
+          "$executable" validate --no-tui -c "$generated"
+          "$executable" doctor --skip-network -c "$generated"
 
       - name: Package native artifact
         run: |
@@ -133,14 +159,39 @@ jobs:
           cp -R sysboot/docs/. dist/pkg/docs/
           cp -R sysboot/config/. dist/pkg/config/
           [ ! -f LICENSE ] || cp LICENSE dist/pkg/LICENSE
-          tar -C dist/pkg -czf dist/fluxion-linux-amd64.tar.gz .
+          source_date_epoch="$(git log -1 --format=%ct)"
+          tar --sort=name --mtime="@${source_date_epoch}" --owner=0 --group=0 \
+            --numeric-owner -C dist/pkg -cf - . |
+            gzip -n > dist/fluxion-linux-amd64.tar.gz
           (cd dist && sha256sum fluxion-linux-amd64.tar.gz > fluxion-linux-amd64.tar.gz.sha256)
 
       - name: Upload native artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: fluxion-linux-amd64
           path: |
             dist/fluxion-linux-amd64.tar.gz
             dist/fluxion-linux-amd64.tar.gz.sha256
           if-no-files-found: error
+
+  known-tool-bytes:
+    name: Verify Trusted Tool Bytes
+    needs: test
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+
+      - name: Set up Java 25
+        uses: actions/setup-java@c1e323688fd81a25caa38c78aa6df2d33d3e20d9 # v4
+        with:
+          distribution: temurin
+          java-version: "25"
+
+      - name: Compare catalog digests with release bytes
+        working-directory: sysboot
+        env:
+          SYSBOOT_VERIFY_KNOWN_TOOL_BYTES: "true"
+        run: ./mill integration-tests.test.testOnly dev.sysboot.integration.KnownToolReleaseIT

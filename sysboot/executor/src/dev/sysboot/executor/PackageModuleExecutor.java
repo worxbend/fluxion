@@ -52,13 +52,19 @@ final class PackageModuleExecutor implements ModuleExecutor {
     var executor = executorRegistry.forKind(packageModule.packageManager());
     boolean anyFailed = false;
     for (int index = 0; index < packageModule.actions().size(); index++) {
+      if (context.cancellation().isCancelled()) {
+        break;
+      }
       PackageManagerAction action = packageModule.actions().get(index);
-      StepResult result = executeAction(packageModule, action, index, executor, listener);
+      StepResult result = executeAction(packageModule, action, index, executor, listener, context);
       if (result instanceof StepResult.Failure) {
         anyFailed = true;
       }
     }
     for (PackageName packageName : packageModule.packages()) {
+      if (context.cancellation().isCancelled()) {
+        break;
+      }
       ModuleItem item =
           ModuleItem.packageItem(
               packageModule.name(), packageName.value(), packageModule.packageManager());
@@ -86,21 +92,39 @@ final class PackageModuleExecutor implements ModuleExecutor {
   }
 
   @Override
-  public void dryRun(BootstrapModule module, ExecutionEventListener listener) {
+  public void dryRun(
+      BootstrapModule module,
+      ExecutionEventListener listener,
+      dev.sysboot.core.ShellRunner shellRunner) {
+    dryRun(module, listener, shellRunner, SkipEvaluator.alwaysRun());
+  }
+
+  @Override
+  public void dryRun(
+      BootstrapModule module,
+      ExecutionEventListener listener,
+      dev.sysboot.core.ShellRunner shellRunner,
+      SkipEvaluator skipEvaluator) {
     PackageModule packageModule = asPackageModule(module);
     var executor = executorRegistry.forKind(packageModule.packageManager());
     for (int index = 0; index < packageModule.actions().size(); index++) {
       PackageManagerAction action = packageModule.actions().get(index);
-      emitDryRun(packageModule, action.itemKey(index), executor.actionCommand(action), listener);
+      emitDryRun(
+          ModuleItem.packageActionItem(
+              packageModule.name(), action.itemKey(index), action, packageModule.packageManager()),
+          executor.actionCommand(action),
+          skipEvaluator,
+          listener);
     }
     packageModule
         .packages()
         .forEach(
             packageName ->
                 emitDryRun(
-                    packageModule,
-                    packageName.value(),
+                    ModuleItem.packageItem(
+                        packageModule.name(), packageName.value(), packageModule.packageManager()),
                     executor.installCommand(packageName),
+                    skipEvaluator,
                     listener));
   }
 
@@ -117,18 +141,41 @@ final class PackageModuleExecutor implements ModuleExecutor {
       PackageManagerAction action,
       int index,
       dev.sysboot.core.PackageManagerExecutor executor,
-      ExecutionEventListener listener) {
-    String item = action.itemKey(index);
-    listener.onEvent(ExecutionEvent.itemStarted(module.name(), item));
+      ExecutionEventListener listener,
+      ModuleExecutionContext context) {
+    ModuleItem item =
+        ModuleItem.packageActionItem(
+            module.name(), action.itemKey(index), action, module.packageManager());
+    listener.onEvent(ExecutionEvent.itemStarted(module.name(), item.key()));
+    SkipDecision decision = context.skipEvaluator().evaluate(item);
+    if (decision instanceof SkipDecision.Skip skip) {
+      StepResult result = new StepResult.Skipped(item.key(), skip.reason().toString());
+      listener.onEvent(ExecutionEvent.itemCompleted(module.name(), item.key(), result));
+      return result;
+    }
     StepResult result = executor.runAction(action);
-    listener.onEvent(ExecutionEvent.itemCompleted(module.name(), item, result));
+    listener.onEvent(ExecutionEvent.itemCompleted(module.name(), item.key(), result));
+    context.successRecorder().record(module.name(), item.key(), ItemType.PACKAGE_ACTION, result);
     return result;
   }
 
   private void emitDryRun(
-      PackageModule module, String item, List<String> command, ExecutionEventListener listener) {
-    listener.onEvent(ExecutionEvent.itemStarted(module.name(), item));
+      ModuleItem item,
+      List<String> command,
+      SkipEvaluator skipEvaluator,
+      ExecutionEventListener listener) {
+    listener.onEvent(ExecutionEvent.itemStarted(item.moduleName(), item.key()));
+    SkipDecision decision = skipEvaluator.evaluate(item);
+    if (decision instanceof SkipDecision.Skip skip) {
+      listener.onEvent(
+          ExecutionEvent.itemCompleted(
+              item.moduleName(),
+              item.key(),
+              new StepResult.Skipped(item.key(), skip.reason().toString())));
+      return;
+    }
     listener.onEvent(
-        ExecutionEvent.itemCompleted(module.name(), item, new StepResult.DryRun(item, command)));
+        ExecutionEvent.itemCompleted(
+            item.moduleName(), item.key(), new StepResult.DryRun(item.key(), command)));
   }
 }

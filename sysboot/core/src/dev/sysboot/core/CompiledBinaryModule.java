@@ -18,7 +18,8 @@ public record CompiledBinaryModule(
     Optional<Path> symlinkPath,
     boolean continueOnError,
     Optional<String> versionCommand,
-    Optional<String> expectedVersion)
+    Optional<String> expectedVersion,
+    Optional<String> allowedSignerFingerprint)
     implements BootstrapModule {
 
   public CompiledBinaryModule {
@@ -34,20 +35,27 @@ public record CompiledBinaryModule(
     Objects.requireNonNull(symlinkPath);
     Objects.requireNonNull(versionCommand);
     Objects.requireNonNull(expectedVersion);
-    if (binaryName.isBlank()) {
-      throw new IllegalArgumentException("Binary name must not be blank");
+    Objects.requireNonNull(allowedSignerFingerprint);
+    CompiledBinaryConstraints.requireFileName(binaryName);
+    CompiledBinaryConstraints.requireAbsoluteNormalized(installPath, "Install path");
+    symlinkPath.ifPresent(
+        path -> CompiledBinaryConstraints.requireAbsoluteNormalized(path, "Symlink path"));
+    if (symlinkPath.filter(installPath::equals).isPresent()) {
+      throw new IllegalArgumentException("Symlink path must differ from install path");
+    }
+    if (symlinkPath
+        .filter(path -> path.startsWith(installPath) || installPath.startsWith(path))
+        .isPresent()) {
+      throw new IllegalArgumentException(
+          "Install path and symlink path must not contain one another");
     }
     if (stripComponents < 0) {
       throw new IllegalArgumentException("Strip components must not be negative");
     }
-    archivePath =
-        archivePath.map(
-            value -> {
-              if (value.isBlank()) {
-                throw new IllegalArgumentException("Archive path must not be blank");
-              }
-              return value;
-            });
+    archivePath = archivePath.map(CompiledBinaryConstraints::requireArchivePath);
+    if (CompiledBinaryConstraints.isArchive(url) && archivePath.isEmpty()) {
+      throw new IllegalArgumentException("Archive downloads must declare archivePath");
+    }
     installMode =
         installMode.map(
             value -> {
@@ -56,6 +64,41 @@ public record CompiledBinaryModule(
               }
               return value;
             });
+    allowedSignerFingerprint =
+        allowedSignerFingerprint.map(CompiledBinaryConstraints::normalizeSignerFingerprint);
+  }
+
+  public CompiledBinaryModule(
+      ModuleName name,
+      String binaryName,
+      BinaryUrl url,
+      Optional<Checksum> checksum,
+      Optional<BinaryUrl> checksumUrl,
+      Optional<BinaryUrl> signatureUrl,
+      Path installPath,
+      Optional<String> archivePath,
+      int stripComponents,
+      Optional<String> installMode,
+      Optional<Path> symlinkPath,
+      boolean continueOnError,
+      Optional<String> versionCommand,
+      Optional<String> expectedVersion) {
+    this(
+        name,
+        binaryName,
+        url,
+        checksum,
+        checksumUrl,
+        signatureUrl,
+        installPath,
+        archivePath,
+        stripComponents,
+        installMode,
+        symlinkPath,
+        continueOnError,
+        versionCommand,
+        expectedVersion,
+        Optional.empty());
   }
 
   public CompiledBinaryModule(
@@ -78,6 +121,7 @@ public record CompiledBinaryModule(
         Optional.of("0755"),
         Optional.empty(),
         continueOnError,
+        Optional.empty(),
         Optional.empty(),
         Optional.empty());
   }
@@ -103,6 +147,7 @@ public record CompiledBinaryModule(
         Optional.of("0755"),
         Optional.empty(),
         continueOnError,
+        Optional.empty(),
         Optional.empty(),
         Optional.empty());
   }
@@ -129,6 +174,7 @@ public record CompiledBinaryModule(
         Optional.of("0755"),
         Optional.empty(),
         continueOnError,
+        Optional.empty(),
         Optional.empty(),
         Optional.empty());
   }

@@ -1,0 +1,51 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<FindBugsFilter>
+  <!-- These objects are immutable collections or intentionally shared application services. -->
+  <Match>
+    <Bug pattern="EI_EXPOSE_REP,EI_EXPOSE_REP2"/>
+    <Or>
+      <Class name="dev.sysboot.app.ApplicationContext"/>
+      <Class name="dev.sysboot.app.TuiOutputAdapter"/>
+      <Class name="dev.sysboot.config.yaml.contract.PackageActionDocument"/>
+      <Class name="dev.sysboot.core.DisplayTextSanitizer$StreamingLineSanitizer"/>
+      <Class name="dev.sysboot.core.PackageManagerAction"/>
+      <Class name="dev.sysboot.executor.BoundedScriptBodySubscriber"/>
+      <Class name="dev.sysboot.executor.RejectedScriptBodySubscriber"/>
+      <Class name="dev.sysboot.tui.AppState$Error"/>
+    </Or>
+  </Match>
+
+  <!-- Absolute paths are the security allowlist, not environment-specific file lookups. -->
+  <Match>
+    <Bug pattern="DMI_HARDCODED_ABSOLUTE_FILENAME"/>
+    <Or>
+      <Class name="dev.sysboot.core.RepositoryDestinationPolicy"/>
+      <Class name="dev.sysboot.executor.FlatpakRemoteInstaller"/>
+      <Class name="dev.sysboot.executor.GpgKeyExecutor"/>
+      <Class name="dev.sysboot.executor.ShellScriptExecutor"/>
+      <Class name="dev.sysboot.executor.TrustedDestinationAncestry"/>
+      <Class name="dev.sysboot.executor.TrustedSystemExecutable"/>
+    </Or>
+  </Match>
+
+  <!-- Generated YAML and ANSI output deliberately use stable LF protocol delimiters. -->
+  <Match>
+    <Bug pattern="VA_FORMAT_STRING_USES_NEWLINE"/>
+    <Or>
+      <Class name="~dev\.sysboot\.cli\.command\.(GenerateCommand.*|ImportCommand.*)"/>
+      <Class name="~dev\.sysboot\.tui\.(CompletedScreen|DashboardScreen|ProbePhaseScreen)"/>
+    </Or>
+  </Match>
+
+  <!-- Malformed deserialized state is translated at this persistence boundary. -->
+  <Match>
+    <Bug pattern="DCN_NULLPOINTER_EXCEPTION"/>
+    <Class name="dev.sysboot.executor.JsonStateRepository"/>
+  </Match>
+
+  <!-- The abstract constructor has no finalizer path; it only validates dependencies. -->
+  <Match>
+    <Bug pattern="CT_CONSTRUCTOR_THROW"/>
+    <Class name="dev.sysboot.executor.AbstractPackageInstaller"/>
+  </Match>
+</FindBugsFilter>

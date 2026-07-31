@@ -1,5 +1,6 @@
 package dev.sysboot.core;
 
+import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
@@ -35,5 +36,16 @@ public record SystemSettingModule(
         && locale.isEmpty()) {
       throw new IllegalArgumentException("system-setting requires at least one setting");
     }
+  }
+
+  /** Canonical item keys in deterministic execution and plan order. */
+  public List<String> itemKeys() {
+    var keys = new java.util.ArrayList<String>();
+    localRtc.ifPresent(ignored -> keys.add("localRtc"));
+    ntp.ifPresent(ignored -> keys.add("ntp"));
+    timezone.ifPresent(ignored -> keys.add("timezone"));
+    hostname.ifPresent(ignored -> keys.add("hostname"));
+    locale.keySet().stream().sorted().map(key -> "locale:" + key).forEach(keys::add);
+    return List.copyOf(keys);
   }
 }

@@ -9,8 +9,12 @@ import dev.sysboot.core.ExecutionEventListener;
 import dev.sysboot.core.FileWriteModule;
 import dev.sysboot.core.FlatpakModule;
 import dev.sysboot.core.FlatpakRemoteModule;
+import dev.sysboot.core.GitConfigModule;
+import dev.sysboot.core.GitRepoModule;
+import dev.sysboot.core.GpgKeyModule;
 import dev.sysboot.core.InterruptModule;
 import dev.sysboot.core.ManualModule;
+import dev.sysboot.core.ModuleItem;
 import dev.sysboot.core.ModuleName;
 import dev.sysboot.core.PackageModule;
 import dev.sysboot.core.PacmanRepositoryModule;
@@ -18,9 +22,14 @@ import dev.sysboot.core.RpmRepositoryModule;
 import dev.sysboot.core.SdkmanModule;
 import dev.sysboot.core.ShellCommandModule;
 import dev.sysboot.core.ShellScriptModule;
+import dev.sysboot.core.SourceSetup;
 import dev.sysboot.core.StepResult;
+import dev.sysboot.core.SystemSettingModule;
+import dev.sysboot.core.SystemdUnitModule;
+import dev.sysboot.core.ToolPackagesModule;
 import dev.sysboot.core.UserGroupsModule;
 import dev.sysboot.core.ZypperModule;
+import dev.sysboot.core.ZypperRepositoryModule;
 import java.util.List;
 import java.util.Optional;
 
@@ -35,116 +44,141 @@ import java.util.Optional;
 final class DryRunPlanner {
 
   private final ModuleExecutorRegistry moduleExecutors;
-  private final PhaseExecutors executors;
-  private final AptRepositoryInstaller aptRepositoryInstaller;
-  private final RpmRepositoryInstaller rpmRepositoryInstaller;
-  private final PacmanRepositoryInstaller pacmanRepositoryInstaller;
+  private final PhaseExecutors.Registry executorRegistry;
+  private final SourceSetupExecutor sourceSetupExecutor;
   private final FileWriteExecutor fileWriteExecutor;
-  private final FlatpakRemoteInstaller flatpakRemoteInstaller;
   private final CompiledBinaryInstaller binaryInstaller;
+  private final ItemExecution itemExecution;
 
   DryRunPlanner(
       ModuleExecutorRegistry moduleExecutors,
-      PhaseExecutors executors,
-      AptRepositoryInstaller aptRepositoryInstaller,
-      RpmRepositoryInstaller rpmRepositoryInstaller,
-      PacmanRepositoryInstaller pacmanRepositoryInstaller,
+      PhaseExecutors.Registry executorRegistry,
+      SourceSetupExecutor sourceSetupExecutor,
       FileWriteExecutor fileWriteExecutor,
-      FlatpakRemoteInstaller flatpakRemoteInstaller,
-      CompiledBinaryInstaller binaryInstaller) {
+      CompiledBinaryInstaller binaryInstaller,
+      ItemExecution itemExecution) {
     this.moduleExecutors = moduleExecutors;
-    this.executors = executors;
-    this.aptRepositoryInstaller = aptRepositoryInstaller;
-    this.rpmRepositoryInstaller = rpmRepositoryInstaller;
-    this.pacmanRepositoryInstaller = pacmanRepositoryInstaller;
+    this.executorRegistry = executorRegistry;
+    this.sourceSetupExecutor = sourceSetupExecutor;
     this.fileWriteExecutor = fileWriteExecutor;
-    this.flatpakRemoteInstaller = flatpakRemoteInstaller;
     this.binaryInstaller = binaryInstaller;
+    this.itemExecution = itemExecution;
   }
 
-  void preview(BootstrapModule module, ExecutionEventListener listener) {
+  void preview(
+      BootstrapModule module,
+      ExecutionEventListener listener,
+      dev.sysboot.core.ShellRunner shellRunner) {
+    ExecutionEventListener output = transformCommands(module, listener, shellRunner);
+    PhaseExecutors executors = executorRegistry.forRunner(shellRunner);
     Optional<ModuleExecutor> moduleExecutor = moduleExecutors.find(module);
     if (moduleExecutor.isPresent()) {
-      moduleExecutor.orElseThrow().dryRun(module, listener);
+      moduleExecutor
+          .orElseThrow()
+          .dryRun(module, output, shellRunner, itemExecution.skipEvaluator());
       return;
     }
     Optional<StepBinding> binding = StepBinding.find(module);
     if (binding.isPresent()) {
       StepBinding step = binding.orElseThrow();
-      emitDryRun(
-          module.name(), step.itemKey(module), step.commandPreview(module, executors), listener);
+      itemExecution.preview(step.item(module), step.commandPreview(module, executors), output);
       return;
     }
     switch (module) {
-      case AptRepositoryModule arm ->
-          emitDryRun(
-              arm.name(),
-              arm.sourceListPath().toString(),
-              aptRepositoryInstaller.addCommand(arm),
-              listener);
-      case RpmRepositoryModule rrm ->
-          emitDryRun(
-              rrm.name(),
-              rrm.repoFilePath().toString(),
-              rpmRepositoryInstaller.addCommand(rrm),
-              listener);
-      case PacmanRepositoryModule prm ->
-          emitDryRun(
-              prm.name(),
-              prm.repositoryName(),
-              pacmanRepositoryInstaller.addCommand(prm),
-              listener);
+      case AptRepositoryModule arm -> emitSourceSetup(arm.asSourceSetup(), output);
+      case RpmRepositoryModule rrm -> emitSourceSetup(rrm.asSourceSetup(), output);
+      case PacmanRepositoryModule prm -> emitSourceSetup(prm.asSourceSetup(), output);
       case FileWriteModule fwm ->
           fwm.items()
               .forEach(
                   item ->
-                      emitDryRun(
-                          fwm.name(),
-                          item.itemKey(),
-                          fileWriteExecutor.dryRunCommand(item),
-                          listener));
+                      preview(fwm, item.itemKey(), fileWriteExecutor.dryRunCommand(item), output));
       case FlatpakModule fm ->
           fm.appIds()
               .forEach(
                   appId ->
-                      emitDryRun(
-                          fm.name(),
+                      preview(
+                          fm,
                           appId,
                           List.of("flatpak", "install", "-y", fm.remote(), appId),
-                          listener));
-      case FlatpakRemoteModule frm ->
-          emitDryRun(frm.name(), frm.remote(), flatpakRemoteInstaller.addCommand(frm), listener);
+                          output));
+      case FlatpakRemoteModule frm -> emitSourceSetup(frm.asSourceSetup(), output);
+      case ZypperRepositoryModule zrm -> emitSourceSetup(zrm.asSourceSetup(), output);
+      case GpgKeyModule gkm ->
+          gkm.keys()
+              .forEach(
+                  key ->
+                      preview(gkm, key.itemKey(), executors.gpgKey().commandPreview(key), output));
       case ShellScriptModule sm ->
           sm.items()
               .forEach(
                   item ->
-                      emitDryRun(
-                          sm.name(),
-                          item.name(),
-                          executors.shellScript().commandPreview(item),
-                          listener));
+                      preview(
+                          sm, item.name(), executors.shellScript().commandPreview(item), output));
       case CompiledBinaryModule bm ->
-          emitDryRun(bm.name(), bm.binaryName(), binaryInstaller.dryRunCommand(bm), listener);
+          preview(bm, bm.installPath().toString(), binaryInstaller.dryRunCommand(bm), output);
       case ShellCommandModule sc ->
           sc.items()
               .forEach(
                   item ->
-                      emitDryRun(
-                          sc.name(),
-                          item.name(),
-                          executors.shellCommand().commandPreview(item),
-                          listener));
+                      preview(
+                          sc, item.name(), executors.shellCommand().commandPreview(item), output));
       case UserGroupsModule ugm ->
-          emitDryRun(
-              ugm.name(),
-              ugm.itemKey(ugm.groups().getFirst()),
-              executors.userGroups().commandPreview(ugm),
-              listener);
+          ugm.groups()
+              .forEach(
+                  group ->
+                      preview(
+                          ugm,
+                          ugm.itemKey(group),
+                          executors.userGroups().commandPreview(ugm, group),
+                          output));
+      case GitConfigModule gcm ->
+          gcm.sortedKeys()
+              .forEach(
+                  key ->
+                      preview(
+                          gcm,
+                          gcm.itemKey(key),
+                          executors.gitConfig().commandPreview(gcm, key),
+                          output));
+      case GitRepoModule grm ->
+          grm.repos()
+              .forEach(
+                  repo ->
+                      preview(
+                          grm,
+                          repo.destination(),
+                          executors.gitRepo().commandPreview(repo),
+                          output));
+      case SystemdUnitModule sum ->
+          sum.units()
+              .forEach(
+                  unit ->
+                      preview(
+                          sum,
+                          unit.qualifiedName(),
+                          executors.systemdUnit().commandPreview(sum, unit),
+                          output));
+      case ToolPackagesModule tpm ->
+          tpm.packages()
+              .forEach(
+                  pkg ->
+                      preview(
+                          tpm,
+                          pkg.name(),
+                          executors.toolPackages().commandPreview(tpm, pkg),
+                          output));
+      case SystemSettingModule ssm ->
+          ssm.itemKeys()
+              .forEach(
+                  key ->
+                      preview(
+                          ssm, key, executors.systemSetting().commandPreview(ssm, key), output));
       case AssertModule am ->
           emitDryRun(
-              am.name(), am.name().value(), List.of(am.shell(), "-lc", am.command()), listener);
+              am.name(), am.name().value(), List.of(am.shell(), "-lc", am.command()), output);
       case ManualModule mm ->
-          emitDryRun(mm.name(), mm.name().value(), List.of("manual", mm.message()), listener);
+          preview(mm, mm.name().value(), List.of("manual", mm.message()), output);
       case InterruptModule ignored -> throw new IllegalStateException("Interrupt handled by phase");
       case SdkmanModule ignored -> throw new IllegalStateException("SDKMAN executor missing");
       case PackageModule ignored -> throw new IllegalStateException("Package executor missing");
@@ -153,6 +187,33 @@ final class DryRunPlanner {
       default ->
           throw new IllegalStateException("No preview for " + module.getClass().getSimpleName());
     }
+  }
+
+  private ExecutionEventListener transformCommands(
+      BootstrapModule module,
+      ExecutionEventListener listener,
+      dev.sysboot.core.ShellRunner shellRunner) {
+    if (!(shellRunner instanceof LoginShellWrappingRunner wrapper)
+        || module instanceof ManualModule
+        || module instanceof InterruptModule) {
+      return listener;
+    }
+    return event -> listener.onEvent(transformCommand(event, wrapper));
+  }
+
+  private ExecutionEvent transformCommand(ExecutionEvent event, LoginShellWrappingRunner wrapper) {
+    if (event.result().orElse(null) instanceof StepResult.DryRun dryRun) {
+      return new ExecutionEvent(
+          event.moduleName(),
+          event.item(),
+          event.kind(),
+          Optional.of(
+              new StepResult.DryRun(dryRun.item(), wrapper.wrapCommand(dryRun.wouldExecute()))),
+          event.timestamp(),
+          event.phaseContext(),
+          event.outputLine());
+    }
+    return event;
   }
 
   void previewInterrupt(
@@ -173,6 +234,24 @@ final class DryRunPlanner {
             "status=" + RunStateRecorder.interruptStatus(module).name().toLowerCase(),
             "nextPlanEntry=" + nextEntry.orElse("<complete>")),
         listener);
+  }
+
+  private void emitSourceSetup(SourceSetup setup, ExecutionEventListener listener) {
+    ModuleItem item = sourceSetupExecutor.item(setup);
+    itemExecution.preview(item, sourceSetupExecutor.commandPreview(setup), listener);
+  }
+
+  private void preview(
+      BootstrapModule module,
+      String itemKey,
+      List<String> command,
+      ExecutionEventListener listener) {
+    ModuleItem item =
+        ModuleItemCatalog.items(module).stream()
+            .filter(candidate -> candidate.key().equals(itemKey))
+            .findFirst()
+            .orElseThrow(() -> new IllegalStateException("Canonical item missing: " + itemKey));
+    itemExecution.preview(item, command, listener);
   }
 
   void emitDryRun(

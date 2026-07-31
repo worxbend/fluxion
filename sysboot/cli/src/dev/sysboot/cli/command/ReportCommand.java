@@ -8,6 +8,7 @@ import dev.sysboot.cli.option.GlobalOptions;
 import dev.sysboot.core.BootstrapConfig;
 import dev.sysboot.core.BootstrapState;
 import dev.sysboot.core.PhaseStateEntry;
+import dev.sysboot.core.PublicUrl;
 import dev.sysboot.core.StateEntry;
 import dev.sysboot.executor.JsonStateRepository;
 import dev.sysboot.executor.PhaseExecutionPlanner;
@@ -62,23 +63,48 @@ public final class ReportCommand implements Runnable {
                       new CliFailureException(
                           ExitCode.CONFIGURATION_ERROR,
                           "No state file found for profile: " + profile));
-      Optional<String> nextPhase = nextIncompletePhase(state);
+      Optional<String> resumeCommand = resumeCommand(state);
       PrintWriter out = spec.commandLine().getOut();
       switch (format.toLowerCase(Locale.ROOT)) {
-        case "markdown" -> writeMarkdown(state, nextPhase, out);
-        case "html" -> writeHtml(state, nextPhase, out);
+        case "markdown" -> writeMarkdown(state, resumeCommand, out);
+        case "html" -> writeHtml(state, resumeCommand, out);
         default ->
             throw new CliFailureException(
                 ExitCode.INVALID_INPUT, "Unsupported report format: " + format);
       }
     }
 
-    private Optional<String> nextIncompletePhase(BootstrapState state) {
+    private Optional<String> resumeCommand(BootstrapState state) {
       if (!options.hasConfigFile() || !Files.isReadable(options.resolvedConfigFile())) {
         return Optional.empty();
       }
-      BootstrapConfig config =
-          ApplicationContext.create(true).configLoader().load(options.resolvedConfigFile());
+      BootstrapConfig config;
+      try (var context = ApplicationContext.create(true)) {
+        config = context.configLoader().load(options.resolvedConfigFile());
+      }
+      Optional<String> phase = resumePhase(config, state);
+      return phase.map(
+          ignored -> ResumeCommandFormatter.command(options.resolvedConfigFile(), profile, phase));
+    }
+
+    private Optional<String> resumePhase(BootstrapConfig config, BootstrapState state) {
+      return state
+          .nextPlanEntry()
+          .flatMap(next -> phaseContaining(config, next))
+          .or(() -> nextIncompletePhase(config, state));
+    }
+
+    private Optional<String> phaseContaining(BootstrapConfig config, String moduleName) {
+      return config.phases().stream()
+          .filter(
+              phase ->
+                  phase.modules().stream()
+                      .anyMatch(module -> module.name().value().equals(moduleName)))
+          .map(phase -> phase.name().value())
+          .findFirst();
+    }
+
+    private Optional<String> nextIncompletePhase(BootstrapConfig config, BootstrapState state) {
       return new PhaseExecutionPlanner()
           .plan(config.phases()).stream()
               .filter(phase -> !state.isPhaseCompleted(phase.name().value()))
@@ -86,7 +112,8 @@ public final class ReportCommand implements Runnable {
               .findFirst();
     }
 
-    private void writeMarkdown(BootstrapState state, Optional<String> nextPhase, PrintWriter out) {
+    private void writeMarkdown(
+        BootstrapState state, Optional<String> resumeCommand, PrintWriter out) {
       out.println("# Fluxion Run Report");
       out.println();
       out.printf("- Profile: `%s`%n", markdown(state.profileName()));
@@ -96,18 +123,16 @@ public final class ReportCommand implements Runnable {
         out.printf("- Config: `%s`%n", markdown(options.resolvedConfigFile().toString()));
       }
       out.println();
-      writeMarkdownResume(nextPhase, out);
+      writeMarkdownResume(resumeCommand, out);
       writeMarkdownPhases(state, out);
       writeMarkdownItems(state, out);
     }
 
-    private void writeMarkdownResume(Optional<String> nextPhase, PrintWriter out) {
+    private void writeMarkdownResume(Optional<String> resumeCommand, PrintWriter out) {
       out.println("## Resume");
       out.println();
-      if (nextPhase.isPresent() && options.hasConfigFile()) {
-        out.printf(
-            "`fluxion apply -c %s --from-phase %s`%n",
-            markdown(options.resolvedConfigFile().toString()), markdown(nextPhase.orElseThrow()));
+      if (resumeCommand.isPresent()) {
+        out.printf("`%s`%n", markdown(resumeCommand.orElseThrow()));
       } else {
         out.println("No resume command available from the current state and config.");
       }
@@ -158,22 +183,20 @@ public final class ReportCommand implements Runnable {
               entry.completedAt(),
               markdown(entry.version().orElse("")),
               markdown(entry.checksum().orElse("")),
-              markdown(entry.sourceUrl().orElse("")));
+              markdown(entry.sourceUrl().map(PublicUrl::from).orElse("")));
     }
 
-    private void writeHtml(BootstrapState state, Optional<String> nextPhase, PrintWriter out) {
+    private void writeHtml(BootstrapState state, Optional<String> resumeCommand, PrintWriter out) {
       out.println("<!doctype html>");
       out.println("<html><head><meta charset=\"utf-8\"><title>Fluxion Run Report</title></head>");
       out.println("<body>");
       out.println("<h1>Fluxion Run Report</h1>");
       out.printf("<p><strong>Profile:</strong> %s</p>%n", html(state.profileName()));
       out.printf("<p><strong>Last run:</strong> %s</p>%n", state.lastRunAt());
-      nextPhase.ifPresent(
-          phase ->
-              out.printf(
-                  "<p><strong>Resume:</strong> <code>fluxion apply -c %s --from-phase"
-                      + " %s</code></p>%n",
-                  html(options.resolvedConfigFile().toString()), html(phase)));
+      out.printf("<p><strong>State version:</strong> %s</p>%n", html(state.sysbootVersion()));
+      resumeCommand.ifPresent(
+          command ->
+              out.printf("<p><strong>Resume:</strong> <code>%s</code></p>%n", html(command)));
       writeHtmlPhases(state, out);
       writeHtmlItems(state, out);
       out.println("</body></html>");
@@ -200,7 +223,8 @@ public final class ReportCommand implements Runnable {
 
     private void writeHtmlItems(BootstrapState state, PrintWriter out) {
       out.println(
-          "<h2>Items</h2><table><tr><th>Module</th><th>Item</th><th>Type</th><th>Completed</th><th>Version</th><th>Checksum</th><th>Source</th></tr>");
+          "<h2>Items</h2><table><tr><th>Module</th><th>Item</th><th>Type</th>"
+              + "<th>Completed</th><th>Version</th><th>Checksum</th><th>Source</th></tr>");
       if (state.entries().isEmpty()) {
         out.println("<tr><td colspan=\"7\">No item state recorded.</td></tr>");
       }
@@ -216,7 +240,7 @@ public final class ReportCommand implements Runnable {
                       e.completedAt(),
                       html(e.version().orElse("")),
                       html(e.checksum().orElse("")),
-                      html(e.sourceUrl().orElse(""))));
+                      html(e.sourceUrl().map(PublicUrl::from).orElse(""))));
       out.println("</table>");
     }
 

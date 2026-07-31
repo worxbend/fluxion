@@ -14,9 +14,12 @@ public final class Main {
 
   private static final String SLF4J_PROVIDER_PROPERTY = "slf4j.provider";
   private static final String SLF4J_VERBOSITY_PROPERTY = "slf4j.internal.verbosity";
+  private static final String LOGBACK_STATUS_LISTENER_PROPERTY = "logback.statusListenerClass";
   private static final String LOG_LEVEL_PROPERTY = "fluxion.log.level";
   private static final String LOGBACK_PROVIDER =
       "ch.qos.logback.classic.spi.LogbackServiceProvider";
+  private static final String LOGBACK_ERROR_STATUS_LISTENER =
+      "dev.sysboot.executor.ErrorOnlyLogbackStatusListener";
 
   private Main() {}
 
@@ -39,10 +42,13 @@ public final class Main {
     configureLoggingProvider();
     configureLogLevel(args);
     var handler = new CliExceptionHandler();
-    return new CommandLine(new SysbootCommand())
-        .setCaseInsensitiveEnumValuesAllowed(true)
-        .setExecutionExceptionHandler(handler)
-        .setParameterExceptionHandler(handler);
+    CommandLine commandLine =
+        new CommandLine(new SysbootCommand())
+            .setCaseInsensitiveEnumValuesAllowed(true)
+            .setExecutionExceptionHandler(handler)
+            .setParameterExceptionHandler(handler);
+    enableStandardHelp(commandLine);
+    return commandLine;
   }
 
   /**
@@ -78,5 +84,13 @@ public final class Main {
     if (System.getProperty(SLF4J_PROVIDER_PROPERTY) == null) {
       System.setProperty(SLF4J_PROVIDER_PROPERTY, LOGBACK_PROVIDER);
     }
+    if (System.getProperty(LOGBACK_STATUS_LISTENER_PROPERTY) == null) {
+      System.setProperty(LOGBACK_STATUS_LISTENER_PROPERTY, LOGBACK_ERROR_STATUS_LISTENER);
+    }
+  }
+
+  private static void enableStandardHelp(CommandLine commandLine) {
+    commandLine.getCommandSpec().mixinStandardHelpOptions(true);
+    commandLine.getSubcommands().values().forEach(Main::enableStandardHelp);
   }
 }

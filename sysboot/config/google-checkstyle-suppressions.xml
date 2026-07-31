@@ -1,0 +1,16 @@
+<?xml version="1.0"?>
+<!DOCTYPE suppressions PUBLIC
+    "-//Checkstyle//DTD SuppressionFilter Configuration 1.2//EN"
+    "https://checkstyle.org/dtds/suppressions_1_2.dtd">
+<suppressions>
+  <!-- The existing codebase does not require blanket API Javadocs. -->
+  <suppress checks="MissingJavadocMethod|MissingJavadocType|SummaryJavadoc" files=".*"/>
+  <!-- Text blocks intentionally preserve emitted protocols, fixtures, and YAML layout. -->
+  <suppress checks="TextBlockGoogleStyleFormatting" files=".*"/>
+  <!-- These design-oriented rules are enforced incrementally by PMD and review. -->
+  <suppress checks="OverloadMethodsDeclarationOrder|VariableDeclarationUsageDistance" files=".*"/>
+  <!-- Exhaustive enum and sealed-type switches deliberately omit unreachable defaults. -->
+  <suppress checks="MissingSwitchDefault" files=".*"/>
+  <!-- The project-specific Checkstyle pass enforces the required 120-character maximum. -->
+  <suppress checks="LineLength" files=".*"/>
+</suppressions>

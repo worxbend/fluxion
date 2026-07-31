@@ -13,5 +13,9 @@ public record FileWriteModule(ModuleName name, List<FileWriteItem> items, boolea
     if (items.isEmpty()) {
       throw new IllegalArgumentException("File write module must contain at least one item");
     }
+    if (items.stream().map(FileWriteItem::itemKey).distinct().count() != items.size()) {
+      throw new IllegalArgumentException(
+          "File write module contains duplicate canonical destinations");
+    }
   }
 }

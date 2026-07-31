@@ -11,6 +11,7 @@ import dev.sysboot.core.BootstrapConfig;
 import dev.sysboot.core.BootstrapModule;
 import dev.sysboot.core.CompiledBinaryModule;
 import dev.sysboot.core.DefaultShellModule;
+import dev.sysboot.core.DisplayTextSanitizer;
 import dev.sysboot.core.DotbotModule;
 import dev.sysboot.core.FileWriteModule;
 import dev.sysboot.core.FlatpakModule;
@@ -24,11 +25,13 @@ import dev.sysboot.core.NerdFontModule;
 import dev.sysboot.core.OhMyZshModule;
 import dev.sysboot.core.PackageModule;
 import dev.sysboot.core.PacmanRepositoryModule;
+import dev.sysboot.core.PublicUrl;
 import dev.sysboot.core.RpmRepositoryModule;
 import dev.sysboot.core.SdkmanModule;
 import dev.sysboot.core.ShellCommandModule;
 import dev.sysboot.core.ShellReloadModule;
 import dev.sysboot.core.ShellScriptModule;
+import dev.sysboot.core.SourceSetup;
 import dev.sysboot.core.SystemSettingModule;
 import dev.sysboot.core.SystemUpdateModule;
 import dev.sysboot.core.SystemdUnitModule;
@@ -37,6 +40,7 @@ import dev.sysboot.core.ToolchainModule;
 import dev.sysboot.core.UserGroupsModule;
 import dev.sysboot.core.ZypperModule;
 import dev.sysboot.core.ZypperRepositoryModule;
+import dev.sysboot.executor.ExecutionPlan;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import picocli.CommandLine.Command;
@@ -47,6 +51,8 @@ import picocli.CommandLine.Spec;
 
 @Command(name = "list", description = "List modules in a config file")
 public final class ListCommand implements Runnable {
+
+  private final DisplayTextSanitizer sanitizer = new DisplayTextSanitizer();
 
   @Mixin private GlobalOptions options;
 
@@ -62,43 +68,99 @@ public final class ListCommand implements Runnable {
   public void run() {
     var context = ApplicationContext.create(true);
     BootstrapConfig config = context.configLoader().load(options.resolvedConfigFile());
+    Map<String, Integer> itemCounts = itemCounts(context.executionPlanBuilder().build(config));
 
     if (format == OutputFormat.JSON) {
-      JsonOutput.write(spec.commandLine().getOut(), jsonList(config));
+      JsonOutput.write(spec.commandLine().getOut(), jsonList(config, itemCounts));
       return;
     }
 
-    var out = spec.commandLine().getOut();
-    out.printf("Profile: %s  OS: %s%n%n", config.profileName().value(), config.target());
-    out.printf("%-30s %-12s %s%n", "MODULE", "TYPE", "ITEMS");
-    out.println("-".repeat(70));
+    writeText(config, itemCounts);
+  }
 
+  private void writeText(BootstrapConfig config, Map<String, Integer> itemCounts) {
+    var out = spec.commandLine().getOut();
+    out.printf(
+        "Profile: %s  OS: %s%n%n", safe(config.profileName().value()), safe(config.target()));
+    out.printf("%-30s %-18s %5s  %s%n", "MODULE", "TYPE", "COUNT", "DETAILS");
+    out.println("-".repeat(90));
+
+    for (SourceSetup setup : config.sourceSetups()) {
+      out.printf(
+          "%-30s %-18s %5d  %s%n",
+          safe(setup.name().value()),
+          "📦 source setup",
+          itemCounts.getOrDefault(setup.name().value(), 0),
+          safe(sourceDescription(setup)));
+    }
     for (BootstrapModule module : config.modules()) {
       out.printf(
-          "%-30s %-12s %s%n", module.name().value(), moduleType(module), moduleDescription(module));
+          "%-30s %-18s %5d  %s%n",
+          safe(module.name().value()),
+          safe(moduleType(module)),
+          itemCounts.getOrDefault(module.name().value(), 0),
+          safe(moduleDescription(module)));
     }
   }
 
-  private Map<String, Object> jsonList(BootstrapConfig config) {
+  private Map<String, Object> jsonList(BootstrapConfig config, Map<String, Integer> itemCounts) {
     var output = new LinkedHashMap<String, Object>();
     output.put("profileName", config.profileName().value());
     output.put("target", config.target().toString());
-    output.put("modules", config.modules().stream().map(this::jsonModule).toList());
+    output.put(
+        "sourceSetups",
+        config.sourceSetups().stream().map(setup -> jsonSource(setup, itemCounts)).toList());
+    output.put(
+        "modules",
+        config.modules().stream().map(module -> jsonModule(module, itemCounts)).toList());
     return output;
   }
 
-  private Map<String, Object> jsonModule(BootstrapModule module) {
+  private Map<String, Object> jsonSource(SourceSetup setup, Map<String, Integer> itemCounts) {
+    var output = new LinkedHashMap<String, Object>();
+    output.put("name", setup.name().value());
+    output.put("type", "source-setup");
+    output.put("description", sourceDescription(setup));
+    output.put("itemCount", itemCounts.getOrDefault(setup.name().value(), 0));
+    return output;
+  }
+
+  private Map<String, Object> jsonModule(BootstrapModule module, Map<String, Integer> itemCounts) {
     var output = new LinkedHashMap<String, Object>();
     output.put("name", module.name().value());
     output.put("type", jsonModuleType(module));
     output.put("description", moduleDescription(module));
-    output.put("itemCount", itemCount(module));
+    output.put("itemCount", itemCounts.getOrDefault(module.name().value(), 0));
     return output;
+  }
+
+  private Map<String, Integer> itemCounts(ExecutionPlan plan) {
+    var counts = new LinkedHashMap<String, Integer>();
+    plan.sourceSetups().forEach(module -> counts.put(module.name(), module.items().size()));
+    plan.phases().stream()
+        .flatMap(phase -> phase.modules().stream())
+        .forEach(module -> counts.put(module.name(), module.items().size()));
+    return Map.copyOf(counts);
+  }
+
+  private String sourceDescription(SourceSetup setup) {
+    return switch (setup) {
+      case dev.sysboot.core.AptRepositorySourceSetup apt ->
+          apt.sourceListPath() + " <- " + apt.sourceEntry();
+      case dev.sysboot.core.RpmRepositorySourceSetup rpm ->
+          rpm.repoFilePath() + " <- " + rpm.baseUrl();
+      case dev.sysboot.core.PacmanRepositorySourceSetup pacman ->
+          pacman.configPath() + " [" + pacman.repositoryName() + "]";
+      case dev.sysboot.core.ZypperRepositorySourceSetup zypper ->
+          zypper.repoFilePath() + " <- " + zypper.baseUrl();
+      case dev.sysboot.core.FlatpakRemoteSourceSetup flatpak ->
+          flatpak.remote() + " -> " + flatpak.url();
+    };
   }
 
   private String moduleType(BootstrapModule module) {
     return switch (module) {
-      case PackageModule pm -> "📦 packages";
+      case PackageModule ignored -> "📦 packages";
       case AptRepositoryModule ignored -> "📦 apt repo";
       case RpmRepositoryModule ignored -> "📦 rpm repo";
       case PacmanRepositoryModule ignored -> "📦 pacman repo";
@@ -178,7 +240,7 @@ public final class ListCommand implements Runnable {
       case FlatpakModule fm -> fm.appIds().size() + " apps from " + fm.remote();
       case FlatpakRemoteModule frm -> frm.remote() + " -> " + frm.url();
       case ShellScriptModule sm -> sm.items().getFirst().key();
-      case CompiledBinaryModule bm -> bm.binaryName() + " from " + bm.url();
+      case CompiledBinaryModule bm -> bm.binaryName() + " from " + PublicUrl.from(bm.url().value());
       case ZypperModule zm -> zm.packages().size() + " packages (zypper)";
       case DotbotModule dm -> dm.config().toString();
       case DefaultShellModule dsm -> dsm.shellPath().toString();
@@ -211,15 +273,7 @@ public final class ListCommand implements Runnable {
     return module.config() + selection;
   }
 
-  private int itemCount(BootstrapModule module) {
-    return switch (module) {
-      case PackageModule pm -> pm.packages().size();
-      case FlatpakModule fm -> fm.appIds().size();
-      case FileWriteModule fwm -> fwm.items().size();
-      case ShellCommandModule sc -> sc.items().size();
-      case NerdFontModule nfm -> nfm.config().families().size();
-      case SdkmanModule sm -> sm.packages().size();
-      default -> 1;
-    };
+  private String safe(Object value) {
+    return sanitizer.sanitizeLine(String.valueOf(value));
   }
 }

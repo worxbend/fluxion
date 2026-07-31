@@ -12,8 +12,6 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
-import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.TimeUnit;
 import picocli.CommandLine.Command;
 import picocli.CommandLine.Model.CommandSpec;
 import picocli.CommandLine.Option;
@@ -24,6 +22,8 @@ public final class SnapshotCommand implements Runnable {
 
   private static final Duration COMMAND_TIMEOUT = Duration.ofSeconds(5);
   private static final int MAX_LINES = 20_000;
+  private static final HostCommandRunner HOST_COMMANDS =
+      new HostCommandRunner(COMMAND_TIMEOUT, MAX_LINES);
 
   @Spec private CommandSpec spec;
 
@@ -40,7 +40,7 @@ public final class SnapshotCommand implements Runnable {
 
   @Override
   public void run() {
-    if (Files.exists(output) && !force) {
+    if (AtomicOutputFileWriter.exists(output) && !force) {
       throw new CliFailureException(
           ExitCode.INVALID_INPUT, "Output file already exists. Use --force to overwrite.");
     }
@@ -69,10 +69,8 @@ public final class SnapshotCommand implements Runnable {
   }
 
   private void writeSnapshot(Map<String, Object> snapshot) throws IOException {
-    if (output.getParent() != null) {
-      Files.createDirectories(output.getParent());
-    }
-    Files.writeString(output, JsonOutput.toJson(snapshot) + System.lineSeparator());
+    AtomicOutputFileWriter.write(
+        output, JsonOutput.toJson(snapshot) + System.lineSeparator(), force);
   }
 
   private Map<String, String> osRelease() {
@@ -133,60 +131,18 @@ public final class SnapshotCommand implements Runnable {
     return toolchains;
   }
 
-  private void putIfPresent(Map<String, Object> output, String key, CommandResult result) {
+  private void putIfPresent(
+      Map<String, Object> output, String key, HostCommandRunner.CommandResult result) {
     if (result.success()) {
       output.put(key, result.lines());
     }
   }
 
   private boolean commandExists(String command) {
-    String path = System.getenv("PATH");
-    if (path == null || path.isBlank()) {
-      return false;
-    }
-    return java.util.Arrays.stream(path.split(java.io.File.pathSeparator))
-        .map(Path::of)
-        .map(dir -> dir.resolve(command))
-        .anyMatch(Files::isExecutable);
+    return HOST_COMMANDS.commandExists(command);
   }
 
-  private CommandResult commandLines(String... command) {
-    if (!commandExists(command[0])) {
-      return new CommandResult(false, List.of());
-    }
-    Process process;
-    try {
-      process = new ProcessBuilder(command).redirectError(ProcessBuilder.Redirect.DISCARD).start();
-    } catch (IOException e) {
-      return new CommandResult(false, List.of());
-    }
-    return collect(process);
-  }
-
-  private CommandResult collect(Process process) {
-    CompletableFuture<List<String>> output =
-        CompletableFuture.supplyAsync(
-            () -> process.inputReader().lines().limit(MAX_LINES).toList());
-    try {
-      if (!process.waitFor(COMMAND_TIMEOUT.toMillis(), TimeUnit.MILLISECONDS)) {
-        process.destroyForcibly();
-        return new CommandResult(false, List.of());
-      }
-      return new CommandResult(process.exitValue() == 0, sorted(output.join()));
-    } catch (InterruptedException e) {
-      Thread.currentThread().interrupt();
-      process.destroyForcibly();
-      return new CommandResult(false, List.of());
-    }
-  }
-
-  private List<String> sorted(List<String> lines) {
-    return lines.stream().filter(line -> !line.isBlank()).sorted().toList();
-  }
-
-  private record CommandResult(boolean success, List<String> lines) {
-    private CommandResult {
-      lines = List.copyOf(lines);
-    }
+  private HostCommandRunner.CommandResult commandLines(String... command) {
+    return HOST_COMMANDS.lines(command);
   }
 }

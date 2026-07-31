@@ -17,7 +17,8 @@ import java.util.Optional;
 
 final class StateMapper {
 
-  private static final int SCHEMA_VERSION = 6;
+  static final int SCHEMA_VERSION = 7;
+  private static final int EARLIEST_COMPATIBLE_SCHEMA = 2;
 
   private StateMapper() {}
 
@@ -36,10 +37,13 @@ final class StateMapper {
         planEntryRecords,
         state.nextPlanEntry().orElse(null),
         state.manifestIdentity().orElse(null),
-        state.manifestFingerprint().orElse(null));
+        state.manifestFingerprint().orElse(null),
+        state.lastRunAt().toString(),
+        state.sysbootVersion());
   }
 
-  static BootstrapState fromRecord(BootstrapStateRecord record) {
+  static BootstrapState fromRecord(BootstrapStateRecord record, String requestedProfile) {
+    validateRecord(record, requestedProfile);
     List<StateEntry> entries =
         record.entries == null
             ? List.of()
@@ -52,16 +56,70 @@ final class StateMapper {
         record.planEntryEntries == null
             ? List.of()
             : record.planEntryEntries.stream().map(StateMapper::planEntryFromRecord).toList();
+    Instant lastRunAt = lastRunAt(record, entries, phaseEntries, planEntries);
     return new BootstrapState(
-        record.profileName,
-        Instant.now(),
-        "unknown",
+        requestedProfile,
+        lastRunAt,
+        stateVersion(record),
         entries,
         phaseEntries,
         planEntries,
         Optional.ofNullable(record.nextPlanEntry),
         Optional.ofNullable(record.manifestIdentity),
         Optional.ofNullable(record.manifestFingerprint));
+  }
+
+  private static void validateRecord(BootstrapStateRecord record, String requestedProfile) {
+    if (record == null) {
+      throw new IllegalArgumentException("State document must be a JSON object");
+    }
+    if (record.schemaVersion < EARLIEST_COMPATIBLE_SCHEMA
+        || record.schemaVersion > SCHEMA_VERSION) {
+      throw new IllegalArgumentException(
+          "Unsupported state schemaVersion: " + record.schemaVersion);
+    }
+    if (!requestedProfile.equals(record.profileName)) {
+      throw new IllegalArgumentException(
+          "State profile does not match requested profile: " + requestedProfile);
+    }
+    if (record.entries != null
+        && record.entries.stream()
+            .anyMatch(entry -> entry == null || !requestedProfile.equals(entry.profileName))) {
+      throw new IllegalArgumentException(
+          "State entry profile does not match requested profile: " + requestedProfile);
+    }
+    if (record.schemaVersion == SCHEMA_VERSION
+        && (blank(record.lastRunAt) || blank(record.sysbootVersion))) {
+      throw new IllegalArgumentException(
+          "Current state schema requires lastRunAt and sysbootVersion");
+    }
+  }
+
+  private static boolean blank(String value) {
+    return value == null || value.isBlank();
+  }
+
+  private static String stateVersion(BootstrapStateRecord record) {
+    return blank(record.sysbootVersion)
+        ? "legacy-state-v" + record.schemaVersion
+        : record.sysbootVersion;
+  }
+
+  private static Instant lastRunAt(
+      BootstrapStateRecord record,
+      List<StateEntry> entries,
+      List<PhaseStateEntry> phases,
+      List<PlanEntryStateEntry> planEntries) {
+    if (!blank(record.lastRunAt)) {
+      return Instant.parse(record.lastRunAt);
+    }
+    return java.util.stream.Stream.of(
+            entries.stream().map(StateEntry::completedAt),
+            phases.stream().map(PhaseStateEntry::completedAt),
+            planEntries.stream().map(PlanEntryStateEntry::updatedAt))
+        .flatMap(stream -> stream)
+        .max(Instant::compareTo)
+        .orElse(Instant.EPOCH);
   }
 
   private static StateEntryRecord entryToRecord(StateEntry e) {

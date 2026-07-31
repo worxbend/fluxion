@@ -1,6 +1,5 @@
 package dev.sysboot.executor;
 
-import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import dev.sysboot.core.HostPlatform;
@@ -26,10 +25,7 @@ import org.apache.commons.compress.compressors.gzip.GzipCompressorOutputStream;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
-/**
- * Upstream projects rename their release assets. Pinning an older version has to keep working, and
- * a genuinely missing asset has to fail with a message that says what was tried.
- */
+/** Release candidates remain pinned to the versions represented in the digest catalog. */
 class ToolBrokerFallbackTest {
 
   private static final HostPlatform LINUX_AMD64 =
@@ -38,46 +34,25 @@ class ToolBrokerFallbackTest {
   @TempDir Path tempDir;
 
   @Test
-  void fallsBackToTheLegacyAssetNameWhenThePreferredOneIsAbsent() throws Exception {
-    ToolSpec spec =
-        KnownTools.NERD_FONTS_INSTALLER.withVersion("v1.0.5").withBinaryName("nerdfont-install");
-    byte[] archive = tarGz("nerdfont-install_v1.0.5_linux_amd64/nerdfont-install", "#!/bin/sh\n");
-
-    var downloads = new FakeDownloadClient();
-    // Only the legacy asset exists at this tag, exactly as upstream publishes it.
-    downloads.files.put(spec.assetUrl("nerdfont-install_v1.0.5_linux_amd64.tar.gz"), archive);
-    downloads.texts.put(
-        spec.releaseDownloadBase() + "/checksums.txt",
-        sha256(archive) + "  nerdfont-install_v1.0.5_linux_amd64.tar.gz");
-
-    var broker =
-        new ToolBroker(downloads, cache(spec), LINUX_AMD64, name -> java.util.Optional.empty());
-
-    assertThat(broker.resolve(spec)).exists();
-    assertThat(downloads.fileRequests)
-        .as("the current asset name is tried first, then the legacy one")
-        .containsExactly(
-            spec.assetUrl("nerd-fonts-installer_v1.0.5_linux_amd64.tar.gz"),
-            spec.assetUrl("nerdfont-install_v1.0.5_linux_amd64.tar.gz"));
+  void rejectsLegacyVersionWithoutCataloguedDigests() {
+    assertThatThrownBy(() -> KnownTools.NERD_FONTS_INSTALLER.withVersion("v1.0.5"))
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("trusted release-digest catalog");
   }
 
   @Test
-  void reportsEveryAssetItTriedWhenNoneResolve() {
-    ToolSpec spec = KnownTools.NERD_FONTS_INSTALLER.withVersion("v9.9.9");
-    var broker =
-        new ToolBroker(
-            new FakeDownloadClient(), cache(spec), LINUX_AMD64, name -> java.util.Optional.empty());
-
-    assertThatThrownBy(() -> broker.resolve(spec))
-        .isInstanceOf(ToolResolutionException.class)
-        .hasMessageContaining("nerd-fonts-installer_v9.9.9_linux_amd64.tar.gz")
-        .hasMessageContaining("nerdfont-install_v9.9.9_linux_amd64.tar.gz");
+  void rejectsUnknownVersionBeforeResolution() {
+    assertThatThrownBy(() -> KnownTools.NERD_FONTS_INSTALLER.withVersion("v9.9.9"))
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("trusted release-digest catalog");
   }
 
   @Test
   void namesTheArchiveContentsWhenTheExpectedExecutableIsMissing() throws Exception {
-    ToolSpec spec = KnownTools.DOTBOT_GO;
     byte[] archive = tarGz("dotbot-go", "payload");
+    ToolSpec spec =
+        KnownTools.DOTBOT_GO.withAssetSha256(
+            KnownTools.DOTBOT_GO.assetName(LINUX_AMD64), sha256(archive));
     var downloads = new FakeDownloadClient();
     downloads.files.put(spec.assetUrl(LINUX_AMD64), archive);
     downloads.texts.put(spec.assetUrl(LINUX_AMD64) + ".sha256", sha256(archive));

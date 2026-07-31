@@ -8,6 +8,12 @@ public final class ShellScriptModuleDocument extends ModuleDocument {
   @JsonProperty("script")
   public String script;
 
+  @JsonProperty("url")
+  public String url;
+
+  @JsonProperty("sha256")
+  public String sha256;
+
   @JsonProperty("args")
   public List<String> args;
 

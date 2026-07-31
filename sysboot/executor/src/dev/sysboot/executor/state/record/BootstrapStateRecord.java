@@ -11,6 +11,12 @@ public final class BootstrapStateRecord {
   @JsonProperty("profileName")
   public String profileName;
 
+  @JsonProperty("lastRunAt")
+  public String lastRunAt;
+
+  @JsonProperty("sysbootVersion")
+  public String sysbootVersion;
+
   @JsonProperty("entries")
   public List<StateEntryRecord> entries;
 
@@ -54,6 +60,8 @@ public final class BootstrapStateRecord {
         planEntryEntries,
         nextPlanEntry,
         null,
+        null,
+        null,
         null);
   }
 
@@ -66,8 +74,34 @@ public final class BootstrapStateRecord {
       String nextPlanEntry,
       String manifestIdentity,
       String manifestFingerprint) {
+    this(
+        schemaVersion,
+        profileName,
+        entries,
+        phaseEntries,
+        planEntryEntries,
+        nextPlanEntry,
+        manifestIdentity,
+        manifestFingerprint,
+        null,
+        null);
+  }
+
+  public BootstrapStateRecord(
+      int schemaVersion,
+      String profileName,
+      List<StateEntryRecord> entries,
+      List<PhaseStateEntryRecord> phaseEntries,
+      List<PlanEntryStateEntryRecord> planEntryEntries,
+      String nextPlanEntry,
+      String manifestIdentity,
+      String manifestFingerprint,
+      String lastRunAt,
+      String sysbootVersion) {
     this.schemaVersion = schemaVersion;
     this.profileName = profileName;
+    this.lastRunAt = lastRunAt;
+    this.sysbootVersion = sysbootVersion;
     this.entries = entries;
     this.phaseEntries = phaseEntries;
     this.planEntryEntries = planEntryEntries;

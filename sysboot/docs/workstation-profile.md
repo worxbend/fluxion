@@ -76,7 +76,10 @@ Variable lookup order:
 `spec.vars` values may reference other variables. Cycles and unresolved variables are validation
 errors with field paths; unresolved plan-entry variables include the plan entry name in the error.
 Only braced `${name}` syntax is interpreted. Shell syntax such as `$(...)`, backticks, globs, and
-unbraced `$VAR` remains literal.
+unbraced `$VAR` remains literal. Interpolation is rejected inside shell expressions
+(`commands[].run`, `shellCommand`, `unless`, `probeCommand`, or an assertion command), because
+context-free substitution cannot be safe for every shell grammar. Pass data through `env`, or use
+structured `command` plus `args`/`argv`.
 
 ## Policy
 
@@ -93,7 +96,7 @@ spec:
 |---|---|
 | `dryRun` | Config-level dry-run default. CLI dry-run modes still force non-mutating execution. |
 | `continueOnError` | Default for plan entries that do not set `execution.continueOnError`. |
-| `requireSudo` | Default policy value for generated operations that honor sudo requirements. |
+| `requireSudo` | Require a successful sudo preflight before any live mutation. TUI runs may authenticate through the shared sudo session; non-interactive runs require `sudo -n -v` to succeed. Dry runs do not authenticate. |
 | `statePath` | Optional compatibility field validated for path safety. Runtime state currently uses Fluxion's profile state directory. |
 
 Per-entry `execution.continueOnError` overrides the manifest default:
@@ -140,6 +143,8 @@ Supported conditions:
 | `oneOf` | Select when any nested `when` branch matches. |
 
 Matchers may be a string, a list of strings, or an object with `oneOf`, `equals`, or `value`.
+The reserved `files`, `vars`, and `expression` condition fields are rejected until Fluxion has
+typed, fail-closed semantics for them.
 Skipped entries are reported in `plan`, `dry-run`, `apply --no-tui`, and the TUI with their skip
 reason.
 
@@ -161,6 +166,9 @@ spec:
           sourceList: /etc/apt/sources.list.d/docker.list
           signingKeyUrl: https://download.docker.com/linux/ubuntu/gpg
           keyring: /etc/apt/keyrings/docker.gpg
+          checksum:
+            algorithm: sha256
+            value: 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
     dnf:
       - name: docker
         kind: rpm-repository
@@ -169,6 +177,9 @@ spec:
           baseUrl: https://download.docker.com/linux/fedora/$releasever/$basearch/stable
           repoFile: /etc/yum.repos.d/docker.repo
           gpgKeyUrl: https://download.docker.com/linux/fedora/gpg
+          checksum:
+            algorithm: sha256
+            value: 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
     zypper:
       - name: packman
         kind: zypper-repository
@@ -177,6 +188,10 @@ spec:
           baseUrl: https://ftp.gwdg.de/pub/linux/misc/packman/suse/openSUSE_Tumbleweed/
           repoFile: /etc/zypp/repos.d/packman.repo
           gpgKeyUrl: https://ftp.gwdg.de/pub/linux/misc/packman/suse/openSUSE_Tumbleweed/repodata/repomd.xml.key
+          autoRefresh: true
+          checksum:
+            algorithm: sha256
+            value: 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
     flatpak:
       - name: flathub
         kind: flatpak-remote
@@ -184,14 +199,31 @@ spec:
           remote: flathub
           url: https://flathub.org/repo/flathub.flatpakrepo
           system: true
+          checksum:
+            algorithm: sha256
+            value: 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
 ```
 
 Generated source setup sections are `apt`, `dnf`, `rpm`, `zypper`, and `flatpak`.
-APT sources require `spec.source`. RPM-style DNF/Zypper sources require `spec.id` and
-`spec.baseUrl`; `spec.gpgKeyUrl` is required when `gpgCheck` is true. Flatpak sources require
-`spec.remote` and `spec.url`. Optional source checksums use SHA-256. `pacman` source entries are
-accepted by the DTO and checksum validation surface, but they do not currently generate source
-setup operations.
+All source URLs, including the repository URI embedded after optional brackets in an APT `deb` or
+`deb-src` line, must use HTTPS and must not contain URI user-info.
+
+APT sources require `spec.source`, an absolute resolved keyring path, and exactly one matching
+`signed-by` option. The keyring defaults from the source name when `signingKeyUrl` is present.
+Only `arch` and `signed-by` source options are accepted. When `signingKeyUrl` is present, `checksum`
+is required and binds the exact response bytes of that signing key. RPM-style DNF/Zypper sources
+require `spec.id`
+and `spec.baseUrl`; enabled sources must enforce `gpgCheck`, `spec.gpgKeyUrl` is required when
+`gpgCheck` is true, and every declared remote key requires a checksum over its exact response bytes.
+Flatpak sources require `spec.remote`,
+`spec.url`, and a checksum over the exact `.flatpakrepo` response bytes. Sysboot downloads and
+verifies these artifacts before any privileged key or repository-file mutation, then passes only
+the verified local file across the mutation boundary. Redirects are accepted only when the final
+URL remains HTTPS without user-info.
+
+`pacman` source entries are accepted by the DTO but do not currently generate source setup
+operations. Their server URL is still transport-validated; a checksum is rejected because the
+repository base URL is not a finite artifact that Sysboot can verify.
 
 ## Package kinds
 
@@ -247,8 +279,12 @@ Supported actions are:
       value: 0000000000000000000000000000000000000000000000000000000000000000
 ```
 
-`url` must be HTTPS. `installPath` and `symlinkPath` must be absolute after `~` expansion.
-Supported artifacts are plain binaries, `.tar.gz`, and `.tgz`.
+`url` must be HTTPS. `installPath` and `symlinkPath` must be absolute and normalized after `~`
+expansion. Archive URLs require an explicit normalized relative POSIX `archivePath`, matched exactly
+after `stripComponents` is applied. Supported artifacts are plain binaries, `.tar.gz`, `.tgz`,
+`.tar.xz`, and `.zip`; `.tar.xz` and `.zip` require `binstaller`, and delegation refuses nonzero
+`stripComponents`. Delegated canonical and declared outputs are snapshotted first and restored when
+the external install fails or its resulting paths do not pass Fluxion's verification.
 
 ### `shell-scripts`
 
@@ -264,11 +300,20 @@ Supported artifacts are plain binaries, `.tar.gz`, and `.tgz`.
         sudo: false
         allowedExitCodes: [0]
         timeout: 10m
+      - name: remote
+        url: https://example.org/install.sh
+        sha256: 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
 ```
 
-Each item must define exactly one of `script` or HTTPS `url`. Common item fields include `args`,
-`cwd` or `workingDir`, `env`, `sudo`, `allowedExitCodes`, `creates`, `unless`, `confirm`, `timeout`,
-`timeoutSeconds`, and `when`.
+Each item must define exactly one of `script` or HTTPS `url`. A remote URL must not contain
+user-info and requires `sha256` for the exact response bytes; local scripts must omit `sha256`.
+Fluxion verifies a remote script before either normal or `sudo` execution. Common item fields
+include `args`, `cwd` or `workingDir`, `env`, `sudo`, `allowedExitCodes`, `creates`, `unless`,
+`confirm`, `timeout`, `timeoutSeconds`, and `when`.
+Relative local script, working-directory, and `creates` paths are resolved from the directory
+containing the profile. When no working directory is declared, the profile directory is used.
+Items with `confirm` require `fluxion apply --yes`; plain and TUI execution do not prompt
+interactively. Dry-run, plan, and probe-only operations remain available without approval.
 
 ### `commands`
 
@@ -285,6 +330,8 @@ Each item must define exactly one of `script` or HTTPS `url`. Common item fields
 String commands run through the configured shell with `-lc`. Array commands and object commands
 with `argv`, array `run`, or `command` plus `args` stay direct argv commands. Object commands with
 string `run` or `shellCommand` are shell commands.
+Relative command working directories and `creates` paths are resolved from the profile directory;
+the profile directory is the default working directory.
 
 ### `file-writes`
 
@@ -318,7 +365,7 @@ Each item requires an absolute `destination` and exactly one of string `content`
     installerVersion: v1.0.7
     nerdfontBinary: nerd-fonts-installer
     config:
-      release: latest
+      release: v3.4.0
       destination: ~/.local/share/fonts/NerdFonts
       refreshFontCache: true
       families: [JetBrainsMono, Hack]
@@ -333,7 +380,8 @@ A textual `config` names an existing installer config to use as-is, instead of g
     config: ~/.config/nerd-fonts-installer/config.yaml
 ```
 
-`config` must be an object for `nerd-fonts`. `families` must contain at least one font family.
+Inline `config` must pin an exact three-component release such as `v3.4.0`; mutable selectors such
+as `latest` are rejected. `families` must contain at least one font family.
 
 ### `dotfiles-apply`
 
@@ -430,16 +478,22 @@ Every key must be `section.key`; a bare key is rejected because `git config` wou
     repos:
       - url: https://github.com/worxbend/dotfiles.git
         dest: ~/.dotfiles
-        ref: main
+        ref: 0123456789abcdef0123456789abcdef01234567
         depth: 1
-        submodules: true
-        update: none        # none | pull | reset-hard
+        submodules: false
 ```
 
-`url` and `dest` are required per repo. `update` decides what happens when `dest` already holds a
-clone: `none` leaves it alone (the default, because a clone is provisioning rather than
-synchronisation), `pull` fast-forwards with `--ff-only` and fails rather than merging, and
-`reset-hard` discards local changes to match the remote.
+`url`, `dest`, and `ref` are required per repo. The URL must be HTTPS without user-info, query
+parameters, or a fragment. `ref` must be the full 40-hex commit ID; branch and tag names are
+rejected because they can move.
+
+New repositories are initialized in a sibling staging directory, fetch only the configured commit,
+check out `FETCH_HEAD` detached, and have both `origin` and `HEAD` verified before being moved into
+place. This remains stable when the upstream default branch advances beyond a configured shallow
+depth. An existing
+destination is inspection-only: its exact origin URL and HEAD must already match, otherwise the
+step fails without pulling, resetting, or overwriting it. The legacy `update` field must be `none`
+when present. Submodule checkout permits HTTPS remotes only.
 
 ### `systemd-unit`
 
@@ -504,8 +558,17 @@ the largest possible upgrade and the other asks for no upgrade at all.
         fingerprint: 060A61C51B558A7F742B77AAC52FEB6B621E9F35
 ```
 
-`url` is required and must be `https:` or `file:` — a signing key decides what the machine trusts,
-so an unauthenticated transport is refused.
+`url` and a full 40-hex primary `fingerprint` are required. URLs must be HTTPS without user-info or
+absolute `file:` URIs. Fluxion verifies a staged download before installing it or passing it to
+`rpm --import`; an existing keyring is also re-inspected instead of being trusted because it exists.
+Local sources and existing keyrings must be regular, non-symlink files no larger than 16 MiB.
+
+RPM imports use the fingerprint as their stable plan and state identity; keyring-backed entries use
+the absolute keyring path. Signed-URL query parameters and fragments are used only for the request
+and are omitted from output and state. `continueOnError` can attempt the remaining keys, but any key
+trust failure still leaves the module failed; phase-level continuation remains a separate policy.
+Keyring destinations are normalized and confined to approved system key directories and extensions;
+APT keyrings use `.gpg` or `.asc` beneath `/etc/apt/keyrings` or `/usr/share/keyrings`.
 
 ### `zypper-repository`
 
@@ -517,14 +580,22 @@ so an unauthenticated transport is refused.
     baseUrl: https://ftp.gwdg.de/pub/linux/misc/packman/suse/openSUSE_Tumbleweed/
     repoFile: /etc/zypp/repos.d/packman.repo
     gpgKeyUrl: https://ftp.gwdg.de/pub/linux/misc/packman/suse/gpg-pubkey.asc
+    checksum:
+      algorithm: sha256
+      value: 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
     enabled: true
     gpgCheck: true
     autoRefresh: true
 ```
 
-`baseUrl` is required and should use HTTPS, because a repository decides what the machine installs.
-`gpgKeyUrl` is required whenever `gpgCheck` is enabled. `id` defaults to the plan entry name and
-`repoFile` defaults to `/etc/zypp/repos.d/<name>.repo`.
+`baseUrl` must use HTTPS without user-info, because a repository decides what the machine installs.
+`gpgKeyUrl` is required whenever `gpgCheck` is enabled, and any declared key URL requires a
+SHA-256 checksum over its exact response bytes. Fluxion verifies and parses the key before the
+first privileged mutation, installs a local key, and makes the generated repository refer only to
+that local path. `id` defaults to the plan entry name and `repoFile` defaults to
+`/etc/zypp/repos.d/<name>.repo`. Enabled repositories cannot disable `gpgCheck`. Repository files
+are confined to direct `.repo` children of that directory, and `autoRefresh` is emitted as
+`autorefresh=1` or `autorefresh=0`.
 
 ## Interrupt and resume
 

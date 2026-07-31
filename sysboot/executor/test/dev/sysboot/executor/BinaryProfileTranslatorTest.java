@@ -66,33 +66,63 @@ class BinaryProfileTranslatorTest {
         .contains("apiVersion: \"binstaller.io/v1alpha1\"")
         .contains("kind: \"BinaryDistributionProfile\"")
         .contains("kind: \"binary-tool\"")
+        .contains(
+            "appsDir: \""
+                + Path.of(System.getProperty("user.home"), ".apps").toAbsolutePath().normalize()
+                + "\"")
         .contains("installDir: \"${appsDir}/rg\"");
   }
 
   @Test
-  void anAbsoluteInstallPathBecomesAPrivilegedSymlinkBecauseBinstallerConfinesInstalls() {
-    String yaml =
-        (String)
-            BinaryProfileTranslator.translate(
-                module("rg", "https://e.com/rg").withInstallPath("/usr/local/bin/rg").build());
+  void anAbsolutePrivilegedInstallPathRefusesDelegation() {
+    Object result =
+        BinaryProfileTranslator.translate(
+            module("rg", "https://e.com/rg").withInstallPath("/usr/local/bin/rg").build());
 
-    assertThat(yaml)
-        .contains("allowSudoSymlinks: true")
-        .contains("path: \"/usr/local/bin/rg\"")
-        .contains("target: \"${appsDir}/rg/bin/rg\"")
-        .contains("sudo: true");
+    assertThat(result).isInstanceOf(BinaryProfileTranslator.Refusal.class);
+    assertThat(((BinaryProfileTranslator.Refusal) result).reason()).contains("privileged symlinks");
   }
 
   @Test
   void anInstallInsideTheAppsDirNeedsNoPrivilegedSymlink() {
+    Path appsInstall =
+        Path.of(System.getProperty("user.home"), ".apps", "rg", "bin", "rg")
+            .toAbsolutePath()
+            .normalize();
     String yaml =
         (String)
             BinaryProfileTranslator.translate(
-                module("rg", "https://e.com/rg")
-                    .withInstallPath("/home/u/.apps/rg/bin/rg")
-                    .build());
+                module("rg", "https://e.com/rg").withInstallPath(appsInstall.toString()).build());
 
     assertThat(yaml).contains("allowSudoSymlinks: false").doesNotContain("sudo: true");
+  }
+
+  @Test
+  void aNonCanonicalPathInsideTheAppsDirStillGetsAnUnprivilegedSymlink() {
+    Path appsInstall =
+        Path.of(System.getProperty("user.home"), ".apps", "shared", "bin", "rg")
+            .toAbsolutePath()
+            .normalize();
+    String yaml =
+        (String)
+            BinaryProfileTranslator.translate(
+                module("rg", "https://e.com/rg").withInstallPath(appsInstall.toString()).build());
+
+    assertThat(yaml)
+        .contains("path: \"" + appsInstall + "\"")
+        .contains("sudo: false")
+        .contains("allowSudoSymlinks: false");
+  }
+
+  @Test
+  void aDeceptiveAppsPathOutsideTheConfiguredRootRefusesDelegation() {
+    Object result =
+        BinaryProfileTranslator.translate(
+            module("rg", "https://e.com/rg")
+                .withInstallPath("/tmp/not-home/.apps/rg/bin/rg")
+                .build());
+
+    assertThat(result).isInstanceOf(BinaryProfileTranslator.Refusal.class);
   }
 
   @Test
@@ -129,12 +159,26 @@ class BinaryProfileTranslatorTest {
   }
 
   @Test
-  void anArchiveWithNoDeclaredMemberRefusesRatherThanGuessing() {
+  void anArchiveWithStripComponentsRefusesRatherThanChangingSelectionSemantics() {
     Object result =
-        BinaryProfileTranslator.translate(module("t", "https://e.com/t.tar.gz").build());
+        BinaryProfileTranslator.translate(
+            module("t", "https://e.com/t.tar.gz")
+                .withArchivePath("bin/t")
+                .withStripComponents(1)
+                .build());
 
     assertThat(result).isInstanceOf(BinaryProfileTranslator.Refusal.class);
-    assertThat(((BinaryProfileTranslator.Refusal) result).reason()).contains("archivePath");
+    assertThat(((BinaryProfileTranslator.Refusal) result).reason()).contains("stripComponents");
+  }
+
+  @Test
+  void aPlainBinaryWithStripComponentsAlsoRefusesDelegation() {
+    Object result =
+        BinaryProfileTranslator.translate(
+            module("t", "https://e.com/t").withStripComponents(1).build());
+
+    assertThat(result).isInstanceOf(BinaryProfileTranslator.Refusal.class);
+    assertThat(((BinaryProfileTranslator.Refusal) result).reason()).contains("stripComponents");
   }
 
   @Test
@@ -164,11 +208,15 @@ class BinaryProfileTranslatorTest {
     private Optional<BinaryUrl> signatureUrl = Optional.empty();
     private Path installPath;
     private Optional<String> archivePath = Optional.empty();
+    private int stripComponents;
 
     Builder(String name, String url) {
       this.name = name;
       this.url = url;
-      this.installPath = Path.of("/home/u/.apps/" + name + "/bin/" + name);
+      this.installPath =
+          Path.of(System.getProperty("user.home"), ".apps", name, "bin", name)
+              .toAbsolutePath()
+              .normalize();
     }
 
     Builder withArchivePath(String value) {
@@ -178,6 +226,11 @@ class BinaryProfileTranslatorTest {
 
     Builder withInstallPath(String value) {
       this.installPath = Path.of(value);
+      return this;
+    }
+
+    Builder withStripComponents(int value) {
+      this.stripComponents = value;
       return this;
     }
 
@@ -206,7 +259,7 @@ class BinaryProfileTranslatorTest {
           signatureUrl,
           installPath,
           archivePath,
-          1,
+          stripComponents,
           Optional.of("0755"),
           Optional.empty(),
           false,

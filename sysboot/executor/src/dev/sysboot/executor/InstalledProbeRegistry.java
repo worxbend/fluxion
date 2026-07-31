@@ -23,13 +23,16 @@ public final class InstalledProbeRegistry {
   }
 
   public InstallationStatus probe(ModuleItem item) {
-    return probes.stream()
-        .filter(p -> p.supports(item))
-        .findFirst()
-        .map(p -> p.probe(item.key()))
-        .orElse(
-            new InstallationStatus.Unknown(
-                item.key(), "No probe registered for " + describe(item)));
+    Optional<InstalledProbe> probe = probes.stream().filter(p -> p.supports(item)).findFirst();
+    if (probe.isEmpty()) {
+      return new InstallationStatus.Unknown(
+          item.key(), "No probe registered for " + describe(item));
+    }
+    try {
+      return probe.orElseThrow().probe(item);
+    } catch (ShellExecutionException failure) {
+      return new InstallationStatus.Unknown(item.key(), "Probe command could not be executed");
+    }
   }
 
   private String describe(ModuleItem item) {

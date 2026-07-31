@@ -1,5 +1,6 @@
 package dev.sysboot.executor;
 
+import dev.sysboot.core.ExecutionApproval;
 import dev.sysboot.core.ShellRunner;
 import java.util.IdentityHashMap;
 import java.util.Map;
@@ -34,6 +35,7 @@ final class PhaseExecutors {
   private final GpgKeyExecutor gpgKey;
   private final ToolPackagesExecutor toolPackages;
   private final ZypperRepositoryInstaller zypperRepository;
+  private final ExecutionApproval approval;
 
   private PhaseExecutors(
       ShellScriptExecutor shellScript,
@@ -53,7 +55,8 @@ final class PhaseExecutors {
       SystemUpdateExecutor systemUpdate,
       GpgKeyExecutor gpgKey,
       ToolPackagesExecutor toolPackages,
-      ZypperRepositoryInstaller zypperRepository) {
+      ZypperRepositoryInstaller zypperRepository,
+      ExecutionApproval approval) {
     this.shellScript = Objects.requireNonNull(shellScript);
     this.shellCommand = Objects.requireNonNull(shellCommand);
     this.dotbot = Objects.requireNonNull(dotbot);
@@ -72,12 +75,17 @@ final class PhaseExecutors {
     this.gpgKey = Objects.requireNonNull(gpgKey);
     this.toolPackages = Objects.requireNonNull(toolPackages);
     this.zypperRepository = Objects.requireNonNull(zypperRepository);
+    this.approval = Objects.requireNonNull(approval);
   }
 
   static PhaseExecutors forRunner(ShellRunner runner) {
+    return forRunner(runner, ExecutionApproval.denyAll());
+  }
+
+  static PhaseExecutors forRunner(ShellRunner runner, ExecutionApproval approval) {
     return new PhaseExecutors(
-        new ShellScriptExecutor(runner),
-        new ShellCommandExecutor(runner),
+        new ShellScriptExecutor(runner, approval),
+        new ShellCommandExecutor(runner, approval),
         new DotbotExecutor(runner),
         new DefaultShellExecutor(runner),
         new OhMyZshExecutor(runner),
@@ -93,7 +101,8 @@ final class PhaseExecutors {
         new SystemUpdateExecutor(runner),
         new GpgKeyExecutor(runner),
         new ToolPackagesExecutor(runner),
-        new ZypperRepositoryInstaller(runner));
+        new ZypperRepositoryInstaller(runner),
+        approval);
   }
 
   /** Uses the collaborators supplied to the orchestrator, so injected stubs take effect. */
@@ -105,10 +114,11 @@ final class PhaseExecutors {
       OhMyZshExecutor ohMyZsh,
       ToolchainExecutor toolchain,
       NerdFontExecutor nerdFont,
-      ShellReloadExecutor shellReload) {
+      ShellReloadExecutor shellReload,
+      ExecutionApproval approval) {
     return new PhaseExecutors(
         shellScript,
-        new ShellCommandExecutor(runner),
+        new ShellCommandExecutor(runner, approval),
         dotbot,
         defaultShell,
         ohMyZsh,
@@ -124,7 +134,8 @@ final class PhaseExecutors {
         new SystemUpdateExecutor(runner),
         new GpgKeyExecutor(runner),
         new ToolPackagesExecutor(runner),
-        new ZypperRepositoryInstaller(runner));
+        new ZypperRepositoryInstaller(runner),
+        approval);
   }
 
   ShellScriptExecutor shellScript() {
@@ -199,17 +210,24 @@ final class PhaseExecutors {
     return zypperRepository;
   }
 
+  ExecutionApproval approval() {
+    return approval;
+  }
+
   /** Per-runner cache keyed by identity, since runners are wrappers built per restart policy. */
   static final class Registry {
 
     private final Map<ShellRunner, PhaseExecutors> byRunner = new IdentityHashMap<>();
+    private final ExecutionApproval approval;
 
-    Registry(ShellRunner primaryRunner, PhaseExecutors primaryExecutors) {
+    Registry(
+        ShellRunner primaryRunner, PhaseExecutors primaryExecutors, ExecutionApproval approval) {
+      this.approval = Objects.requireNonNull(approval);
       byRunner.put(primaryRunner, primaryExecutors);
     }
 
     synchronized PhaseExecutors forRunner(ShellRunner runner) {
-      return byRunner.computeIfAbsent(runner, PhaseExecutors::forRunner);
+      return byRunner.computeIfAbsent(runner, key -> PhaseExecutors.forRunner(key, approval));
     }
   }
 }

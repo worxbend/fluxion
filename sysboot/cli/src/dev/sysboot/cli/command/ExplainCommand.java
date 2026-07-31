@@ -9,6 +9,7 @@ import dev.sysboot.cli.output.JsonOutput;
 import dev.sysboot.cli.output.OutputFormat;
 import dev.sysboot.core.BootstrapConfig;
 import dev.sysboot.core.BootstrapState;
+import dev.sysboot.core.DisplayTextSanitizer;
 import dev.sysboot.executor.ExecutionPlan;
 import dev.sysboot.executor.JsonStateRepository;
 import dev.sysboot.executor.StatusReport;
@@ -25,6 +26,8 @@ import picocli.CommandLine.Spec;
 
 @Command(name = "explain", description = "Explain why a phase or item would run or skip")
 public final class ExplainCommand implements Runnable {
+
+  private final DisplayTextSanitizer sanitizer = new DisplayTextSanitizer();
 
   @Mixin private GlobalOptions options;
 
@@ -56,7 +59,7 @@ public final class ExplainCommand implements Runnable {
     BootstrapConfig config = context.configLoader().load(options.resolvedConfigFile());
     Optional<BootstrapState> state = new JsonStateRepository(new ObjectMapper()).load(profile);
     ExecutionPlan plan = context.executionPlanBuilder().build(config);
-    var liveResults = context.parallelProbeRunner().probeAll(config.modules(), ignored -> {});
+    var liveResults = context.parallelProbeRunner().probeAll(plan, ignored -> {});
     StatusReport report = new StatusReportBuilder().build(plan, state, liveResults);
     Explanation explanation = explanation(plan, report);
 
@@ -157,7 +160,11 @@ public final class ExplainCommand implements Runnable {
 
   private StatusReport.Item statusFor(StatusReport report, ExecutionPlan.Item item) {
     return report.items().stream()
-        .filter(candidate -> candidate.key().equals(item.item().key()))
+        .filter(
+            candidate ->
+                candidate.moduleName().equals(item.item().moduleName().value())
+                    && candidate.key().equals(item.item().key())
+                    && candidate.type().equals(item.item().itemType().name().toLowerCase()))
         .findFirst()
         .orElseThrow(() -> notFound("status for item", item.item().key()));
   }
@@ -168,20 +175,23 @@ public final class ExplainCommand implements Runnable {
 
   private void writeText(Explanation explanation) {
     var out = spec.commandLine().getOut();
-    out.printf("Explain %s: %s%n", explanation.kind(), explanation.displayName());
-    out.printf("Phase: %s%n", explanation.phaseName());
+    out.printf("Explain %s: %s%n", safe(explanation.kind()), safe(explanation.displayName()));
+    out.printf("Phase: %s%n", safe(explanation.phaseName()));
     if (explanation.moduleName() != null) {
-      out.printf("Module: %s%n", explanation.moduleName());
+      out.printf("Module: %s%n", safe(explanation.moduleName()));
     }
     out.printf(
-        "Depends on: %s%n", explanation.dependsOn().isEmpty() ? "(none)" : explanation.dependsOn());
-    out.printf("Restart effect: %s%n", explanation.restartEffect());
+        "Depends on: %s%n",
+        explanation.dependsOn().isEmpty() ? "(none)" : safe(explanation.dependsOn()));
+    out.printf("Restart effect: %s%n", safe(explanation.restartEffect()));
     if (explanation.status() != null) {
-      out.printf("Status: %s%n", explanation.status());
+      out.printf("Status: %s%n", safe(explanation.status()));
     }
-    out.printf("Reason: %s%n", explanation.detail());
+    out.printf("Reason: %s%n", safe(explanation.detail()));
     if (!explanation.commandPreview().isEmpty()) {
-      out.println("Command preview: " + String.join(" ", explanation.commandPreview()));
+      out.println(
+          "Command preview: "
+              + String.join(" ", sanitizer.sanitizeCommand(explanation.commandPreview())));
     }
   }
 
@@ -221,6 +231,10 @@ public final class ExplainCommand implements Runnable {
       case UNKNOWN -> "unknown";
       case VERSION_DRIFT -> "version-drift";
     };
+  }
+
+  private String safe(Object value) {
+    return sanitizer.sanitizeLine(String.valueOf(value));
   }
 
   private record Explanation(

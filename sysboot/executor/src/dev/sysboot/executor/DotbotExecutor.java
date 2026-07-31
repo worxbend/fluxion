@@ -45,7 +45,7 @@ public final class DotbotExecutor {
               "dotbot exited with code " + result.exitCode() + ": " + failureDetail(result),
               result.exitCode(),
               result.elapsed());
-    } catch (ToolResolutionException e) {
+    } catch (ToolResolutionException | IllegalArgumentException e) {
       return new StepResult.Failure(
           module.name().value(), "Failed to prepare dotbot: " + e.getMessage(), 1, Duration.ZERO);
     }
@@ -60,7 +60,7 @@ public final class DotbotExecutor {
       var command = new java.util.ArrayList<>(planCommand(module));
       ProcessResult result = shellRunner.run(List.copyOf(command), Map.of(), DOTBOT_TIMEOUT);
       return result.isSuccess() ? Optional.of(result.stdout()) : Optional.empty();
-    } catch (ToolResolutionException | ShellExecutionException e) {
+    } catch (ToolResolutionException | ShellExecutionException | IllegalArgumentException e) {
       return Optional.empty();
     }
   }
@@ -88,14 +88,7 @@ public final class DotbotExecutor {
 
   static ToolSpec toolSpec(DotbotModule module) {
     ToolSpec base = KnownTools.DOTBOT_GO;
-    return new ToolSpec(
-        base.name(),
-        base.repository(),
-        module.installerVersion(),
-        base.assetTemplates(),
-        base.osNaming(),
-        base.checksumPolicy(),
-        Optional.of(module.dotbotBinary()));
+    return base.withVersion(module.installerVersion()).withBinaryName(module.dotbotBinary());
   }
 
   private String failureDetail(ProcessResult result) {

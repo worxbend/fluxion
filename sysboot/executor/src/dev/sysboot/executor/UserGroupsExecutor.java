@@ -44,6 +44,18 @@ public final class UserGroupsExecutor {
     return StepOutcome.of(module.name(), failures, module.continueOnError());
   }
 
+  StepResult executeItem(UserGroupsModule module, String group) {
+    String itemKey = module.itemKey(group);
+    String user = resolveUser(module);
+    if (groupsOf(user).contains(group)) {
+      return new StepResult.Success(itemKey, Duration.ZERO);
+    }
+    Optional<String> failure = addGroup(module, user, group);
+    return failure
+        .<StepResult>map(message -> new StepResult.Failure(itemKey, message, 1, Duration.ZERO))
+        .orElseGet(() -> new StepResult.Success(itemKey, Duration.ZERO));
+  }
+
   /**
    * Groups the user now has in the database but not in the current login session.
    *
@@ -74,6 +86,15 @@ public final class UserGroupsExecutor {
     }
     preview.addAll(
         List.of("sudo", "usermod", "-aG", String.join(",", module.groups()), resolveUser(module)));
+    return List.copyOf(preview);
+  }
+
+  List<String> commandPreview(UserGroupsModule module, String group) {
+    var preview = new ArrayList<String>();
+    if (module.createMissing()) {
+      preview.addAll(List.of("sudo", "groupadd", "-f", group));
+    }
+    preview.addAll(List.of("sudo", "usermod", "-aG", group, resolveUser(module)));
     return List.copyOf(preview);
   }
 
@@ -120,7 +141,7 @@ public final class UserGroupsExecutor {
   }
 
   private String resolveUser(UserGroupsModule module) {
-    return module.user().orElseGet(this::currentUser);
+    return TargetUserResolver.resolve(module.user());
   }
 
   /**
@@ -130,11 +151,7 @@ public final class UserGroupsExecutor {
    * user.name} is {@code root}, and adding root to the docker group is never what was meant.
    */
   private String currentUser() {
-    String sudoUser = System.getenv("SUDO_USER");
-    if (sudoUser != null && !sudoUser.isBlank()) {
-      return sudoUser;
-    }
-    return System.getProperty("user.name", "");
+    return TargetUserResolver.resolve();
   }
 
   private ProcessResult run(List<String> command) {

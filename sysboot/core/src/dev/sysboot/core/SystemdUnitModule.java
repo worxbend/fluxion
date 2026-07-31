@@ -15,6 +15,9 @@ public record SystemdUnitModule(
     if (units.isEmpty()) {
       throw new IllegalArgumentException("systemd-unit requires at least one unit");
     }
+    if (units.stream().map(SystemdUnit::qualifiedName).distinct().count() != units.size()) {
+      throw new IllegalArgumentException("systemd-unit must not repeat a qualified unit name");
+    }
   }
 
   /**

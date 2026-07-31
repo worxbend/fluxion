@@ -18,7 +18,8 @@ class SudoSessionTest {
     var validator = new FakeValidator(true);
     try (var session = new SudoSession(counting(prompts, "secret"), validator, longInterval())) {
       for (int i = 0; i < 40; i++) {
-        assertThat(session.requestPassword("[sudo] password")).isPresent();
+        assertThat(session.requestPassword("[sudo] password")).isEmpty();
+        assertThat(session.isAuthenticated()).isTrue();
       }
     }
 
@@ -26,13 +27,17 @@ class SudoSessionTest {
   }
 
   @Test
-  void handsOutCopiesSoACallerZeroingItsArrayCannotBreakTheNextCall() {
-    try (var session = new SudoSession(fixed("secret"), new FakeValidator(true), longInterval())) {
-      char[] first = session.requestPassword("p").orElseThrow();
-      java.util.Arrays.fill(first, '\0');
-
-      assertThat(session.requestPassword("p").orElseThrow())
-          .containsExactly("secret".toCharArray());
+  void acceptedPasswordIsZeroedImmediatelyAndNeverRetained() {
+    char[] supplied = "secret".toCharArray();
+    try (var session =
+        new SudoSession(prompt -> Optional.of(supplied), new FakeValidator(true), longInterval())) {
+      assertThat(session.requestPassword("p")).isEmpty();
+      assertThat(session.isAuthenticated()).isTrue();
+      assertThat(supplied).containsOnly('\0');
+      assertThat(
+              java.util.Arrays.stream(SudoSession.class.getDeclaredFields())
+                  .map(java.lang.reflect.Field::getType))
+          .doesNotContain(char[].class);
     }
   }
 
@@ -47,7 +52,8 @@ class SudoSessionTest {
         };
 
     try (var session = new SudoSession(delegate, validator, longInterval())) {
-      assertThat(session.requestPassword("[sudo] password")).isPresent();
+      assertThat(session.requestPassword("[sudo] password")).isEmpty();
+      assertThat(session.isAuthenticated()).isTrue();
     }
 
     assertThat(supplied).hasSize(3);
@@ -111,18 +117,18 @@ class SudoSessionTest {
   }
 
   @Test
-  void aValidationTimeoutKeepsThePasswordInsteadOfCallingItWrong() {
+  void aValidationTimeoutFailsClosedWithoutCachingThePassword() {
     var prompts = new AtomicInteger();
     var validator = new FakeValidator(true);
     validator.verdictOverride = SudoSession.AuthResult.INDETERMINATE;
 
     try (var session = new SudoSession(counting(prompts, "secret"), validator, longInterval())) {
-      assertThat(session.requestPassword("p")).isPresent();
+      assertThat(session.requestPassword("p")).isEmpty();
+      assertThat(session.isAuthenticated()).isFalse();
+      assertThat(session.requestPassword("p")).isEmpty();
     }
 
-    assertThat(prompts)
-        .as("a timeout must not be reported to the user as a wrong password")
-        .hasValue(1);
+    assertThat(prompts).as("indeterminate validation must not prompt again").hasValue(1);
   }
 
   @Test
@@ -138,7 +144,9 @@ class SudoSessionTest {
       Thread.sleep(200);
 
       validator.availability = SudoSession.Availability.PASSWORD_REQUIRED;
-      assertThat(session.requestPassword("p")).isPresent();
+      validator.refreshSucceeds = true;
+      assertThat(session.requestPassword("p")).isEmpty();
+      assertThat(session.isAuthenticated()).isTrue();
     }
 
     assertThat(prompts).hasValue(1);
@@ -166,12 +174,28 @@ class SudoSessionTest {
 
   @Test
   void closingTheSessionStopsHandingOutThePassword() {
-    var session = new SudoSession(fixed("secret"), new FakeValidator(true), longInterval());
-    assertThat(session.requestPassword("p")).isPresent();
+    var validator = new FakeValidator(true);
+    var session = new SudoSession(fixed("secret"), validator, longInterval());
+    assertThat(session.requestPassword("p")).isEmpty();
+    assertThat(session.isAuthenticated()).isTrue();
 
+    session.close();
     session.close();
 
     assertThat(session.requestPassword("p")).isEmpty();
+    assertThat(session.isAuthenticated()).isFalse();
+    assertThat(validator.invalidations).hasValue(1);
+  }
+
+  @Test
+  void acceptedPasswordWithoutReusableTicketFailsBeforeEffects() {
+    var validator = new FakeValidator(true);
+    validator.refreshSucceeds = false;
+    try (var session = new SudoSession(fixed("secret"), validator, longInterval())) {
+      session.requestPassword("p");
+
+      assertThat(session.isAuthenticated()).isFalse();
+    }
   }
 
   @Test
@@ -204,6 +228,7 @@ class SudoSessionTest {
     private final List<SudoSession.AuthResult> verdicts;
     private final AtomicInteger calls = new AtomicInteger();
     private final AtomicInteger refreshes = new AtomicInteger();
+    private final AtomicInteger invalidations = new AtomicInteger();
     private SudoSession.Availability availability = SudoSession.Availability.PASSWORD_REQUIRED;
     private boolean refreshSucceeds = true;
     private SudoSession.AuthResult verdictOverride;
@@ -233,6 +258,11 @@ class SudoSessionTest {
     public boolean refresh() {
       refreshes.incrementAndGet();
       return refreshSucceeds;
+    }
+
+    @Override
+    public void invalidate() {
+      invalidations.incrementAndGet();
     }
   }
 }

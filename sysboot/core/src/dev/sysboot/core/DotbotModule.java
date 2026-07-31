@@ -18,9 +18,7 @@ public record DotbotModule(
     Objects.requireNonNull(installerVersion);
     Objects.requireNonNull(dotbotBinary);
     Objects.requireNonNull(probeCommand);
-    if (installerVersion.isBlank()) {
-      throw new IllegalArgumentException("installerVersion must not be blank");
-    }
+    ReleaseTagPolicy.requireExact("installerVersion", installerVersion);
     if (dotbotBinary.isBlank()) {
       throw new IllegalArgumentException("dotbotBinary must not be blank");
     }
