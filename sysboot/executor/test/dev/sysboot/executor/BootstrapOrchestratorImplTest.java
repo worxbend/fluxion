@@ -912,6 +912,31 @@ class BootstrapOrchestratorImplTest {
   }
 
   @Test
+  void execute_whenCancellationArrivesDuringAFailingSourceSetup_reportsCancellationNotFailure() {
+    var cancellation = new CancellationSignal();
+    when(rpmRepositoryInstaller.addTrusted(any(), any()))
+        .thenAnswer(
+            invocation -> {
+              cancellation.cancel();
+              return new StepResult.Failure(
+                  "/etc/yum.repos.d/docker.repo", "failed", 1, Duration.ZERO);
+            });
+    var stateRepository = new InMemoryStateRepository(BootstrapState.empty("test", "1.0.0"));
+    orchestrator = orchestrator(alwaysRun(), Optional.of(stateRepository));
+
+    assertThatThrownBy(
+            () ->
+                orchestrator.execute(
+                    configWithSourceAndPackage(BootstrapPolicy.empty()),
+                    ignored -> {},
+                    cancellation))
+        .isInstanceOf(ExecutionCancelledException.class);
+
+    verify(dnfExecutor, never()).install(any());
+    assertThat(stateRepository.state().entries()).isEmpty();
+  }
+
+  @Test
   void execute_whenSourceSetupFailsAndPolicyAllowsContinuation_stillBlocksPackages() {
     when(rpmRepositoryInstaller.addTrusted(any(), any()))
         .thenReturn(

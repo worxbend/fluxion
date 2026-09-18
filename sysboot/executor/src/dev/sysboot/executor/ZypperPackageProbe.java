@@ -37,15 +37,25 @@ public final class ZypperPackageProbe implements InstalledProbe {
     var result = shellRunner.run(List.of("rpm", "-q", packageName), Map.of(), PROBE_TIMEOUT);
 
     if (result.exitCode() == 0) {
-      String line = result.stdout().strip();
-      int dash = line.indexOf('-');
-      String version = dash >= 0 ? line.substring(dash + 1) : null;
-      return new InstallationStatus.InstalledByProbe(packageName, version);
+      return new InstallationStatus.InstalledByProbe(
+          packageName, extractVersion(result.stdout().strip(), packageName));
     }
     if (result.exitCode() == 1) {
       return new InstallationStatus.NotInstalled(packageName);
     }
     return new InstallationStatus.Unknown(
         packageName, "rpm -q exited %d: %s".formatted(result.exitCode(), result.stderr()));
+  }
+
+  private String extractVersion(String rpmLine, String packageName) {
+    // "rpm -q docker-compose" prints "docker-compose-2.29.7-1.fc41.x86_64". A package name can
+    // itself contain hyphens, so the name is removed as a literal prefix rather than splitting on
+    // the first hyphen, which misreads a hyphenated name's own dash as the version separator.
+    String prefix = packageName + "-";
+    if (rpmLine.startsWith(prefix)) {
+      return rpmLine.substring(prefix.length());
+    }
+    int dash = rpmLine.indexOf('-');
+    return dash >= 0 ? rpmLine.substring(dash + 1) : null;
   }
 }

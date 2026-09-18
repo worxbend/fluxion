@@ -54,7 +54,7 @@ final class StepBinding {
   }
 
   ModuleItem item(BootstrapModule module) {
-    if (module instanceof DotbotModule) {
+    if (module instanceof DotbotModule || module instanceof BinstallerModule) {
       return ModuleItem.configuredModuleItem(module, itemKey(module), itemKey(module), itemType);
     }
     return new ModuleItem(module.name(), itemKey(module), itemType);

@@ -30,6 +30,10 @@ final class WorkstationSystemControlValidator {
     if (spec.groups().isEmpty()) {
       errors.add(path + ".spec.groups is required for plan entry '" + entryName + "'");
     }
+    // spec.groups() reads a mapping or nested sequence in the list as a blank string rather than
+    // dropping it, so an entry that could not be read as a group name still shows up here and is
+    // reported instead of silently joining the user to a blank-named group.
+    support.validatePresentItems(path + ".spec.groups", spec.groups(), errors);
     if (spec.groups().stream().distinct().count() != spec.groups().size()) {
       errors.add(path + ".spec.groups for plan entry '" + entryName + "' repeats a group");
     }

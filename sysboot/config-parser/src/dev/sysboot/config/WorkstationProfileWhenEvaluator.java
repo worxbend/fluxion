@@ -3,6 +3,7 @@ package dev.sysboot.config;
 import com.fasterxml.jackson.databind.JsonNode;
 import dev.sysboot.config.yaml.contract.PlanEntryDocument;
 import dev.sysboot.config.yaml.contract.WhenDocument;
+import dev.sysboot.core.ArchitectureAliases;
 import dev.sysboot.core.HostFacts;
 import dev.sysboot.core.HostFactsProvider;
 import java.util.ArrayList;
@@ -10,6 +11,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.Set;
 
 final class WorkstationProfileWhenEvaluator {
 
@@ -96,10 +98,18 @@ final class WorkstationProfileWhenEvaluator {
     return scalar(label, node, Optional.of(actual));
   }
 
+  private static final Set<String> ARCHITECTURE_LABELS = Set.of("architecture", "architectures");
+
   private Decision scalar(String label, JsonNode node, Optional<String> actual) {
     List<String> expected = matcherValues(node);
     if (expected.isEmpty()) {
       return Decision.skipped("when." + label + " has no supported matcher");
+    }
+    // facts.architecture() reports the canonical spelling (amd64, arm64, ...), the same alias
+    // table spec.target.os matches through. A when: guard used to compare the written text
+    // as-is, so the documented alias x86_64 never matched an amd64 host.
+    if (ARCHITECTURE_LABELS.contains(label)) {
+      expected = expected.stream().map(ArchitectureAliases::canonicalize).toList();
     }
     if (matchesAny(expected, actual)) {
       return Decision.selected();

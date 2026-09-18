@@ -1,5 +1,6 @@
 package dev.sysboot.executor;
 
+import dev.sysboot.core.ArchitectureAliases;
 import dev.sysboot.core.HostFacts;
 import dev.sysboot.core.HostFactsProvider;
 import java.io.File;
@@ -113,17 +114,8 @@ public final class LinuxHostFactsProvider implements HostFactsProvider {
   }
 
   private String normalizeArchitecture(String architecture) {
-    String normalized = architecture.strip().toLowerCase(Locale.ROOT);
-    if (normalized.isBlank()) {
-      return "unknown";
-    }
-    return switch (normalized) {
-      case "x86_64", "amd64" -> "amd64";
-      case "aarch64", "arm64" -> "arm64";
-      case "armv7l", "armv7", "armhf" -> "armv7";
-      case "i386", "i486", "i586", "i686", "x86" -> "386";
-      default -> normalized;
-    };
+    String canonical = ArchitectureAliases.canonicalize(architecture);
+    return canonical.isBlank() ? "unknown" : canonical;
   }
 
   private java.util.stream.Stream<Path> pathDirectories() {

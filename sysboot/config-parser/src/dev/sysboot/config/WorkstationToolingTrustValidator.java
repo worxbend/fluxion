@@ -115,7 +115,12 @@ final class WorkstationToolingTrustValidator {
                         + backend));
     if (spec.packages().isEmpty()) {
       errors.add(path + ".spec.packages is required for plan entry '" + entryName + "'");
+      return;
     }
+    // spec.packages() reads a mapping or nested sequence in the list as a blank string rather
+    // than dropping it, so an entry that could not be read as a package name still shows up here
+    // and is reported instead of reaching ToolPackage's constructor as an unattributed failure.
+    support.validatePresentItems(path + ".spec.packages", spec.packages(), errors);
   }
 
   void validateZypperRepositorySpec(

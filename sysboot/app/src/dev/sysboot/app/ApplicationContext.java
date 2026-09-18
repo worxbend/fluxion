@@ -16,6 +16,7 @@ import dev.sysboot.executor.AptRepositoryInstaller;
 import dev.sysboot.executor.AptRepositoryProbe;
 import dev.sysboot.executor.BootstrapOrchestratorImpl;
 import dev.sysboot.executor.CargoPackageInstaller;
+import dev.sysboot.executor.CargoPackageProbe;
 import dev.sysboot.executor.CompiledBinaryInstaller;
 import dev.sysboot.executor.CompiledBinaryProbe;
 import dev.sysboot.executor.DefaultShellExecutor;
@@ -319,6 +320,7 @@ public final class ApplicationContext implements AutoCloseable {
             new DnfPackageProbe(runner),
             new PacmanPackageProbe(runner),
             new AptPackageProbe(runner),
+            new CargoPackageProbe(runner),
             new AptRepositoryProbe(runner),
             new RpmRepositoryProbe(runner),
             new PacmanRepositoryProbe(runner),

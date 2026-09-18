@@ -37,7 +37,7 @@ public final class DnfPackageProbe implements InstalledProbe {
 
     if (result.exitCode() == 0) {
       return new InstallationStatus.InstalledByProbe(
-          packageName, extractVersion(result.stdout().strip()));
+          packageName, extractVersion(result.stdout().strip(), packageName));
     }
     if (result.exitCode() == 1) {
       return new InstallationStatus.NotInstalled(packageName);
@@ -46,7 +46,14 @@ public final class DnfPackageProbe implements InstalledProbe {
         packageName, "rpm -q exited %d: %s".formatted(result.exitCode(), result.stderr()));
   }
 
-  private String extractVersion(String rpmLine) {
+  private String extractVersion(String rpmLine, String packageName) {
+    // "rpm -q docker-compose" prints "docker-compose-2.29.7-1.fc41.x86_64". A package name can
+    // itself contain hyphens, so the name is removed as a literal prefix rather than splitting on
+    // the first hyphen, which misreads a hyphenated name's own dash as the version separator.
+    String prefix = packageName + "-";
+    if (rpmLine.startsWith(prefix)) {
+      return rpmLine.substring(prefix.length());
+    }
     int firstDash = rpmLine.indexOf('-');
     return firstDash >= 0 ? rpmLine.substring(firstDash + 1) : null;
   }

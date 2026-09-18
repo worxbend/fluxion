@@ -97,6 +97,55 @@ class WorkstationProfileWhenEvaluatorTest {
             "when.commandExists expected 'apt' on PATH");
   }
 
+  @Test
+  void select_whenArchitectureConditionUsesDocumentedAlias_matchesTheCanonicalHostFact()
+      throws IOException {
+    WorkstationProfileDocument document =
+        objectMapper.readValue(architectureAliasProfile(), WorkstationProfileDocument.class);
+    var hostFacts =
+        new FakeHostFactsProvider(
+            new HostFacts(
+                "linux", Optional.of("fedora"), Optional.of("44"), Optional.empty(), "amd64"),
+            Set.of());
+    var evaluator = new WorkstationProfileWhenEvaluator(hostFacts);
+
+    var selection = evaluator.select(document.spec().orElseThrow().plan());
+
+    assertThat(selection.selected())
+        .extracting(entry -> entry.name().orElseThrow())
+        .containsExactly("amd64-tools");
+    assertThat(selection.skipped())
+        .extracting(WorkstationProfileWhenEvaluator.SkippedPlanEntry::reason)
+        .containsExactly("when.architecture expected one of [arm64] but was amd64");
+  }
+
+  private String architectureAliasProfile() {
+    return """
+    apiVersion: initkit.io/v1alpha1
+    kind: WorkstationProfile
+    metadata:
+      name: architecture-alias-test
+    spec:
+      target:
+        os:
+          distribution: fedora
+          release: "44"
+      plan:
+        - name: amd64-tools
+          kind: dnf-packages
+          when:
+            architecture: x86_64
+          spec:
+            packages: [curl]
+        - name: arm64-tools
+          kind: dnf-packages
+          when:
+            architecture: aarch64
+          spec:
+            packages: [curl]
+    """;
+  }
+
   private String profile() {
     return """
     apiVersion: initkit.io/v1alpha1

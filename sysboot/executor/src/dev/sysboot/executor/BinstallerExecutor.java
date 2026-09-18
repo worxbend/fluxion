@@ -47,10 +47,14 @@ public final class BinstallerExecutor {
 
   public StepResult execute(BinstallerModule module) {
     try {
-      List<String> command = applyCommand(binary(module), module);
+      List<String> command = argv(binary(module), "apply", module);
       ProcessResult result = shellRunner.run(command, Map.of(), APPLY_TIMEOUT);
       return result.isSuccess()
-          ? new StepResult.Success(module.itemKey(), result.elapsed())
+          ? new StepResult.Success(
+              module.itemKey(),
+              result.elapsed(),
+              Optional.empty(),
+              ExternalConfigDigest.of(module).orElse(null))
           : new StepResult.Failure(
               module.itemKey(), failureMessage(result), result.exitCode(), result.elapsed());
     } catch (ToolResolutionException | IllegalArgumentException e) {
@@ -66,7 +70,7 @@ public final class BinstallerExecutor {
   public Optional<String> plan(BinstallerModule module) {
     try {
       ProcessResult result =
-          shellRunner.run(planCommand(binary(module), module), Map.of(), READ_ONLY_TIMEOUT);
+          shellRunner.run(argv(binary(module), "plan", module), Map.of(), READ_ONLY_TIMEOUT);
       return result.isSuccess() ? Optional.of(result.stdout()) : Optional.empty();
     } catch (ToolResolutionException | ShellExecutionException | IllegalArgumentException e) {
       return Optional.empty();
@@ -88,24 +92,21 @@ public final class BinstallerExecutor {
 
   /** Command preview used by {@code plan} and {@code dry-run}. */
   public List<String> commandPreview(BinstallerModule module) {
-    return planCommand(module.binstallerBinary(), module);
+    return argv(module.binstallerBinary(), "plan", module);
   }
 
-  private List<String> planCommand(String binary, BinstallerModule module) {
-    var command = new ArrayList<>(List.of(binary, "plan"));
-    appendConfig(command, module);
-    appendSelection(command, module);
-    return List.copyOf(command);
-  }
-
-  private List<String> applyCommand(String binary, BinstallerModule module) {
-    var command = new ArrayList<>(List.of(binary, "apply"));
+  /**
+   * The one place a binstaller invocation is built, shared by preview and execution so the two
+   * cannot drift apart.
+   */
+  private List<String> argv(String binary, String verb, BinstallerModule module) {
+    var command = new ArrayList<>(List.of(binary, verb));
     appendConfig(command, module);
     appendSelection(command, module);
     if (module.locked()) {
       command.add("--locked");
-      module.lockFile().ifPresent(path -> command.addAll(List.of("--lock-file", path.toString())));
     }
+    module.lockFile().ifPresent(path -> command.addAll(List.of("--lock-file", path.toString())));
     return List.copyOf(command);
   }
 

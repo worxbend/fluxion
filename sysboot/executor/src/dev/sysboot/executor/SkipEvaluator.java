@@ -47,7 +47,7 @@ public final class SkipEvaluator {
         && item.configuredModule().stream().noneMatch(CompiledBinaryModule.class::isInstance)) {
       Optional<StateEntry> stateEntry =
           state.flatMap(saved -> saved.findEntry(item.moduleName(), item.key(), item.itemType()));
-      if (stateEntry.isPresent()) {
+      if (stateEntry.isPresent() && matchesExternalConfig(item, stateEntry.get())) {
         StateEntry entry = stateEntry.get();
         return new SkipDecision.Skip(
             item.key(),
@@ -63,6 +63,19 @@ public final class SkipEvaluator {
       case InstallationStatus.NotInstalled ignored -> new SkipDecision.Run(item.key());
       case InstallationStatus.Unknown ignored -> new SkipDecision.Run(item.key());
     };
+  }
+
+  /**
+   * A delegated step's recorded entry is only still valid while the config file it points at is the
+   * one that was applied — its item key names the path, not the work, so an edit behind that path
+   * leaves the key unchanged. A module that does not delegate has no digest to check and matches as
+   * before.
+   */
+  private boolean matchesExternalConfig(ModuleItem item, StateEntry entry) {
+    return item.configuredModule()
+        .flatMap(ExternalConfigDigest::of)
+        .map(digest -> digest.equals(entry.checksum().orElse(null)))
+        .orElse(true);
   }
 
   public void refreshState(BootstrapState updatedState) {

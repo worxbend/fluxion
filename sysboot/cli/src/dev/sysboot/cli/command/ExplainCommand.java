@@ -112,6 +112,12 @@ public final class ExplainCommand implements Runnable {
   }
 
   private Explanation itemExplanation(ExecutionPlan plan, StatusReport report, String itemKey) {
+    for (ExecutionPlan.Module module : plan.sourceSetups()) {
+      Optional<ExecutionPlan.Item> item = findItem(module.items(), itemKey);
+      if (item.isPresent()) {
+        return sourceSetupItemExplanation(module, item.orElseThrow(), report);
+      }
+    }
     for (ExecutionPlan.Phase phase : plan.phases()) {
       for (ExecutionPlan.Module module : phase.modules()) {
         Optional<ExecutionPlan.Item> item = findItem(module.items(), itemKey);
@@ -133,6 +139,26 @@ public final class ExplainCommand implements Runnable {
       }
     }
     throw notFound("item", itemKey);
+  }
+
+  // A source setup (repository, Flatpak remote) belongs to no phase — the
+  // orchestrator runs it before all of them — so `--item` must be able to
+  // find it there too, and the explanation names its origin accordingly.
+  private Explanation sourceSetupItemExplanation(
+      ExecutionPlan.Module module, ExecutionPlan.Item item, StatusReport report) {
+    ExplainedItem explained = explainedItem(module, item, report);
+    return new Explanation(
+        "item",
+        explained.key(),
+        explained.displayName(),
+        "(source setup)",
+        module.name(),
+        List.of(),
+        ExecutionPlan.RestartEffect.NONE.name().toLowerCase(),
+        explained.status(),
+        explained.detail(),
+        explained.commandPreview(),
+        List.of(explained));
   }
 
   private Optional<ExecutionPlan.Item> findItem(List<ExecutionPlan.Item> items, String key) {

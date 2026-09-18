@@ -29,6 +29,9 @@ final class SourceSetupRunner {
       }
       if (execute(setup, listener, cancellation)) {
         failed = true;
+        if (cancellation.isCancelled()) {
+          return Result.CANCELLED;
+        }
         if (!continueOnFailure) {
           return Result.FAILED;
         }

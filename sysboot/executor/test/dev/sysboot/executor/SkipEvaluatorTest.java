@@ -5,6 +5,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.when;
 
 import dev.sysboot.core.AptRepositorySourceSetup;
+import dev.sysboot.core.BinstallerModule;
 import dev.sysboot.core.BootstrapState;
 import dev.sysboot.core.InstallationStatus;
 import dev.sysboot.core.ItemType;
@@ -12,12 +13,15 @@ import dev.sysboot.core.ModuleItem;
 import dev.sysboot.core.ModuleName;
 import dev.sysboot.core.SkipDecision;
 import dev.sysboot.core.StateEntry;
+import java.io.IOException;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.junit.jupiter.api.io.TempDir;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
@@ -150,6 +154,59 @@ class SkipEvaluatorTest {
         new SkipEvaluator(Optional.of(state), probeRegistry, true, false).evaluate(item);
 
     assertThat(decision).isInstanceOf(SkipDecision.Run.class);
+  }
+
+  @Test
+  void evaluate_whenDelegatedConfigChangedSinceRecordedRun_doesNotSkipFromStaleState(
+      @TempDir Path tempDir) throws IOException {
+    Path config = tempDir.resolve("binstaller.yaml");
+    Files.writeString(config, "versions:\n  lazygit: 0.61.0\n");
+    var module = new BinstallerModule(new ModuleName("tools"), config);
+    ModuleItem item =
+        ModuleItem.configuredModuleItem(
+            module, config.toString(), config.toString(), ItemType.BINSTALLER_PROFILE);
+    StateEntry entry =
+        new StateEntry(
+            "profile",
+            "tools",
+            config.toString(),
+            ItemType.BINSTALLER_PROFILE,
+            Instant.now(),
+            Optional.empty(),
+            Optional.of("digest-from-a-different-config"));
+    var state = new BootstrapState("profile", Instant.now(), "1.0.0", List.of(entry));
+    when(probeRegistry.probe(item)).thenReturn(new InstallationStatus.NotInstalled(item.key()));
+
+    SkipDecision decision =
+        new SkipEvaluator(Optional.of(state), probeRegistry, true, false).evaluate(item);
+
+    assertThat(decision).isInstanceOf(SkipDecision.Run.class);
+  }
+
+  @Test
+  void evaluate_whenDelegatedConfigUnchanged_skipsFromState(@TempDir Path tempDir)
+      throws IOException {
+    Path config = tempDir.resolve("binstaller.yaml");
+    Files.writeString(config, "versions:\n  lazygit: 0.61.0\n");
+    var module = new BinstallerModule(new ModuleName("tools"), config);
+    ModuleItem item =
+        ModuleItem.configuredModuleItem(
+            module, config.toString(), config.toString(), ItemType.BINSTALLER_PROFILE);
+    StateEntry entry =
+        new StateEntry(
+            "profile",
+            "tools",
+            config.toString(),
+            ItemType.BINSTALLER_PROFILE,
+            Instant.now(),
+            Optional.empty(),
+            ExternalConfigDigest.of(module));
+    var state = new BootstrapState("profile", Instant.now(), "1.0.0", List.of(entry));
+
+    SkipDecision decision =
+        new SkipEvaluator(Optional.of(state), probeRegistry, true, false).evaluate(item);
+
+    assertThat(decision).isInstanceOf(SkipDecision.Skip.class);
   }
 
   private ModuleItem item(String key) {

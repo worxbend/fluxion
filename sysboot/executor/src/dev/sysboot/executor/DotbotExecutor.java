@@ -39,7 +39,11 @@ public final class DotbotExecutor {
       ProcessResult result = shellRunner.run(command, Map.of(), DOTBOT_TIMEOUT);
 
       return result.isSuccess()
-          ? new StepResult.Success(module.name().value(), result.elapsed())
+          ? new StepResult.Success(
+              module.name().value(),
+              result.elapsed(),
+              Optional.empty(),
+              ExternalConfigDigest.of(module).orElse(null))
           : new StepResult.Failure(
               module.name().value(),
               "dotbot exited with code " + result.exitCode() + ": " + failureDetail(result),

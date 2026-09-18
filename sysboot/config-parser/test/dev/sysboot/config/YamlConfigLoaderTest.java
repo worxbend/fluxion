@@ -432,6 +432,41 @@ class YamlConfigLoaderTest {
   }
 
   @Test
+  void load_whenWorkstationProfileToolPackageEntryIsAnObject_reportsBlankEntryInstead(
+      @TempDir Path tmpDir) throws IOException {
+    // spec.packages() reads a non-scalar list entry as a blank string rather than dropping it,
+    // so this used to reach ToolPackage's constructor as an unattributed "package name must not
+    // be blank" failure instead of being reported against the entry that caused it.
+    Path config =
+        writeConfig(
+            tmpDir,
+            """
+            apiVersion: initkit.io/v1alpha1
+            kind: WorkstationProfile
+            metadata:
+              name: tool-packages-test
+            spec:
+              target:
+                os:
+                  distribution: fedora
+                  release: "44"
+              plan:
+                - name: tools
+                  kind: tool-packages
+                  spec:
+                    backend: cargo-binstall
+                    packages:
+                      - ripgrep
+                      - version: "1.2"
+            """);
+
+    assertThatThrownBy(() -> loader.load(config))
+        .isInstanceOf(ConfigLoadException.class)
+        .hasMessageContaining("spec.plan[0].spec.packages[1]")
+        .hasMessageContaining("must not be blank");
+  }
+
+  @Test
   void load_whenWorkstationProfileAurPackageUsesYay_mapsYayPackageModule(@TempDir Path tmpDir)
       throws IOException {
     Path config =
